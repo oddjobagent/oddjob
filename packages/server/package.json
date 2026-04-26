@@ -15,6 +15,14 @@
     "start": "bun run src/server.ts"
   },
   "dependencies": {
-    "@oddjob/core": "workspace:*"
+    "@mariozechner/pi-ai": "^0.70.2",
+    "@oddjob/channel-console": "workspace:*",
+    "@oddjob/core": "workspace:*",
+    "@oddjob/llm-pi": "workspace:*",
+    "@oddjob/logging-sqlite": "workspace:*",
+    "@oddjob/queue-sqlite": "workspace:*",
+    "@oddjob/sandbox-process": "workspace:*",
+    "@oddjob/secrets-sqlite": "workspace:*",
+    "@oddjob/state-sqlite": "workspace:*"
   }
 }
