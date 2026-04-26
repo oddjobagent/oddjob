@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
 
-import { startServer } from "@oddjob/server";
+import { startServer, type HtmlBundle } from "@oddjob/server";
 
 import { loadConfig } from "../lib/config.ts";
 import { buildRuntime, shutdownRuntime } from "../lib/runtime.ts";
@@ -11,6 +11,11 @@ export default defineCommand({
     host: { type: "string", description: "Bind host", default: "" },
     port: { type: "string", description: "Bind port", default: "" },
     workers: { type: "string", description: "Max concurrent runs", default: "" },
+    ui: {
+      type: "boolean",
+      description: "Mount the web dashboard (use --no-ui to run headless)",
+      default: true,
+    },
   },
   async run({ args }) {
     const cfg = await loadConfig();
@@ -18,9 +23,23 @@ export default defineCommand({
     if (args.port) cfg.server.port = Number(args.port);
     if (args.workers) cfg.server.max_workers = Number(args.workers);
 
+    let dashboard: HtmlBundle | undefined;
+    if (args.ui) {
+      // Future split: when dashboard runs in its own process, delete this import
+      // and `args.ui` defaults to false.
+      const mod = await import("../../../../apps/dashboard/src/index.html");
+      dashboard = (mod as { default: HtmlBundle }).default;
+    }
+
     const rt = await buildRuntime(cfg);
-    const server = await startServer({ runtime: rt });
+    const server = await startServer({ runtime: rt, dashboard });
     process.stdout.write(`oddjob serving on ${server.url}\n`);
+    if (dashboard) {
+      process.stdout.write(`  dashboard:  ${server.url}/\n`);
+    } else {
+      process.stdout.write(`  headless:   no dashboard mounted (--no-ui)\n`);
+    }
+    process.stdout.write(`  api:        ${server.url}/api/v1/health\n`);
 
     const shutdown = async () => {
       process.stdout.write("\nshutting down...\n");

@@ -6,3 +6,4 @@ export {
 } from "./server.ts";
 export { type Runtime, DEFAULT_CONFIG } from "./runtime.ts";
 export { WorkerPool } from "./workers/pool.ts";
+export { dashboardRoutes, DASHBOARD_PATHS, type HtmlBundle } from "./dashboard-mount.ts";

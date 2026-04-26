@@ -10,6 +10,7 @@ import {
   notFound,
   serverError,
 } from "./middleware/index.ts";
+import { dashboardRoutes, type HtmlBundle } from "./dashboard-mount.ts";
 import type { Runtime } from "./runtime.ts";
 import { webhook } from "./webhooks/handler.ts";
 import { WorkerPool } from "./workers/pool.ts";
@@ -29,6 +30,11 @@ export interface ServerHandle {
 
 export interface StartServerOptions {
   runtime: Runtime;
+  /**
+   * Optional HTML bundle (from `import dashboard from "./index.html"`) for the
+   * web UI. When omitted the server runs headless ("--no-ui").
+   */
+  dashboard?: HtmlBundle;
 }
 
 interface Route {
@@ -76,9 +82,13 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
     }
   }
 
+  const spaRoutes = opts.dashboard ? dashboardRoutes(opts.dashboard) : undefined;
+
   const server = Bun.serve({
     hostname: rt.config.host,
     port: rt.config.port,
+    development: process.env.ODDJOB_DEV === "1" ? { hmr: true, console: true } : false,
+    routes: spaRoutes as never,
     fetch: async (req) => {
       try {
         const url = new URL(req.url);

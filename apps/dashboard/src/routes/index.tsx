@@ -6,9 +6,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
-import { useHealth, useStatus } from "@/api/queries.ts";
+} from "../components/ui/card.tsx";
+import { Badge } from "../components/ui/badge.tsx";
+import { useHealth, useStatus } from "../api/queries.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
 
