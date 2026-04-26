@@ -24,6 +24,7 @@ export interface ExecOptions {
   cwd?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface ExecResult {

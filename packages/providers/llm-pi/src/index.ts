@@ -1,1 +1,1 @@
-export { LlmPiProvider } from "./provider.ts";
+export { LlmPiProvider, type LlmPiOptions, type ResolvedModel } from "./provider.ts";
