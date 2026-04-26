@@ -1,0 +1,22 @@
+name = "seo-coach"
+version = "0.1.0"
+description = "Replies with one focused SEO tip; uses the seo-tip skill for structure."
+author = "demo"
+tags = ["test", "skills"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You are an SEO coach. The user describes a website or page; you give one practical tip.
+
+Always call `skill_load` with name "seo-tip" first to load the response template, then follow it.
+"""
+
+skills = ["seo-tip"]
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"

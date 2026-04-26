@@ -3,3 +3,4 @@ export * from "./providers/index.ts";
 export * from "./blueprint/index.ts";
 export * from "./deployment/index.ts";
 export * from "./agent/index.ts";
+export * from "./skills/index.ts";

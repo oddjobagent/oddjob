@@ -19,7 +19,9 @@ import type { Run, RunId } from "../types/run.ts";
 import type { RunOutput } from "../types/output.ts";
 
 import { buildMcpRuntime } from "./mcp-tool.ts";
+import { buildSkillTool, buildSkillSystemPrompt } from "./skill-tool.ts";
 import { buildScriptTools } from "./script-tool.ts";
+import { loadSkills, type LoadedSkill } from "../skills/index.ts";
 
 export interface ResolvedLLM {
   model: import("@mariozechner/pi-ai").Model<import("@mariozechner/pi-ai").Api>;
@@ -70,6 +72,8 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   let usageTotal: Usage | undefined;
   let mcpRuntime: Awaited<ReturnType<typeof buildMcpRuntime>> | undefined;
   try {
+    const skills: LoadedSkill[] = blueprint.skills.length > 0 ? loadSkills(blueprint) : [];
+    const skillTool = buildSkillTool({ skills, onLog: append });
     const scriptTools = buildScriptTools({
       blueprint,
       sandbox: session,
@@ -81,9 +85,9 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       mcp: opts.mcp,
       secrets: opts.secrets,
     });
-    const tools = [...scriptTools, ...mcpRuntime.tools];
+    const tools = [...scriptTools, ...mcpRuntime.tools, ...(skillTool ? [skillTool] : [])];
 
-    const systemPrompt = buildSystemPrompt(blueprint, systemPromptExtra);
+    const systemPrompt = buildSystemPrompt(blueprint, skills, systemPromptExtra);
     const userPrompt: AgentMessage = {
       role: "user",
       content: typeof input === "string" ? input : JSON.stringify(input ?? {}),
@@ -203,16 +207,11 @@ function sumUsage(prev: Usage | undefined, next: Usage): Usage {
   };
 }
 
-function buildSystemPrompt(blueprint: Blueprint, extra?: string): string {
+function buildSystemPrompt(blueprint: Blueprint, skills: LoadedSkill[], extra?: string): string {
   const parts: string[] = [];
   parts.push(blueprint.prompt.trim());
-  if (blueprint.skills.length > 0) {
-    parts.push("");
-    parts.push("Skills available (use the skill_load tool to expand):");
-    for (const s of blueprint.skills) {
-      parts.push(`- ${s}`);
-    }
-  }
+  const skillSection = buildSkillSystemPrompt(skills);
+  if (skillSection) parts.push(skillSection);
   if (extra) {
     parts.push("");
     parts.push(extra);
