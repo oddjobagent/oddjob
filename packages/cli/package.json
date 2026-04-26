@@ -1,0 +1,21 @@
+{
+  "name": "@oddjob/cli",
+  "version": "0.0.0",
+  "description": "Oddjob CLI",
+  "bin": {
+    "oddjob": "./src/index.ts"
+  },
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "build:binary": "bun build --compile --outfile=./dist/oddjob ./src/index.ts",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@oddjob/core": "workspace:*",
+    "citty": "^0.1.6"
+  }
+}

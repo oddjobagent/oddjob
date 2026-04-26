@@ -1,0 +1,20 @@
+{
+  "name": "@oddjob/server",
+  "version": "0.0.0",
+  "description": "Oddjob HTTP server, scheduler, and worker pool",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "start": "bun run src/server.ts"
+  },
+  "dependencies": {
+    "@oddjob/core": "workspace:*"
+  }
+}

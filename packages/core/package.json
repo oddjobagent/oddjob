@@ -1,0 +1,22 @@
+{
+  "name": "@oddjob/core",
+  "version": "0.0.0",
+  "description": "Core types, blueprint parser, and agent runtime for Oddjob",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types/index.ts",
+    "./providers": "./src/providers/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "smol-toml": "^1.3.0",
+    "zod": "^3.23.0"
+  }
+}
