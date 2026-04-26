@@ -18,7 +18,7 @@ export const Route = createRoute({
   component: Overview,
 });
 
-function Overview(): React.JSX.Element {
+export function Overview(): React.JSX.Element {
   const health = useHealth();
   const status = useStatus();
   const s = status.data as

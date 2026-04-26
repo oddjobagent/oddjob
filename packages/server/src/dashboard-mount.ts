@@ -17,6 +17,7 @@ export type HtmlBundle = unknown;
 
 const SPA_PATHS: readonly string[] = [
   "/",
+  "/dashboard",
   "/runs",
   "/runs/:id",
   "/deployments",
