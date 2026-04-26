@@ -12,6 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "noPropertyAccessFromIndexSignature": false,
 
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,

@@ -1,0 +1,35 @@
+{
+  "name": "@oddjob/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Oddjob web dashboard (React + Tailwind v4 + shadcn + TanStack)",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot ./dev.ts",
+    "build": "bun build --target=browser --outdir=./dist ./src/index.html",
+    "typecheck": "bunx tsgo --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@oddjob/api-client": "workspace:*",
+    "@oddjob/core": "workspace:*",
+    "@tanstack/react-query": "^5.62.0",
+    "@tanstack/react-router": "^1.95.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@tanstack/react-query-devtools": "^5.62.0",
+    "@tanstack/router-devtools": "^1.95.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^4.0.0",
+    "tw-animate-css": "^1.2.0"
+  }
+}

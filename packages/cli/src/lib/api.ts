@@ -29,7 +29,10 @@ function proxy<K extends keyof Methods>(key: K): Methods[K] {
       get(_t, prop: string) {
         return async (...args: unknown[]) => {
           const a = await getApi();
-          const ns = a[key] as Record<string, ((...args: unknown[]) => Promise<unknown>) | undefined>;
+          const ns = a[key] as Record<
+            string,
+            ((...args: unknown[]) => Promise<unknown>) | undefined
+          >;
           const fn = ns[prop];
           if (typeof fn !== "function") throw new Error(`api.${String(key)}.${prop} not found`);
           return fn(...args);

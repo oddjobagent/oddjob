@@ -11,7 +11,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "typecheck": "bunx tsgo --noEmit",
+    "typecheck": "bunx tsgo --noEmit && bun run --cwd apps/dashboard typecheck",
     "lint": "bunx oxlint",
     "lint:fix": "bunx oxlint --fix",
     "format": "bunx oxfmt",
