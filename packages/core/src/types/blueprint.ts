@@ -22,6 +22,7 @@ export interface Blueprint {
   outputSchema?: BlueprintOutputSchema;
   path: string;
   contentHash: string;
+  sourceToml?: string;
   loadedSkills?: Skill[];
 }
 

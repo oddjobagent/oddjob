@@ -44,13 +44,14 @@ export function parseBlueprint(source: string, options: ParseOptions): Blueprint
   }
 
   const contentHash = sha256(source);
-  return normalizeBlueprint(result.data, options, contentHash);
+  return normalizeBlueprint(result.data, options, contentHash, source);
 }
 
 function normalizeBlueprint(
   raw: BlueprintRaw,
   options: ParseOptions,
   contentHash: string,
+  sourceToml: string,
 ): Blueprint {
   const connectors: Record<string, Connector> = {};
   for (const [key, value] of Object.entries(raw.connectors)) {
@@ -89,6 +90,7 @@ function normalizeBlueprint(
     outputSchema,
     path: options.path,
     contentHash,
+    sourceToml,
   };
 }
 

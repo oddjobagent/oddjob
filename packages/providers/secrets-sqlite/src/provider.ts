@@ -55,11 +55,12 @@ export class SecretsSqliteProvider implements SecretsProvider {
         tag: Buffer.from(row.tag),
       },
       this.masterKey,
+      { aad: name },
     );
   }
 
   async set(name: string, value: string): Promise<void> {
-    const sealed = seal(value, this.masterKey);
+    const sealed = seal(value, this.masterKey, { aad: name });
     const now = Date.now();
     this.db
       .query(

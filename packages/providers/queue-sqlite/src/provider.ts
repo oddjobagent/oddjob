@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Database } from "bun:sqlite";
 
-import type { QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
+import type { AckResult, QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
 
 import { runMigrations } from "./migrate.ts";
 
@@ -53,34 +53,30 @@ export class QueueSqliteProvider implements QueueProvider {
   async dequeue(workerId: string, leaseMs: number): Promise<QueuedRun | null> {
     const now = Date.now();
     const leasedUntil = now + leaseMs;
-    let claimed: QueueRow | null = null;
-    this.db.transaction(() => {
-      const row = this.db
-        .query<QueueRow, []>(
-          `SELECT * FROM queued_runs
-            WHERE status = 'queued'
-               OR (status = 'running' AND leased_until IS NOT NULL AND leased_until < ${now})
-            ORDER BY enqueued_at ASC LIMIT 1`,
-        )
-        .get();
-      if (!row) return;
-      this.db
-        .query(
-          `UPDATE queued_runs
-             SET status = 'running', worker_id = ?, leased_until = ?,
-                 attempts = attempts + 1, started_at = COALESCE(started_at, ?)
-           WHERE run_id = ?`,
-        )
-        .run(workerId, leasedUntil, now, row.run_id);
-      claimed = { ...row, status: "running", worker_id: workerId, leased_until: leasedUntil };
-    })();
-    if (!claimed) return null;
-    const c = claimed as QueueRow;
+    // Atomic UPDATE...RETURNING claims one eligible row in a single statement.
+    const row = this.db
+      .query<ClaimRow, [string, number, number, number]>(
+        `UPDATE queued_runs
+            SET status = 'running',
+                worker_id = ?,
+                leased_until = ?,
+                attempts = attempts + 1,
+                started_at = COALESCE(started_at, ?)
+          WHERE run_id = (
+            SELECT run_id FROM queued_runs
+             WHERE status = 'queued'
+                OR (status = 'running' AND leased_until IS NOT NULL AND leased_until < ?)
+             ORDER BY enqueued_at ASC LIMIT 1
+          )
+          RETURNING run_id, config_json, attempts, leased_until`,
+      )
+      .get(workerId, leasedUntil, now, now);
+    if (!row) return null;
     return {
-      runId: c.run_id,
-      config: JSON.parse(c.config_json) as RunConfig,
-      attempts: c.attempts + 1,
-      leasedUntil,
+      runId: row.run_id,
+      config: JSON.parse(row.config_json) as RunConfig,
+      attempts: row.attempts,
+      leasedUntil: row.leased_until,
     };
   }
 
@@ -89,31 +85,35 @@ export class QueueSqliteProvider implements QueueProvider {
     this.db
       .query(
         `UPDATE queued_runs
-           SET leased_until = ?
-         WHERE run_id = ? AND worker_id = ? AND status = 'running'`,
+            SET leased_until = ?
+          WHERE run_id = ? AND worker_id = ? AND status = 'running'`,
       )
       .run(now + 30_000, runId, workerId);
     this.db
       .query(
         `INSERT INTO worker_heartbeats (worker_id, last_beat_at)
-         VALUES (?, ?)
+              VALUES (?, ?)
          ON CONFLICT(worker_id) DO UPDATE SET last_beat_at = excluded.last_beat_at`,
       )
       .run(workerId, now);
   }
 
-  async ack(runId: string): Promise<void> {
-    this.db.query(`DELETE FROM queued_runs WHERE run_id = ?`).run(runId);
+  async ack(runId: string, workerId: string): Promise<AckResult> {
+    const result = this.db
+      .query(`DELETE FROM queued_runs WHERE run_id = ? AND worker_id = ? AND status = 'running'`)
+      .run(runId, workerId);
+    return result.changes > 0 ? "ok" : "lease_lost";
   }
 
-  async nack(runId: string, error?: string): Promise<void> {
-    this.db
+  async nack(runId: string, workerId: string, error?: string): Promise<AckResult> {
+    const result = this.db
       .query(
         `UPDATE queued_runs
-           SET status = 'failed', last_error = ?, finished_at = ?, leased_until = NULL, worker_id = NULL
-         WHERE run_id = ?`,
+            SET status = 'failed', last_error = ?, finished_at = ?, leased_until = NULL, worker_id = NULL
+          WHERE run_id = ? AND worker_id = ? AND status = 'running'`,
       )
-      .run(error ?? null, Date.now(), runId);
+      .run(error ?? null, Date.now(), runId, workerId);
+    return result.changes > 0 ? "ok" : "lease_lost";
   }
 
   async reclaimStale(): Promise<number> {
@@ -121,8 +121,8 @@ export class QueueSqliteProvider implements QueueProvider {
     const result = this.db
       .query(
         `UPDATE queued_runs
-           SET status = 'queued', leased_until = NULL, worker_id = NULL
-         WHERE status = 'running' AND leased_until IS NOT NULL AND leased_until < ?`,
+            SET status = 'queued', leased_until = NULL, worker_id = NULL
+          WHERE status = 'running' AND leased_until IS NOT NULL AND leased_until < ?`,
       )
       .run(now);
     return Number(result.changes);
@@ -144,15 +144,9 @@ export class QueueSqliteProvider implements QueueProvider {
   }
 }
 
-interface QueueRow {
+interface ClaimRow {
   run_id: string;
   config_json: string;
-  status: string;
   attempts: number;
-  worker_id: string | null;
-  leased_until: number | null;
-  last_error: string | null;
-  enqueued_at: number;
-  started_at: number | null;
-  finished_at: number | null;
+  leased_until: number;
 }

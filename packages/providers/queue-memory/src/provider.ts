@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
+import type { AckResult, QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
 
 interface Slot {
   runId: string;
@@ -34,7 +34,7 @@ export class QueueMemoryProvider implements QueueProvider {
       .filter(
         (s) => s.status === "queued" || (s.status === "running" && (s.leasedUntil ?? 0) < now),
       )
-      .sort((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
+      .toSorted((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
     if (!candidate) return null;
     candidate.status = "running";
     candidate.workerId = workerId;
@@ -55,17 +55,20 @@ export class QueueMemoryProvider implements QueueProvider {
     }
   }
 
-  async ack(runId: string): Promise<void> {
+  async ack(runId: string, workerId: string): Promise<AckResult> {
+    const slot = this.slots.get(runId);
+    if (!slot || slot.workerId !== workerId || slot.status !== "running") return "lease_lost";
     this.slots.delete(runId);
+    return "ok";
   }
 
-  async nack(runId: string, _error?: string): Promise<void> {
+  async nack(runId: string, workerId: string, _error?: string): Promise<AckResult> {
     const slot = this.slots.get(runId);
-    if (slot) {
-      slot.status = "failed";
-      slot.workerId = undefined;
-      slot.leasedUntil = undefined;
-    }
+    if (!slot || slot.workerId !== workerId || slot.status !== "running") return "lease_lost";
+    slot.status = "failed";
+    slot.workerId = undefined;
+    slot.leasedUntil = undefined;
+    return "ok";
   }
 
   async reclaimStale(): Promise<number> {

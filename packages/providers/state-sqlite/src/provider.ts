@@ -78,10 +78,10 @@ export class StateSqliteProvider implements StateProvider {
 
   async listKv(namespace: string, prefix?: string): Promise<string[]> {
     const rows = this.db
-      .query<{ key: string }, [string, string]>(
-        "SELECT key FROM memory WHERE deployment_id = '_global' AND namespace = ? AND key LIKE ?",
+      .query<{ key: string }, [string, string, number]>(
+        "SELECT key FROM memory WHERE deployment_id = '_global' AND namespace = ? AND key LIKE ? AND (expires_at IS NULL OR expires_at > ?)",
       )
-      .all(namespace, `${prefix ?? ""}%`);
+      .all(namespace, `${prefix ?? ""}%`, Date.now());
     return rows.map((r) => r.key);
   }
 
@@ -108,7 +108,7 @@ export class StateSqliteProvider implements StateProvider {
         blueprint.version,
         blueprint.schemaVersion,
         blueprint.description,
-        "",
+        blueprint.sourceToml ?? "",
         JSON.stringify(blueprint),
         blueprint.contentHash,
         blueprint.path,

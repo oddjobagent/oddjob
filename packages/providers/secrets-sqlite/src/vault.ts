@@ -10,17 +10,23 @@ export interface SealedSecret {
   tag: Buffer;
 }
 
-export function seal(plaintext: string, key: Buffer): SealedSecret {
+export interface SealOptions {
+  aad?: string;
+}
+
+export function seal(plaintext: string, key: Buffer, opts?: SealOptions): SealedSecret {
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv(ALGO, key, iv);
+  if (opts?.aad) cipher.setAAD(Buffer.from(opts.aad, "utf8"));
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   if (tag.length !== TAG_LEN) throw new Error("unexpected tag length");
   return { iv, ciphertext: ct, tag };
 }
 
-export function open(sealed: SealedSecret, key: Buffer): string {
+export function open(sealed: SealedSecret, key: Buffer, opts?: SealOptions): string {
   const decipher = createDecipheriv(ALGO, key, sealed.iv);
+  if (opts?.aad) decipher.setAAD(Buffer.from(opts.aad, "utf8"));
   decipher.setAuthTag(sealed.tag);
   const pt = Buffer.concat([decipher.update(sealed.ciphertext), decipher.final()]);
   return pt.toString("utf8");
