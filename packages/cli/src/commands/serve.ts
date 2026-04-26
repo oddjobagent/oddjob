@@ -5,6 +5,10 @@ import { startServer, type HtmlBundle } from "@oddjob/server";
 import { loadConfig } from "../lib/config.ts";
 import { buildRuntime, shutdownRuntime } from "../lib/runtime.ts";
 
+// Static import keeps the dashboard bundled into `bun build --compile` output.
+// The future split removes this import + the --no-ui flag.
+import dashboardHtml from "../../../../apps/dashboard/src/index.html";
+
 export default defineCommand({
   meta: { name: "serve", description: "Start the Oddjob server." },
   args: {
@@ -23,13 +27,7 @@ export default defineCommand({
     if (args.port) cfg.server.port = Number(args.port);
     if (args.workers) cfg.server.max_workers = Number(args.workers);
 
-    let dashboard: HtmlBundle | undefined;
-    if (args.ui) {
-      // Future split: when dashboard runs in its own process, delete this import
-      // and `args.ui` defaults to false.
-      const mod = await import("../../../../apps/dashboard/src/index.html");
-      dashboard = (mod as { default: HtmlBundle }).default;
-    }
+    const dashboard: HtmlBundle | undefined = args.ui ? (dashboardHtml as HtmlBundle) : undefined;
 
     const rt = await buildRuntime(cfg);
     const server = await startServer({ runtime: rt, dashboard });

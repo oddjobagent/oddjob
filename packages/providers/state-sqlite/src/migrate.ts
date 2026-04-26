@@ -1,33 +1,28 @@
-import { readFile, readdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type { Database } from "bun:sqlite";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_MIGRATIONS = join(HERE, "migrations");
+import sql0001 from "./migrations/0001_init.sql" with { type: "text" };
 
-export async function runMigrations(db: Database, dir: string = DEFAULT_MIGRATIONS): Promise<void> {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version TEXT PRIMARY KEY,
-      applied_at INTEGER NOT NULL
-    )
-  `);
+interface Migration {
+  version: string;
+  sql: string;
+}
 
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+const MIGRATIONS: Migration[] = [{ version: "0001_init.sql", sql: sql0001 }];
+
+export async function runMigrations(db: Database): Promise<void> {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`,
+  );
   const appliedRows = db.query("SELECT version FROM schema_migrations").all() as Array<{
     version: string;
   }>;
   const applied = new Set(appliedRows.map((r) => r.version));
-
-  for (const file of files) {
-    if (applied.has(file)) continue;
-    const sql = await readFile(join(dir, file), "utf8");
+  for (const m of MIGRATIONS) {
+    if (applied.has(m.version)) continue;
     db.transaction(() => {
-      db.exec(sql);
+      db.exec(m.sql);
       db.query("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(
-        file,
+        m.version,
         Date.now(),
       );
     })();

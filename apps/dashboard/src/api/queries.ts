@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { Blueprint, Deployment, LogEntry, Run } from "@oddjob/core";
 
@@ -82,17 +82,24 @@ export function useRun(id: string | undefined) {
   });
 }
 
-export function useRunLogs(
-  id: string | undefined,
-): UseQueryOptions<{ entries: LogEntry[] }> & ReturnType<typeof useQuery<{ entries: LogEntry[] }>> {
-  // Polled tail: fetch all logs each tick (server returns full sequence). Cheap for now;
-  // can switch to since-cursor when entry counts grow.
+export function useRunLogs(id: string | undefined) {
+  // Polled tail w/ cursor. Each tick requests entries strictly newer than the
+  // last seen timestamp; the cached array accumulates. Avoids re-downloading
+  // the full log every second.
+  const queryClient = useQueryClient();
   return useQuery<{ entries: LogEntry[] }>({
     queryKey: ["runs", id, "logs"],
-    queryFn: () => api.runs.logs(id!) as Promise<{ entries: LogEntry[] }>,
+    queryFn: async () => {
+      const cached = queryClient.getQueryData<{ entries: LogEntry[] }>(["runs", id, "logs"]);
+      const lastTs = cached?.entries.at(-1)?.timestamp;
+      const since = lastTs ? lastTs + 1 : 0;
+      const fresh = (await api.runs.logs(id!, since)) as { entries: LogEntry[] };
+      return { entries: [...(cached?.entries ?? []), ...fresh.entries] };
+    },
     enabled: Boolean(id),
     refetchInterval: fast,
-  }) as never;
+    refetchOnWindowFocus: false,
+  });
 }
 
 export function useSecrets() {
