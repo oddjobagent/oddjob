@@ -8,7 +8,7 @@ export interface HandlerContext {
 export function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+    headers: { "content-type": "application/json", ...init.headers },
   });
 }
 

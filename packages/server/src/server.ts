@@ -6,11 +6,9 @@ import * as Health from "./api/health.ts";
 import {
   type Handler,
   type HandlerContext,
-  badRequest,
   bearerCheck,
   notFound,
   serverError,
-  unauthorized,
 } from "./middleware/index.ts";
 import type { Runtime } from "./runtime.ts";
 import { webhook } from "./webhooks/handler.ts";

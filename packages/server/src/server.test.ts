@@ -127,7 +127,7 @@ describe("server end-to-end", () => {
         if (run.status === "complete" || run.status === "failed") break;
       }
     }
-    expect(["complete", "failed"]).toContain(run?.status);
+    expect(["complete", "failed"]).toContain(run?.status ?? "<none>");
   }, 30_000);
 
   test("webhook ingress validates path + auth", async () => {

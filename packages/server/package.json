@@ -22,6 +22,7 @@
     "@oddjob/logging-sqlite": "workspace:*",
     "@oddjob/queue-sqlite": "workspace:*",
     "@oddjob/sandbox-process": "workspace:*",
+    "@oddjob/scheduler-croner": "workspace:*",
     "@oddjob/secrets-sqlite": "workspace:*",
     "@oddjob/state-sqlite": "workspace:*"
   }

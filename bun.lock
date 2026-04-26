@@ -125,6 +125,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@oddjob/core": "workspace:*",
+        "croner": "^10.0.1",
       },
     },
     "packages/providers/secrets-sqlite": {
@@ -166,6 +167,7 @@
         "@oddjob/logging-sqlite": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
         "@oddjob/sandbox-process": "workspace:*",
+        "@oddjob/scheduler-croner": "workspace:*",
         "@oddjob/secrets-sqlite": "workspace:*",
         "@oddjob/state-sqlite": "workspace:*",
       },
@@ -527,6 +529,8 @@
     "citty": ["citty@0.1.6", "", { "dependencies": { "consola": "^3.2.3" } }, "sha512-tskPPKEs8D2KPafUypv2gxwJP8h/OaJmC82QQGGDQcHvXX43xF2VDACcJVmZ0EuSxkpO9Kc4MlrA3q0+FG58AQ=="],
 
     "consola": ["consola@3.4.2", "", {}, "sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA=="],
+
+    "croner": ["croner@10.0.1", "", {}, "sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g=="],
 
     "data-uri-to-buffer": ["data-uri-to-buffer@6.0.2", "", {}, "sha512-7hvf7/GW8e86rW0ptuwS3OcBGDjIi6SZva7hCyWC0yYry2cOPmLIjXAUHI6DK2HsnwJd9ifmt57i8eV2n4YNpw=="],
 

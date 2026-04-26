@@ -9,8 +9,8 @@ interface PushBody {
 export const list =
   (rt: Runtime): Handler =>
   async () => {
-    const list = await rt.state.listBlueprints();
-    return json({ blueprints: list });
+    const items = await rt.state.listBlueprints();
+    return json({ blueprints: items });
   };
 
 export const get =
