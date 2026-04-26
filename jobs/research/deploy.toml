@@ -1,0 +1,15 @@
+blueprint = "./blueprint.toml"
+
+[[trigger]]
+type = "manual"
+
+[[trigger]]
+type = "webhook"
+
+[[channel]]
+type = "console"
+
+[limits]
+duration = "1m"
+tool_calls = 5
+budget = 0.10

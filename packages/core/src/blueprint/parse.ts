@@ -1,0 +1,175 @@
+import { createHash } from "node:crypto";
+
+import { parse as parseToml } from "smol-toml";
+import type { z } from "zod";
+
+import type {
+  Blueprint,
+  BlueprintId,
+  BlueprintMemory,
+  BlueprintOutputSchema,
+} from "../types/blueprint.ts";
+import type {
+  Connector,
+  ConnectorAuth,
+  HttpConnector,
+  StdioConnector,
+} from "../types/connector.ts";
+import { type BlueprintIssue, BlueprintParseError } from "./errors.ts";
+import {
+  type BlueprintRaw,
+  BlueprintRawSchema,
+  type ConnectorAuthRaw,
+  type ConnectorRaw,
+} from "./schema.ts";
+
+export interface ParseOptions {
+  path: string;
+}
+
+export function parseBlueprint(source: string, options: ParseOptions): Blueprint {
+  let toml: unknown;
+  try {
+    toml = parseToml(source);
+  } catch (err) {
+    throw new BlueprintParseError(`Failed to parse TOML: ${(err as Error).message}`, err);
+  }
+
+  const result = BlueprintRawSchema.safeParse(toml);
+  if (!result.success) {
+    throw new BlueprintParseError(
+      `Blueprint schema invalid:\n${formatZodIssues(result.error)}`,
+      result.error,
+    );
+  }
+
+  const contentHash = sha256(source);
+  return normalizeBlueprint(result.data, options, contentHash);
+}
+
+function normalizeBlueprint(
+  raw: BlueprintRaw,
+  options: ParseOptions,
+  contentHash: string,
+): Blueprint {
+  const connectors: Record<string, Connector> = {};
+  for (const [key, value] of Object.entries(raw.connectors)) {
+    connectors[key] = normalizeConnector(key, value);
+  }
+
+  const memory: BlueprintMemory = {
+    store: raw.memory.store,
+    retention: raw.memory.retention,
+  };
+
+  const outputSchema: BlueprintOutputSchema | undefined = raw.output_schema
+    ? { type: "json-schema", schema: raw.output_schema.schema }
+    : undefined;
+
+  const id = `${raw.author}/${raw.name}` as BlueprintId;
+
+  return {
+    id,
+    name: raw.name,
+    namespace: raw.author,
+    version: raw.version,
+    schemaVersion: raw.schema_version,
+    description: raw.description,
+    author: raw.author,
+    tags: raw.tags,
+    license: raw.license,
+    model: raw.model,
+    prompt: raw.prompt,
+    tools: raw.tools,
+    skills: raw.skills,
+    connectors,
+    scripts: raw.scripts,
+    memory,
+    secrets: raw.secrets,
+    outputSchema,
+    path: options.path,
+    contentHash,
+  };
+}
+
+function normalizeConnector(name: string, raw: ConnectorRaw): Connector {
+  const auth = normalizeAuth(raw.auth);
+  const scopes = raw.scopes;
+  const tools = raw.tools;
+  const env = raw.env;
+
+  if ("command" in raw && raw.command !== undefined) {
+    const stdio: StdioConnector = {
+      transport: "stdio",
+      command: raw.command,
+      args: raw.args,
+      auth,
+      scopes,
+      tools,
+      env,
+    };
+    return stdio;
+  }
+
+  if ("server" in raw && raw.server !== undefined) {
+    const http: HttpConnector = {
+      transport: raw.transport === "sse" ? "sse" : "http",
+      server: raw.server,
+      auth,
+      scopes,
+      tools,
+      env,
+    };
+    return http;
+  }
+
+  throw new BlueprintParseError(`connector ${name}: must have server or command`);
+}
+
+function normalizeAuth(raw: ConnectorAuthRaw | undefined): ConnectorAuth {
+  if (raw === undefined) return { kind: "none" };
+  if (typeof raw === "string") {
+    if (raw === "none") return { kind: "none" };
+    if (raw === "api_key" || raw === "bearer") {
+      throw new BlueprintParseError(
+        `auth = "${raw}" requires a secret_ref. Use a table form: { kind = "${raw}", secret_ref = "..." }`,
+      );
+    }
+    if (raw === "oauth2") return { kind: "oauth2" };
+    return { kind: "none" };
+  }
+  switch (raw.kind) {
+    case "none":
+      return { kind: "none" };
+    case "api_key":
+      return {
+        kind: "api_key",
+        headerName: raw.header_name,
+        secretRef: raw.secret_ref,
+      };
+    case "bearer":
+      return { kind: "bearer", secretRef: raw.secret_ref };
+    case "oauth2":
+      return {
+        kind: "oauth2",
+        clientIdRef: raw.client_id_ref,
+        clientSecretRef: raw.client_secret_ref,
+        authorizationUrl: raw.authorization_url,
+        tokenUrl: raw.token_url,
+        scopes: raw.scopes,
+        usePkce: raw.use_pkce,
+      };
+  }
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
+function formatZodIssues(error: z.ZodError): string {
+  const issues: BlueprintIssue[] = error.issues.map((i) => ({
+    path: i.path.map(String).join("."),
+    message: i.message,
+  }));
+  return issues.map((i) => `  - ${i.path || "(root)"}: ${i.message}`).join("\n");
+}

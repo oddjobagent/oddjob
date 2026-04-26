@@ -1,0 +1,12 @@
+blueprint = "./blueprint.toml"
+
+[[trigger]]
+type = "manual"
+
+[[channel]]
+type = "console"
+
+[limits]
+duration = "30s"
+tool_calls = 5
+budget = 0.05

@@ -1,0 +1,19 @@
+name = "echo"
+version = "0.1.0"
+description = "Echoes the input back as the output. Smoke-test blueprint."
+author = "demo"
+tags = ["test"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You are an echo agent. Read the user's input and respond with exactly what they said.
+Do not add commentary. Do not call any tools.
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"

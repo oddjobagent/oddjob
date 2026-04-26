@@ -2,9 +2,11 @@ import type { Connector } from "./connector.ts";
 import type { Skill } from "./skill.ts";
 
 export interface Blueprint {
+  id: BlueprintId;
   name: string;
   namespace: string;
   version: string;
+  schemaVersion: 1;
   description: string;
   author: string;
   tags: string[];
@@ -19,6 +21,7 @@ export interface Blueprint {
   secrets: Record<string, string>;
   outputSchema?: BlueprintOutputSchema;
   path: string;
+  contentHash: string;
   loadedSkills?: Skill[];
 }
 

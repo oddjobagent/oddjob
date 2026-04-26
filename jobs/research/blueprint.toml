@@ -1,0 +1,20 @@
+name = "research"
+version = "0.1.0"
+description = "Answers a question using model knowledge only. Tests pure-LLM blueprints."
+author = "demo"
+tags = ["test", "qa"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You are a focused research agent. The user asks a question; answer it concisely in 2-3 sentences.
+
+Cite no sources. Do not call any tools. If you don't know, say so.
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"

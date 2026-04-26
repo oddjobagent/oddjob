@@ -1,0 +1,23 @@
+name = "word-count"
+version = "0.1.0"
+description = "Counts words in given text using a deterministic script tool."
+author = "demo"
+tags = ["test", "script-tool"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You count words in text the user provides.
+
+When the user gives you text, call the `count_words` tool to get an exact count, then report the count to the user in a single sentence.
+"""
+
+[scripts]
+count_words = "scripts/count_words.ts"
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"

@@ -1,0 +1,47 @@
+name = "structured-output"
+version = "0.1.0"
+description = "Extracts structured data from a free-form input using output_schema."
+author = "demo"
+tags = ["test", "structured"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You extract structured information from text.
+
+The user gives a free-form description of an event. Extract:
+- title (required): a short title
+- date_iso (optional): if a date is mentioned, in ISO 8601 format
+- attendees (optional): array of names
+- summary (required): a 1-sentence summary
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"
+
+[output_schema]
+type = "json-schema"
+
+[output_schema.schema]
+type = "object"
+required = ["title", "summary"]
+
+[output_schema.schema.properties]
+[output_schema.schema.properties.title]
+type = "string"
+
+[output_schema.schema.properties.date_iso]
+type = "string"
+format = "date"
+
+[output_schema.schema.properties.attendees]
+type = "array"
+[output_schema.schema.properties.attendees.items]
+type = "string"
+
+[output_schema.schema.properties.summary]
+type = "string"
