@@ -9,6 +9,10 @@ type = "webhook"
 [[channel]]
 type = "console"
 
+[[channel]]
+type = "webhook"
+url = "https://httpbin.org/post"
+
 [limits]
 duration = "1m"
 tool_calls = 5

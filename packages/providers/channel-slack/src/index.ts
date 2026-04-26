@@ -1,1 +1,1 @@
-export { ChannelSlackProvider } from "./provider.ts";
+export { ChannelSlackProvider, type ChannelSlackOptions } from "./provider.ts";

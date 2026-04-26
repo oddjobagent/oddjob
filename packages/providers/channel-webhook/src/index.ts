@@ -1,1 +1,1 @@
-export { ChannelWebhookProvider } from "./provider.ts";
+export { ChannelWebhookProvider, type ChannelWebhookOptions } from "./provider.ts";

@@ -1,1 +1,1 @@
-export { ChannelEmailProvider } from "./provider.ts";
+export { ChannelEmailProvider, type ChannelEmailOptions } from "./provider.ts";

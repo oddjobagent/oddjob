@@ -20,6 +20,9 @@
       },
       "dependencies": {
         "@oddjob/channel-console": "workspace:*",
+        "@oddjob/channel-email": "workspace:*",
+        "@oddjob/channel-slack": "workspace:*",
+        "@oddjob/channel-webhook": "workspace:*",
         "@oddjob/core": "workspace:*",
         "@oddjob/llm-pi": "workspace:*",
         "@oddjob/logging-sqlite": "workspace:*",
