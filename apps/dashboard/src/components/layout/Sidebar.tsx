@@ -1,8 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Activity, Box, FileCog, Key, LayoutDashboard, ServerCog } from "lucide-react";
 
-import { cn } from "@/lib/utils.ts";
-
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/runs", label: "Runs", icon: Activity },
