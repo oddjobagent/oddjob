@@ -1,9 +1,13 @@
 import { mkdir } from "node:fs/promises";
 
 import { ChannelConsoleProvider } from "@oddjob/channel-console";
+import { ChannelEmailProvider } from "@oddjob/channel-email";
+import { ChannelSlackProvider } from "@oddjob/channel-slack";
+import { ChannelWebhookProvider } from "@oddjob/channel-webhook";
 import type { ChannelProvider } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
+import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
 import { SandboxProcessProvider } from "@oddjob/sandbox-process";
 import { SchedulerCronerProvider } from "@oddjob/scheduler-croner";
@@ -33,11 +37,15 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
 
   const sandbox = new SandboxProcessProvider();
   const llm = new LlmPiProvider({ secrets });
+  const mcp = new McpClientProvider();
   const scheduler = new SchedulerCronerProvider();
   await scheduler.connect();
 
   const channels: Record<string, ChannelProvider> = {
     console: new ChannelConsoleProvider(),
+    slack: new ChannelSlackProvider({ secrets }),
+    email: new ChannelEmailProvider({ secrets }),
+    webhook: new ChannelWebhookProvider({ secrets }),
   };
 
   const runtime: Runtime = {
@@ -47,6 +55,7 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     log,
     sandbox,
     llm,
+    mcp,
     scheduler,
     channelFor: (type) => channels[type],
     bearerToken: cfg.server.bearer_token,

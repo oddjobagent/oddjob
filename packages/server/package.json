@@ -20,6 +20,7 @@
     "@oddjob/core": "workspace:*",
     "@oddjob/llm-pi": "workspace:*",
     "@oddjob/logging-sqlite": "workspace:*",
+    "@oddjob/mcp-client": "workspace:*",
     "@oddjob/queue-sqlite": "workspace:*",
     "@oddjob/sandbox-process": "workspace:*",
     "@oddjob/scheduler-croner": "workspace:*",

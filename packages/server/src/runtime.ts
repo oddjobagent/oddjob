@@ -1,6 +1,7 @@
 import type {
   ChannelProvider,
   LogProvider,
+  McpProvider,
   QueueProvider,
   SandboxProvider,
   SchedulerProvider,
@@ -16,6 +17,7 @@ export interface Runtime {
   log: LogProvider;
   sandbox: SandboxProvider;
   llm: LlmPiProvider;
+  mcp?: McpProvider;
   scheduler?: SchedulerProvider;
   channelFor: (type: string) => ChannelProvider | undefined;
   bearerToken?: string;

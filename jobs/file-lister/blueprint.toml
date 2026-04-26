@@ -1,0 +1,24 @@
+name = "file-lister"
+version = "0.1.0"
+description = "Lists files in /tmp via the MCP filesystem server."
+author = "demo"
+tags = ["test", "mcp"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You are a file inspector. The user will ask about files. Use the fs__list_directory tool to look up paths and answer concisely.
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"
+
+[connectors.fs]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+auth = "none"
+tools = ["list_directory"]

@@ -120,6 +120,8 @@ export class WorkerPool {
         llm: { model: resolved.model, apiKey: resolved.apiKey },
         sandbox: this.rt.sandbox,
         log: this.rt.log,
+        mcp: this.rt.mcp,
+        secrets: this.rt.secrets,
         input: config.input,
         runId,
         deploymentId: dep.id,

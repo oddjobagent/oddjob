@@ -10,12 +10,15 @@ import {
 import { type AssistantMessage, type Message, streamSimple, type Usage } from "@mariozechner/pi-ai";
 
 import type { LogEntry, LogProvider } from "../providers/logging.ts";
+import type { McpProvider } from "../providers/mcp.ts";
+import type { SecretsProvider } from "../providers/secrets.ts";
 import type { SandboxProvider, SandboxSession } from "../providers/sandbox.ts";
 import type { Blueprint } from "../types/blueprint.ts";
 import type { Limits } from "../types/limits.ts";
 import type { Run, RunId } from "../types/run.ts";
 import type { RunOutput } from "../types/output.ts";
 
+import { buildMcpRuntime } from "./mcp-tool.ts";
 import { buildScriptTools } from "./script-tool.ts";
 
 export interface ResolvedLLM {
@@ -35,6 +38,8 @@ export interface RunOnceOptions {
   limits?: Limits;
   signal?: AbortSignal;
   systemPromptExtra?: string;
+  mcp?: McpProvider;
+  secrets?: SecretsProvider;
 }
 
 export interface RunOnceResult {
@@ -63,13 +68,20 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
 
   let toolCalls = 0;
   let usageTotal: Usage | undefined;
+  let mcpRuntime: Awaited<ReturnType<typeof buildMcpRuntime>> | undefined;
   try {
-    const tools = buildScriptTools({
+    const scriptTools = buildScriptTools({
       blueprint,
       sandbox: session,
       blueprintDir,
       onLog: append,
     });
+    mcpRuntime = await buildMcpRuntime({
+      blueprint,
+      mcp: opts.mcp,
+      secrets: opts.secrets,
+    });
+    const tools = [...scriptTools, ...mcpRuntime.tools];
 
     const systemPrompt = buildSystemPrompt(blueprint, systemPromptExtra);
     const userPrompt: AgentMessage = {
@@ -164,6 +176,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
 
     return { run, output, events, messages };
   } finally {
+    await mcpRuntime?.close().catch(() => undefined);
     await session.kill();
   }
 }
