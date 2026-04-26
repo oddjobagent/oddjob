@@ -1,8 +1,11 @@
 import { defineCommand } from "citty";
 
+import { api } from "../lib/api.ts";
+
 export default defineCommand({
-  meta: { name: "status", description: "TODO: status command" },
+  meta: { name: "status", description: "Show server status." },
   async run() {
-    throw new Error("oddjob status: not implemented (see plan)");
+    const s = (await api.status()) as Record<string, unknown>;
+    process.stdout.write(JSON.stringify(s, null, 2) + "\n");
   },
 });

@@ -83,9 +83,25 @@ export class WorkerPool {
     }, this.rt.config.heartbeatMs);
     this.state.heartbeats.set(runId, heartbeat);
 
+    const startedAt = Date.now();
     try {
+      // Insert running row up-front so callers can poll runs.get(id) before completion.
+      await this.rt.state.createRun({
+        id: runId,
+        deploymentId: config.deploymentId,
+        blueprintId: config.blueprintId,
+        triggeredBy: config.triggeredBy,
+        status: "running",
+        input: config.input,
+        tokenInput: 0,
+        tokenOutput: 0,
+        toolCalls: 0,
+        startedAt,
+        createdAt: startedAt,
+      });
+
       await this.rt.log.log(runId, {
-        timestamp: Date.now(),
+        timestamp: startedAt,
         level: "info",
         message: `worker ${this.state.workerId} picked up run`,
         meta: { triggeredBy: config.triggeredBy },
@@ -112,7 +128,7 @@ export class WorkerPool {
         signal: abort.signal,
       });
 
-      await this.rt.state.createRun(result.run);
+      await this.rt.state.updateRun(runId, result.run);
 
       // deliver to channels
       for (const ch of dep.channels) {
@@ -152,20 +168,29 @@ export class WorkerPool {
         level: "error",
         message: `run failed: ${message}`,
       });
-      await this.rt.state.createRun({
-        id: runId,
-        deploymentId: config.deploymentId,
-        blueprintId: config.blueprintId,
-        triggeredBy: config.triggeredBy,
-        status: "failed",
-        error: message,
-        tokenInput: 0,
-        tokenOutput: 0,
-        toolCalls: 0,
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-        createdAt: Date.now(),
-      });
+      const existing = await this.rt.state.getRun(runId).catch(() => null);
+      if (existing) {
+        await this.rt.state.updateRun(runId, {
+          status: "failed",
+          error: message,
+          finishedAt: Date.now(),
+        });
+      } else {
+        await this.rt.state.createRun({
+          id: runId,
+          deploymentId: config.deploymentId,
+          blueprintId: config.blueprintId,
+          triggeredBy: config.triggeredBy,
+          status: "failed",
+          error: message,
+          tokenInput: 0,
+          tokenOutput: 0,
+          toolCalls: 0,
+          startedAt,
+          finishedAt: Date.now(),
+          createdAt: startedAt,
+        });
+      }
       await this.rt.queue.nack(runId, this.state.workerId, message);
     } finally {
       clearInterval(heartbeat);

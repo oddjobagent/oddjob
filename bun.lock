@@ -19,8 +19,18 @@
         "oddjob": "./src/index.ts",
       },
       "dependencies": {
+        "@oddjob/channel-console": "workspace:*",
         "@oddjob/core": "workspace:*",
+        "@oddjob/llm-pi": "workspace:*",
+        "@oddjob/logging-sqlite": "workspace:*",
+        "@oddjob/queue-sqlite": "workspace:*",
+        "@oddjob/sandbox-process": "workspace:*",
+        "@oddjob/scheduler-croner": "workspace:*",
+        "@oddjob/secrets-sqlite": "workspace:*",
+        "@oddjob/server": "workspace:*",
+        "@oddjob/state-sqlite": "workspace:*",
         "citty": "^0.1.6",
+        "smol-toml": "^1.6.1",
       },
     },
     "packages/core": {

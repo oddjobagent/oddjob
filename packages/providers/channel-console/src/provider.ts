@@ -1,17 +1,20 @@
-import type { ChannelProvider } from "@oddjob/core";
+import type { ChannelMessage, ChannelProvider } from "@oddjob/core";
 
-export class ChannelConsoleProvider implements Partial<ChannelProvider> {
+export class ChannelConsoleProvider implements ChannelProvider {
   readonly name = "channel-console";
 
-  async connect(): Promise<void> {
-    throw new Error("channel-console: not implemented");
-  }
-
-  async disconnect(): Promise<void> {
-    return;
-  }
-
+  async connect(): Promise<void> {}
+  async disconnect(): Promise<void> {}
   async healthy(): Promise<boolean> {
-    return false;
+    return true;
+  }
+
+  async send(message: ChannelMessage): Promise<void> {
+    const meta = message.meta as Record<string, unknown> | undefined;
+    const banner = meta?.runId ? `\n[run ${meta.runId}]` : "";
+    process.stdout.write(`${banner}\n${message.body}\n`);
+    if (meta?.structured) {
+      process.stdout.write(`structured: ${JSON.stringify(meta.structured, null, 2)}\n`);
+    }
   }
 }

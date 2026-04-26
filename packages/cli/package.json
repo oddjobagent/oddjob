@@ -15,7 +15,17 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@oddjob/channel-console": "workspace:*",
     "@oddjob/core": "workspace:*",
-    "citty": "^0.1.6"
+    "@oddjob/llm-pi": "workspace:*",
+    "@oddjob/logging-sqlite": "workspace:*",
+    "@oddjob/queue-sqlite": "workspace:*",
+    "@oddjob/sandbox-process": "workspace:*",
+    "@oddjob/scheduler-croner": "workspace:*",
+    "@oddjob/secrets-sqlite": "workspace:*",
+    "@oddjob/server": "workspace:*",
+    "@oddjob/state-sqlite": "workspace:*",
+    "citty": "^0.1.6",
+    "smol-toml": "^1.6.1"
   }
 }
