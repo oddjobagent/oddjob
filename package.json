@@ -5,7 +5,8 @@
   "description": "Task-specific AI agent runtime",
   "workspaces": [
     "packages/*",
-    "packages/providers/*"
+    "packages/providers/*",
+    "apps/*"
   ],
   "type": "module",
   "scripts": {
