@@ -3,15 +3,8 @@ blueprint = "./blueprint.toml"
 [[trigger]]
 type = "manual"
 
-[[trigger]]
-type = "webhook"
-
 [[channel]]
 type = "console"
-
-[[channel]]
-type = "webhook"
-url = "https://httpbin.org/post"
 
 [limits]
 duration = "1m"

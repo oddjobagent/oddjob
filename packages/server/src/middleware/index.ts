@@ -29,8 +29,11 @@ export function serverError(err: unknown): Response {
   return json({ error: "server_error", message }, { status: 500 });
 }
 
-export function bearerCheck(req: Request, expected?: string): Response | undefined {
-  if (!expected) return undefined;
+export function bearerCheck(req: Request, expected: string | undefined): Response | undefined {
+  // No token configured -> deny by default when this is called.
+  // (Callers decide whether to invoke this; for non-loopback startup the
+  // server refuses to start at all without a token.)
+  if (!expected) return unauthorized("server requires a bearer token");
   const auth = req.headers.get("authorization") ?? "";
   if (auth === `Bearer ${expected}`) return undefined;
   return unauthorized();

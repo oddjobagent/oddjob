@@ -86,19 +86,30 @@ export class WorkerPool {
     const startedAt = Date.now();
     try {
       // Insert running row up-front so callers can poll runs.get(id) before completion.
-      await this.rt.state.createRun({
-        id: runId,
-        deploymentId: config.deploymentId,
-        blueprintId: config.blueprintId,
-        triggeredBy: config.triggeredBy,
-        status: "running",
-        input: config.input,
-        tokenInput: 0,
-        tokenOutput: 0,
-        toolCalls: 0,
-        startedAt,
-        createdAt: startedAt,
-      });
+      // If a previous worker already inserted this row (lease-loss reclaim path),
+      // update the existing row instead of failing on PK conflict.
+      const existing = await this.rt.state.getRun(runId).catch(() => null);
+      if (existing) {
+        await this.rt.state.updateRun(runId, {
+          status: "running",
+          startedAt,
+          error: undefined,
+        });
+      } else {
+        await this.rt.state.createRun({
+          id: runId,
+          deploymentId: config.deploymentId,
+          blueprintId: config.blueprintId,
+          triggeredBy: config.triggeredBy,
+          status: "running",
+          input: config.input,
+          tokenInput: 0,
+          tokenOutput: 0,
+          toolCalls: 0,
+          startedAt,
+          createdAt: startedAt,
+        });
+      }
 
       await this.rt.log.log(runId, {
         timestamp: startedAt,

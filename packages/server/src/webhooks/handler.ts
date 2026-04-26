@@ -8,14 +8,32 @@ export const webhook =
   async (req, ctx) => {
     const namespace = ctx.params.namespace ?? "";
     const name = ctx.params.name ?? "";
-    const id = `${namespace}/${name}`;
-    const dep = await rt.state.getDeploymentByName(name);
-    if (!dep || dep.blueprintId !== id) return notFound(`deployment ${id} not found`);
+    const path = `${namespace}/${name}`;
 
-    const hookTrigger = dep.triggers.find((t) => t.type === "webhook");
-    if (!hookTrigger || hookTrigger.type !== "webhook") {
-      return notFound("deployment has no webhook trigger");
+    // Match the webhook URL against any deployment's webhook trigger.
+    // Match priority: explicit trigger.path > deployment name == name > deployment.blueprintId == "<ns>/<name>"
+    const all = await rt.state.listDeployments();
+    let matched: {
+      dep: (typeof all)[number];
+      trigger: Extract<(typeof all)[number]["triggers"][number], { type: "webhook" }>;
+    } | null = null;
+    for (const dep of all) {
+      for (const trig of dep.triggers) {
+        if (trig.type !== "webhook") continue;
+        if (trig.path && trig.path.replace(/^\//, "") === path) {
+          matched = { dep, trigger: trig };
+          break;
+        }
+        if (!trig.path && dep.blueprintId === path) {
+          matched = { dep, trigger: trig };
+          break;
+        }
+      }
+      if (matched) break;
     }
+    if (!matched) return notFound(`no webhook deployment matches /webhooks/${path}`);
+    const dep = matched.dep;
+    const hookTrigger = matched.trigger;
 
     const auth = hookTrigger.auth;
     const body = await req.text();

@@ -38,9 +38,22 @@ interface Route {
   handler: Handler;
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
+function isLoopbackBind(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host) && host !== "0.0.0.0";
+}
+
 export async function startServer(opts: StartServerOptions): Promise<ServerHandle> {
   const rt = opts.runtime;
   const routes: Route[] = buildRoutes(rt);
+
+  if (!isLoopbackBind(rt.config.host) && !rt.bearerToken) {
+    throw new Error(
+      `oddjob: refusing to start on non-loopback host '${rt.config.host}' without a bearer token. ` +
+        `Set ODDJOB_HOME/config.toml [server] bearer_token, or bind to 127.0.0.1.`,
+    );
+  }
 
   const workers = new WorkerPool({ runtime: rt });
   await workers.start();
@@ -70,9 +83,11 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
       try {
         const url = new URL(req.url);
 
-        // Bearer required only when bound to non-localhost
-        const isLocalhost = ["127.0.0.1", "localhost", "::1"].includes(url.hostname);
-        if (!isLocalhost) {
+        // Auth decision is based on the bind host (where we listen), NOT the
+        // Host header (which a client controls). If we're bound to a non-loopback
+        // address we always require a bearer token. If we're bound to loopback
+        // and a token is configured, also require it for /api/ calls.
+        if (!isLoopbackBind(rt.config.host)) {
           const r = bearerCheck(req, rt.bearerToken);
           if (r) return r;
         } else if (rt.bearerToken && url.pathname.startsWith("/api/")) {
