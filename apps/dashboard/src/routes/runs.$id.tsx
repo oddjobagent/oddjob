@@ -22,14 +22,15 @@ function RunDetail(): React.JSX.Element {
   const logs = useRunLogs(id);
   const cancel = useCancelRun();
   const toast = useToast();
+  const status = run.data?.status;
+  const live = status === "running" || status === "queued";
+  useRunLogsStream(id, live);
 
   if (run.isLoading) return <div className="text-muted-foreground">Loading…</div>;
   if (!run.data) return <div className="text-muted-foreground">Run not found.</div>;
 
   const r = run.data;
   const duration = r.startedAt && r.finishedAt ? r.finishedAt - r.startedAt : undefined;
-  const live = r.status === "running" || r.status === "queued";
-  useRunLogsStream(id, live);
 
   return (
     <div className="space-y-6">
