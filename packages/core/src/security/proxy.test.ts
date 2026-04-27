@@ -39,6 +39,8 @@ describe("egress proxy — host allowlist", () => {
     proxy = await startEgressProxy({
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: false,
+      allowPrivateIps: true,
+      allowedPorts: [],
     });
   });
 
@@ -68,6 +70,8 @@ describe("egress proxy — wildcards", () => {
   beforeEach(async () => {
     upstream = startFakeUpstream(() => new Response("ok"));
     proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["*.local"],
       blockTokenShapes: false,
     });
@@ -100,6 +104,8 @@ describe("egress proxy — secret rewriting", () => {
       return new Response("ok");
     });
     proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       secrets: fakeSecrets({ openai: "sk-real-secret-123", token: "tk-real" }),
       blockTokenShapes: false,
@@ -151,6 +157,8 @@ describe("egress proxy — token-shape scrubber", () => {
     denials.length = 0;
     upstream = startFakeUpstream(() => new Response("should not see this"));
     proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: true,
       onLog: (e) => {
@@ -230,6 +238,8 @@ describe("egress proxy — logging", () => {
     const upstream = startFakeUpstream(() => new Response("ok"));
     const logs: { level: string; message: string }[] = [];
     const proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: false,
       onLog: (e) => logs.push({ level: e.level, message: e.message }),
@@ -251,6 +261,8 @@ describe("egress proxy — logging", () => {
 describe("egress proxy — security hardening", () => {
   test("returns 407 when Proxy-Authorization is missing", async () => {
     const proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: false,
     });
@@ -275,6 +287,8 @@ describe("egress proxy — security hardening", () => {
       // structure; instead we observe the proxy's log entry as a signal.
       const logs: { level: string; message: string }[] = [];
       const proxy2 = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
         allowedHosts: ["127.0.0.1"],
         blockTokenShapes: false,
         onLog: (e) => logs.push({ level: e.level, message: e.message }),
@@ -313,6 +327,8 @@ describe("egress proxy — security hardening", () => {
     // Old impl gated on Host (allowed), new impl gates on the parsed URL
     // (denied) so 403 wins.
     const proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: false,
     });
@@ -349,6 +365,8 @@ describe("egress proxy — security hardening", () => {
 
   test("rejects Transfer-Encoding: chunked with 411", async () => {
     const proxy = await startEgressProxy({
+      allowPrivateIps: true,
+      allowedPorts: [],
       allowedHosts: ["127.0.0.1"],
       blockTokenShapes: false,
     });

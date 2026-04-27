@@ -43,7 +43,7 @@ describe("validateStrictWorkdir", () => {
 });
 
 describe("resolveInsideStrict", () => {
-  test("rejects empty", () => {
+  test("rejects empty", async () => {
     await expect(resolveInsideStrict("/tmp/wd", "")).rejects.toThrow(/empty path/);
   });
 

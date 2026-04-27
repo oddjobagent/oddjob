@@ -1,35 +1,44 @@
-// Credential broker / egress proxy.
+// Egress proxy / credential broker.
 //
 // Per-Run localhost proxy that the environment provider points the agent's
-// HTTPS_PROXY at. Four jobs:
+// HTTPS_PROXY at. Two distinct security postures depending on transport:
 //
-//   1. Allowlist gating — refuse any request whose target host is NOT in the
-//      engine's required hosts ∪ the env's allowed_hosts. Returns 403 with a
-//      clear reason; logs the denial. Gate is derived from the parsed
-//      request URL (absolute-form OR resolved against Host header), NEVER
-//      from the Host header alone — that closes the host-mismatch bypass.
-//   2. Secret rewriting — agent code can put `${secret:NAME}` in headers /
-//      bodies; the proxy substitutes the real value via SecretsProvider
-//      BEFORE forwarding. The agent never sees the actual key. Cloudflare
-//      AI Gateway pattern.
-//   3. Token-shape scrubber — proxy inspects request bodies for known
-//      vendor token shapes (sk-..., ghp_..., xoxb-..., dtn_...). On hit
-//      → 422 + log. Belt-and-suspenders against env-dump exfil.
-//   4. Per-run authentication — every request must carry the per-run
-//      `Proxy-Authorization: Basic <token>` header (token is generated at
-//      proxy-start and embedded in the URL passed to the session). Closes
-//      the same-host port-scan exfil vector.
+// HTTPS (CONNECT tunneling) — works for ~all real API traffic:
+//   - Per-run authentication (Proxy-Authorization Basic token).
+//   - Allowlist gate on CONNECT target host with DNS-resolution + IP-pin
+//     at allowlist-check time; rejects RFC1918 / loopback / link-local /
+//     169.254.169.254 (cloud metadata).
+//   - Port allowlist (default 443 only; 80 also allowed for plain HTTP).
+//   - Outbound logging: each tunnel open recorded for audit.
+//   - The encrypted body passes through opaque — proxy CANNOT see secrets,
+//     scan bodies, or rewrite headers inside the TLS stream. This means
+//     `${secret:NAME}` placeholders sent over HTTPS reach upstream LITERALLY.
+//     Body inspection requires TLS termination + per-Run CA, deferred to v1.1.
 //
-// HTTPS scope: this v1 cut handles HTTPS via raw CONNECT tunneling. The
-// proxy gates on the CONNECT target host but cannot inspect the encrypted
-// body (no MITM). For full body inspection a future revision can issue a
-// per-Run CA + intercept TLS — out of scope for 15c.
+// Plain HTTP — full inspection (rare in practice; documented as optional):
+//   - Auth, allowlist, DNS-pin, port-allowlist (same as HTTPS).
+//   - `${secret:NAME}` rewriting in headers + body (rewrite first).
+//   - Token-shape scrubber on rewritten request body AND on response body
+//     (so even a rewritten secret can't echo back through an allowed host).
+//   - URL token scan (catch sk-/ghp_/etc in path or query).
+//   - Log redaction: bearer values logged as `<present>`, URLs scrubbed.
+//
+// What the v1 broker does NOT do:
+//   - Secret-injection over HTTPS (needs MITM; defer to v1.1).
+//   - Block raw socket calls bypassing HTTPS_PROXY (needs OS-level netns;
+//     local-strict / docker / remote-vm providers' job).
+//
+// Sandbox env continues to receive credentials via process env vars, as
+// before. The broker today is a per-run egress firewall + audit log + plain-
+// HTTP credential proxy. See docs/SECURITY.md for the threat model.
 //
 // Plain-HTTP request body handling: bodies are buffered until Content-Length
 // bytes arrive (or a 5s deadline elapses → 408). Transfer-Encoding: chunked
 // is rejected with 411 — agents that need streaming should use HTTPS.
 
 import { randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 
 import type { LogEntry, LogProvider } from "../providers/logging.ts";
 import type { SecretsProvider } from "../providers/secrets.ts";
@@ -37,7 +46,7 @@ import type { SecretsProvider } from "../providers/secrets.ts";
 export interface EgressProxyOptions {
   /** Hosts allowed for egress. Unrestricted when set to `"*"`. */
   allowedHosts: readonly string[] | "*";
-  /** Source for `${secret:NAME}` substitutions. */
+  /** Source for `${secret:NAME}` substitutions (plain HTTP only — v1 broker can't MITM HTTPS). */
   secrets?: SecretsProvider;
   /** Optional logging sink. Each gated request emits an entry. */
   onLog?: (entry: LogEntry) => void;
@@ -47,16 +56,37 @@ export interface EgressProxyOptions {
   blockTokenShapes?: boolean;
   /** Cap on body size we attempt to rewrite (default 64 KiB). */
   maxRewritableBytes?: number;
-  /** Cap on TOTAL forwarded body size for plain HTTP (default 1 MiB). */
+  /** Cap on TOTAL forwarded request body size for plain HTTP (default 1 MiB). */
   maxBodyBytes?: number;
+  /** Cap on response body size we buffer + return (default 8 MiB). */
+  maxResponseBytes?: number;
   /** Body buffering deadline in ms (default 5000). */
   bodyDeadlineMs?: number;
+  /** Allowlist of upstream ports (default [80, 443]). Empty array means any. */
+  allowedPorts?: readonly number[];
+  /** Cap on concurrent CONNECT tunnels (default 16). */
+  maxConcurrentTunnels?: number;
+  /**
+   * Test seam: pluggable DNS resolver. Default uses `node:dns/promises.lookup`.
+   * Returning a single IP per host. Tests override to simulate DNS rebinding.
+   */
+  resolveHost?: (host: string) => Promise<string>;
+  /**
+   * Test seam: when true, do NOT reject RFC1918 / loopback / link-local /
+   * cloud-metadata IPs. Tests that point at a fake localhost upstream set
+   * this. Default false (production).
+   */
+  allowPrivateIps?: boolean;
 }
 
 export interface EgressProxyHandle {
   /** Proxy URL the session should be configured with (HTTPS_PROXY). */
   url: string;
-  /** Per-run CA cert (empty for the v1 no-MITM cut; reserved for future). */
+  /**
+   * Per-run CA cert PEM. **Always empty in v1** — there's no MITM, so no
+   * cert is issued. Reserved for v1.1 when TLS termination lands. Plugins
+   * may use the empty value as a signal to skip NODE_EXTRA_CA_CERTS setup.
+   */
   caPem: string;
   /** Stop the proxy and close all in-flight connections. */
   stop(): Promise<void>;
@@ -93,14 +123,21 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
     blockTokenShapes = true,
     maxRewritableBytes = 64 * 1024,
     maxBodyBytes = 1024 * 1024,
+    maxResponseBytes = 8 * 1024 * 1024,
     bodyDeadlineMs = 5_000,
+    allowedPorts = [80, 443],
+    maxConcurrentTunnels = 16,
+    resolveHost = defaultResolveHost,
+    allowPrivateIps = false,
   } = opts;
 
   const isAllowed = makeAllowlist(allowedHosts);
+  const portAllowed = makePortAllowlist(allowedPorts);
   const emit = (entry: LogEntry): void => {
     onLog?.(entry);
     if (log) void log.provider.log(log.runId, entry);
   };
+  let activeTunnels = 0;
   // Per-socket cleanup handles. Each entry runs at most once on socket
   // close OR proxy.stop(); we track them so a chatty run doesn't
   // accumulate stale closures across thousands of sockets.
@@ -177,10 +214,14 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
             setState(socket, { kind: "closed" });
             void handleHttp(socket, state.head, completeBody, {
               isAllowed,
+              portAllowed,
               secrets,
               emit,
               blockTokenShapes,
               maxRewritableBytes,
+              maxResponseBytes,
+              resolveHost,
+              allowPrivateIps,
             });
           }
           return;
@@ -207,12 +248,25 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
           setState(socket, { kind: "closed" });
           return;
         }
+        // Reject duplicate Host headers (HTTP smuggling / desync vector).
+        if (head.duplicateHost) {
+          emit({
+            timestamp: Date.now(),
+            level: "warn",
+            message: `egress denied (multiple Host headers): ${head.method} ${head.target}`,
+          });
+          writeResponse(socket, 400, "multiple host headers");
+          socket.end();
+          setState(socket, { kind: "closed" });
+          return;
+        }
         // Per-run auth.
         if (head.headers["proxy-authorization"] !== expectedAuth) {
           emit({
             timestamp: Date.now(),
             level: "warn",
-            message: `egress denied (bad proxy auth): ${head.method} ${head.target}`,
+            // Redact target — the agent could put a token in the path/query.
+            message: `egress denied (bad proxy auth): ${head.method} ${redactString(head.target)}`,
           });
           writeResponse(socket, 407, "proxy authentication required");
           socket.end();
@@ -246,10 +300,39 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
             setState(socket, { kind: "closed" });
             return;
           }
+          // Port allowlist (default 443/80; blocks SSH, SMTP, Redis, etc.).
+          if (!portAllowed(port)) {
+            emit({
+              timestamp: Date.now(),
+              level: "warn",
+              message: `egress denied (CONNECT port not allowed): ${head.target}`,
+              meta: { host: chost, port },
+            });
+            writeResponse(socket, 403, `port ${port} not in egress port allowlist`);
+            socket.end();
+            setState(socket, { kind: "closed" });
+            return;
+          }
+          // Concurrency cap: prevents runaway tunnel counts per Run.
+          if (activeTunnels >= maxConcurrentTunnels) {
+            emit({
+              timestamp: Date.now(),
+              level: "warn",
+              message: `egress denied (concurrent CONNECT cap ${maxConcurrentTunnels} reached): ${head.target}`,
+              meta: { host: chost, port, activeTunnels },
+            });
+            writeResponse(socket, 429, `concurrent CONNECT cap reached`);
+            socket.end();
+            setState(socket, { kind: "closed" });
+            return;
+          }
+          activeTunnels++;
           // Mark pending-tunnel and queue any extra client bytes.
           const pendingBytes: Buffer[] = tail.length > 0 ? [tail] : [];
           setState(socket, { kind: "pending-tunnel", pendingBytes });
-          openTunnel(socket, chost, port, emit, registerHandle, (upstream) => {
+          void openTunnel(socket, chost, port, emit, registerHandle, resolveHost, allowPrivateIps, () => {
+            activeTunnels = Math.max(0, activeTunnels - 1);
+          }, (upstream) => {
             // Check the client is still pending — if it closed during the
             // upstream connect, drop the tunnel immediately rather than
             // writing 200 to a dead socket.
@@ -299,10 +382,14 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
           setState(socket, { kind: "closed" });
           void handleHttp(socket, head, Buffer.alloc(0), {
             isAllowed,
+            portAllowed,
             secrets,
             emit,
             blockTokenShapes,
             maxRewritableBytes,
+            maxResponseBytes,
+            resolveHost,
+            allowPrivateIps,
           });
           return;
         }
@@ -312,10 +399,14 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
           setState(socket, { kind: "closed" });
           void handleHttp(socket, head, bodyBuf, {
             isAllowed,
+            portAllowed,
             secrets,
             emit,
             blockTokenShapes,
             maxRewritableBytes,
+            maxResponseBytes,
+            resolveHost,
+            allowPrivateIps,
           });
           return;
         }
@@ -377,6 +468,8 @@ interface ParsedHead {
   target: string;
   headers: Record<string, string>;
   contentLength: number;
+  /** True when the request had multiple Host headers (HTTP smuggling vector). */
+  duplicateHost: boolean;
 }
 
 function parseHead(headerBytes: Buffer): ParsedHead | undefined {
@@ -387,14 +480,22 @@ function parseHead(headerBytes: Buffer): ParsedHead | undefined {
   const match = requestLine.match(/^(\S+)\s+(\S+)\s+HTTP\/\d\.\d$/);
   if (!match) return undefined;
   const headers: Record<string, string> = {};
+  let hostCount = 0;
   for (let i = 1; i < lines.length; i++) {
     const idx = lines[i]!.indexOf(":");
     if (idx < 0) continue;
     const name = lines[i]!.slice(0, idx).trim().toLowerCase();
     const value = lines[i]!.slice(idx + 1).trim();
+    if (name === "host") hostCount++;
     headers[name] = value;
   }
-  return { method: match[1]!, target: match[2]!, headers, contentLength: 0 };
+  return {
+    method: match[1]!,
+    target: match[2]!,
+    headers,
+    contentLength: 0,
+    duplicateHost: hostCount > 1,
+  };
 }
 
 function parseContentLength(raw: string | undefined): number {
@@ -405,10 +506,14 @@ function parseContentLength(raw: string | undefined): number {
 
 interface PlainHttpContext {
   isAllowed: (host: string) => boolean;
+  portAllowed: (port: number) => boolean;
   secrets: SecretsProvider | undefined;
   emit: (entry: LogEntry) => void;
   blockTokenShapes: boolean;
   maxRewritableBytes: number;
+  maxResponseBytes: number;
+  resolveHost: (host: string) => Promise<string>;
+  allowPrivateIps: boolean;
 }
 
 async function handleHttp(
@@ -438,45 +543,76 @@ async function handleHttp(
     return;
   }
   const gateHost = targetUrl.hostname;
-  // CRITICAL: gate on the parsed URL's host, not the Host header — that
-  // closes the host-mismatch bypass (client sends `GET http://disallowed/`
-  // with `Host: allowed`, would have passed the old check).
+  // Gate on parsed URL host, NOT the Host header.
   if (!ctx.isAllowed(gateHost)) {
     ctx.emit({
       timestamp: Date.now(),
       level: "warn",
-      message: `egress denied (host not allowed): ${head.method} ${targetUrl.toString()}`,
+      // Redact URL so a token in path/query doesn't end up in logs.
+      message: `egress denied (host not allowed): ${head.method} ${redactString(targetUrl.toString())}`,
       meta: { host: gateHost },
     });
     writeResponse(socket, 403, `host '${gateHost}' not in egress allowlist`);
     socket.end();
     return;
   }
-  // Token-shape scan (BEFORE secret rewriting — catches raw vendor tokens
-  // the agent shouldn't have seen in the first place). Try as utf8 even
-  // for binary bodies; matches false-negative for non-text but doesn't
-  // false-positive on random binary.
-  if (ctx.blockTokenShapes && body.length > 0) {
-    const bodyText = body.toString("utf8");
-    const hit = scanTokenShapes(bodyText);
-    if (hit) {
+  // Port allowlist (default 80/443).
+  const targetPort = targetUrl.port ? Number(targetUrl.port) : 80;
+  if (!ctx.portAllowed(targetPort)) {
+    ctx.emit({
+      timestamp: Date.now(),
+      level: "warn",
+      message: `egress denied (port not allowed): ${head.method} ${redactString(targetUrl.toString())}`,
+      meta: { host: gateHost, port: targetPort },
+    });
+    writeResponse(socket, 403, `port ${targetPort} not in egress port allowlist`);
+    socket.end();
+    return;
+  }
+  // URL token scan (catches `?token=sk-...` exfil before we ever forward).
+  if (ctx.blockTokenShapes) {
+    const urlHit = scanTokenShapes(targetUrl.pathname + targetUrl.search);
+    if (urlHit) {
       ctx.emit({
         timestamp: Date.now(),
         level: "error",
-        message: `egress blocked: body contains ${hit} token shape`,
-        meta: { host: gateHost, method: head.method, url: targetUrl.toString(), shape: hit },
+        message: `egress blocked: URL contains ${urlHit} token shape`,
+        meta: { host: gateHost, shape: urlHit },
       });
-      writeResponse(socket, 422, `body contains ${hit} token shape`);
+      writeResponse(socket, 422, `url contains ${urlHit} token shape`);
       socket.end();
       return;
     }
   }
-  // Secret rewriting on headers. Drop hop-by-hop + Proxy-Authorization +
-  // Host BEFORE forwarding. The Host header MUST be set by Bun.fetch from
-  // targetUrl, otherwise an attacker can spoof Host to bypass virtual-host
-  // routing on the upstream (e.g. cloud allows `Host: allowed.example` to
-  // hit a host that blocks `disallowed.example`). Also strip
-  // proxy-authorization so we never leak our per-run token upstream.
+  // DNS-resolve + IP-pin BEFORE forwarding. Closes DNS-rebinding (allowed
+  // host could resolve to RFC1918 / cloud-metadata between our check and
+  // fetch's own resolution).
+  let pinnedIp: string;
+  try {
+    pinnedIp = await ctx.resolveHost(gateHost);
+  } catch (err) {
+    ctx.emit({
+      timestamp: Date.now(),
+      level: "warn",
+      message: `egress DNS resolution failed ${gateHost}: ${(err as Error).message}`,
+    });
+    writeResponse(socket, 502, `dns resolution failed for ${gateHost}`);
+    socket.end();
+    return;
+  }
+  const ipReason = ctx.allowPrivateIps ? undefined : isPrivateOrSensitiveIP(pinnedIp);
+  if (ipReason) {
+    ctx.emit({
+      timestamp: Date.now(),
+      level: "error",
+      message: `egress denied (resolved IP rejected: ${ipReason}) ${gateHost} → ${pinnedIp}`,
+      meta: { host: gateHost, resolvedIp: pinnedIp, reason: ipReason },
+    });
+    writeResponse(socket, 403, `resolved ip rejected (${ipReason})`);
+    socket.end();
+    return;
+  }
+  // Drop hop-by-hop + Proxy-Authorization + Host BEFORE forwarding.
   const forwardHeaders: Record<string, string> = {};
   const dropHeaders = new Set([
     "proxy-authorization",
@@ -492,83 +628,159 @@ async function handleHttp(
     if (dropHeaders.has(k)) continue;
     forwardHeaders[k] = v;
   }
+  // Rewrite headers FIRST. The header-shape scan runs against the rewritten
+  // values too — even rewritten secrets shouldn't reach the wire if they
+  // happen to match a vendor token format AND a deny-list applies.
   const rewrittenHeaders = await rewriteRecord(forwardHeaders, ctx.secrets);
-  // Rewrite body when small enough — over the cap we pass through but emit
-  // a warning if it still contains placeholder syntax (likely bug).
-  let rewrittenBody: Buffer | string = body;
-  if (body.length > 0) {
-    if (body.length <= ctx.maxRewritableBytes) {
-      const text = body.toString("utf8");
-      if (text.includes("${secret:")) {
-        rewrittenBody = await rewriteString(text, ctx.secrets);
-      }
-    } else if (
-      body.includes(Buffer.from("${secret:")) // cheap pre-check
-    ) {
+  // Rewrite body when small enough. Order matters: rewrite first, THEN scrub
+  // the rewritten bytes. The earlier order (scrub-then-rewrite) let
+  // `${secret:openrouter}` pass the scrubber, then resolve to a real sk-...
+  // token that bypassed the check entirely.
+  let rewrittenBody: Buffer = body;
+  if (body.length > 0 && body.length <= ctx.maxRewritableBytes && ctx.secrets) {
+    const text = body.toString("utf8");
+    if (text.includes("${secret:")) {
+      const rewritten = await rewriteString(text, ctx.secrets);
+      rewrittenBody = Buffer.from(rewritten, "utf8");
+    }
+  } else if (
+    body.length > ctx.maxRewritableBytes &&
+    body.includes(Buffer.from("${secret:"))
+  ) {
+    ctx.emit({
+      timestamp: Date.now(),
+      level: "warn",
+      message: `egress: body > ${ctx.maxRewritableBytes}B contains \${secret:...}, NOT rewritten`,
+      meta: { host: gateHost, bytes: body.length },
+    });
+  }
+  // Token-shape scan AFTER rewriting. Catches both raw vendor tokens the
+  // agent put in the body AND placeholder values that resolved to vendor
+  // tokens (which should never leave the proxy unscanned).
+  if (ctx.blockTokenShapes && rewrittenBody.length > 0) {
+    const hit = scanTokenShapes(rewrittenBody.toString("utf8"));
+    if (hit) {
       ctx.emit({
         timestamp: Date.now(),
-        level: "warn",
-        message: `egress: body > ${ctx.maxRewritableBytes}B contains \${secret:...}, NOT rewritten`,
-        meta: { host: gateHost, bytes: body.length },
+        level: "error",
+        message: `egress blocked: rewritten body contains ${hit} token shape`,
+        meta: { host: gateHost, method: head.method, shape: hit },
       });
+      writeResponse(socket, 422, `body contains ${hit} token shape`);
+      socket.end();
+      return;
     }
   }
 
   try {
     const fetchBody: string | ArrayBuffer | undefined = ["GET", "HEAD"].includes(head.method)
       ? undefined
-      : typeof rewrittenBody === "string"
-        ? rewrittenBody
-        : (rewrittenBody.buffer.slice(
-            rewrittenBody.byteOffset,
-            rewrittenBody.byteOffset + rewrittenBody.byteLength,
-          ) as ArrayBuffer);
+      : (rewrittenBody.buffer.slice(
+          rewrittenBody.byteOffset,
+          rewrittenBody.byteOffset + rewrittenBody.byteLength,
+        ) as ArrayBuffer);
     const upstream = await fetch(targetUrl.toString(), {
       method: head.method,
       headers: rewrittenHeaders,
       body: fetchBody,
       redirect: "manual",
     });
+    // Buffered read with size cap. Avoids unbounded memory growth on a
+    // pathologically large response from an allowed host.
+    const respBytesAll = await upstream.bytes();
+    const truncated = respBytesAll.byteLength > ctx.maxResponseBytes;
+    const respBytes = truncated
+      ? respBytesAll.subarray(0, ctx.maxResponseBytes)
+      : respBytesAll;
+    // Response body scrub: catches the echo-endpoint exfil (agent POSTs a
+    // secret to an allowed host that mirrors the request body back).
+    if (ctx.blockTokenShapes && respBytes.byteLength > 0) {
+      const respText = Buffer.from(respBytes).toString("utf8");
+      const hit = scanTokenShapes(respText);
+      if (hit) {
+        ctx.emit({
+          timestamp: Date.now(),
+          level: "error",
+          message: `egress blocked: response body contains ${hit} token shape`,
+          meta: { host: gateHost, status: upstream.status, shape: hit },
+        });
+        writeResponse(socket, 422, `response body contains ${hit} token shape`);
+        socket.end();
+        return;
+      }
+    }
     ctx.emit({
       timestamp: Date.now(),
       level: "info",
-      message: `egress ${head.method} ${targetUrl.toString()} → ${upstream.status}`,
-      meta: { host: gateHost, status: upstream.status },
+      message: `egress ${head.method} ${redactString(targetUrl.toString())} → ${upstream.status}${truncated ? " (response truncated)" : ""}`,
+      meta: { host: gateHost, status: upstream.status, bytes: respBytes.byteLength },
     });
-    const respBody = new Uint8Array(await upstream.arrayBuffer());
-    writeRawResponse(socket, upstream.status, upstream.headers, respBody);
+    writeRawResponse(socket, upstream.status, upstream.headers, respBytes);
     socket.end();
   } catch (err) {
     ctx.emit({
       timestamp: Date.now(),
       level: "error",
-      message: `egress upstream error ${head.method} ${targetUrl.toString()}: ${(err as Error).message}`,
+      message: `egress upstream error ${head.method} ${redactString(targetUrl.toString())}: ${(err as Error).message}`,
     });
     writeResponse(socket, 502, `upstream: ${(err as Error).message}`);
     socket.end();
   }
 }
 
-function openTunnel(
+async function openTunnel(
   socket: import("bun").Socket<undefined>,
   host: string,
   port: number,
   emit: (entry: LogEntry) => void,
   registerHandle: (socket: import("bun").Socket<undefined>, cleanup: () => void) => void,
+  resolveHost: (host: string) => Promise<string>,
+  allowPrivateIps: boolean,
+  onClose: () => void,
   onTunnelOpen: (upstream: import("bun").Socket<undefined>) => void,
-): void {
-  let upstreamRef: import("bun").Socket<undefined> | undefined;
+): Promise<void> {
+  // DNS resolve + IP pin BEFORE connecting. Closes DNS-rebinding: an attacker
+  // who controls allowed.example DNS could resolve to 169.254.169.254 (cloud
+  // metadata) or RFC1918 between the allowlist check and Bun.connect's own
+  // resolution. We resolve once, validate, and connect to the resolved IP.
+  let pinnedIp: string;
+  try {
+    pinnedIp = await resolveHost(host);
+  } catch (err) {
+    emit({
+      timestamp: Date.now(),
+      level: "warn",
+      message: `egress DNS resolution failed ${host}: ${(err as Error).message}`,
+      meta: { host, port },
+    });
+    writeResponse(socket, 502, `dns resolution failed for ${host}`);
+    socket.end();
+    onClose();
+    return;
+  }
+  const ipReason = allowPrivateIps ? undefined : isPrivateOrSensitiveIP(pinnedIp);
+  if (ipReason) {
+    emit({
+      timestamp: Date.now(),
+      level: "error",
+      message: `egress denied (resolved IP rejected: ${ipReason}) ${host} → ${pinnedIp}`,
+      meta: { host, resolvedIp: pinnedIp, port, reason: ipReason },
+    });
+    writeResponse(socket, 403, `resolved ip rejected (${ipReason})`);
+    socket.end();
+    onClose();
+    return;
+  }
   void Bun.connect({
-    hostname: host,
+    hostname: pinnedIp,
     port,
     socket: {
       open(upstream) {
-        upstreamRef = upstream as unknown as import("bun").Socket<undefined>;
         emit({
           timestamp: Date.now(),
           level: "info",
-          message: `egress tunnel open ${host}:${port}`,
-          meta: { host, port },
+          message: `egress tunnel open ${host}:${port} (ip=${pinnedIp})`,
+          meta: { host, port, resolvedIp: pinnedIp },
         });
         // Replace the per-socket cleanup so proxy.stop() also closes
         // the upstream tunnel when called mid-Run.
@@ -584,7 +796,7 @@ function openTunnel(
             /* ignore */
           }
         });
-        onTunnelOpen(upstreamRef);
+        onTunnelOpen(upstream as unknown as import("bun").Socket<undefined>);
       },
       data(_upstream, bytes) {
         try {
@@ -594,6 +806,7 @@ function openTunnel(
         }
       },
       close() {
+        onClose();
         try {
           socket.end();
         } catch {
@@ -606,6 +819,7 @@ function openTunnel(
           level: "warn",
           message: `egress upstream error ${host}:${port}: ${(error as Error).message}`,
         });
+        onClose();
         try {
           socket.end();
         } catch {
@@ -621,6 +835,7 @@ function openTunnel(
     });
     writeResponse(socket, 502, `connect ${host}:${port}: ${err.message}`);
     socket.end();
+    onClose();
   });
 }
 
@@ -670,6 +885,75 @@ function makeAllowlist(allowed: readonly string[] | "*"): (host: string) => bool
     }
     return false;
   };
+}
+
+function makePortAllowlist(allowed: readonly number[]): (port: number) => boolean {
+  if (allowed.length === 0) return () => true;
+  const set = new Set(allowed);
+  return (port: number) => set.has(port);
+}
+
+async function defaultResolveHost(host: string): Promise<string> {
+  // If host is already a literal IP, return it. Otherwise resolve once.
+  if (isIP(host)) return host;
+  const r = await lookup(host);
+  return r.address;
+}
+
+/**
+ * Returns a reason string when the IP should be rejected, otherwise undefined.
+ * Catches RFC1918, loopback, link-local (incl. 169.254.169.254 cloud metadata),
+ * IPv4-mapped private IPv6, and ULA. This closes the SSRF / DNS-rebinding /
+ * cloud-metadata exfil class.
+ */
+export function isPrivateOrSensitiveIP(ip: string): string | undefined {
+  // Cloud metadata endpoints (covered by link-local but called out explicitly).
+  if (ip === "169.254.169.254" || ip === "fd00:ec2::254") return "cloud-metadata";
+  if (ip === "::1" || ip === "127.0.0.1") return "loopback";
+  // IPv4
+  if (isIP(ip) === 4) {
+    const octets = ip.split(".").map(Number);
+    const [a, b] = octets;
+    if (a === undefined || b === undefined) return undefined;
+    if (a === 10) return "rfc1918-10";
+    if (a === 127) return "loopback";
+    if (a === 169 && b === 254) return "link-local";
+    if (a === 172 && b >= 16 && b <= 31) return "rfc1918-172";
+    if (a === 192 && b === 168) return "rfc1918-192";
+    if (a === 100 && b >= 64 && b <= 127) return "cgnat";
+    if (a === 0) return "this-network";
+    if (a >= 224) return "multicast-or-reserved";
+    return undefined;
+  }
+  // IPv6 — match common private/loopback/link-local prefixes.
+  if (isIP(ip) === 6) {
+    const lower = ip.toLowerCase();
+    if (lower.startsWith("fe80:")) return "ipv6-link-local";
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return "ipv6-ula";
+    if (lower.startsWith("::ffff:")) {
+      // IPv4-mapped — recurse on the embedded IPv4.
+      const v4 = lower.slice("::ffff:".length);
+      if (isIP(v4) === 4) return isPrivateOrSensitiveIP(v4);
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+const REDACT_PATTERNS: readonly RegExp[] = [
+  /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
+  /\bsk-[A-Za-z0-9_-]{20,}\b/g,
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+  /\b(?:xoxb|xoxp|xapp|xwfp)-[A-Za-z0-9-]{20,}\b/g,
+  /\bdtn_[a-f0-9]{40,}\b/g,
+];
+
+/** Replace any token-shape match with `[REDACTED]`. Used in log lines. */
+export function redactString(s: string): string {
+  let out = s;
+  for (const re of REDACT_PATTERNS) out = out.replace(re, "[REDACTED]");
+  return out;
 }
 
 function writeResponse(
@@ -731,6 +1015,7 @@ function statusText(code: number): string {
     411: "Length Required",
     413: "Payload Too Large",
     422: "Unprocessable Entity",
+    429: "Too Many Requests",
     431: "Request Header Fields Too Large",
     500: "Internal Server Error",
     502: "Bad Gateway",

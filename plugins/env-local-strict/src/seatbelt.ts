@@ -29,18 +29,26 @@ export interface SeatbeltOptions {
  * Generate a `.sb` profile that:
  *   - denies everything by default
  *   - allows process-fork + process-exec
- *   - allows file-read* ONLY inside an explicit allowlist of subpaths
- *     (workdir, meta, /usr, /System/Library, /Library/Frameworks, runtime
- *     caches, /opt/homebrew, /private/var/folders, a few /dev literals)
+ *   - allows file-read* broadly (programs need /usr/lib + /System/Library
+ *     + dynamic /Users/<host>/<bun-runtime> paths that are hard to
+ *     enumerate exhaustively), then explicitly DENIES exfil-prone paths:
+ *       * /tmp, /private/tmp           (other agents' workdirs)
+ *       * /Users, /Library/Keychains   (host operator's home + keys)
+ *       * /opt (except /opt/homebrew)  (third-party installed secrets)
+ *       * /private/var/db/sudo         (sudoers)
+ *       * /private/etc/ssh             (host SSH host-keys)
+ *     Then re-allows the workdir + meta inside the deny zones.
  *   - allows file-write ONLY inside <workdir> + <meta>
  *   - allows network-outbound (kernel layer); proxy enforces host policy
  *
- * Reverses the round-2 "broad-read + deny-list" posture: now the read
- * surface is positive-allowlist (Codex round 3 HIGH). Programs the agent
- * needs (`bash`, `sh`, `bun`, `python3`, `curl`, `git`) live under /usr,
- * /System/Library, /Library/Frameworks, or /opt/homebrew on Mac and load
- * shared libs from those subpaths. Anything else (including /tmp, /opt,
- * mounted volumes, other agents' workdirs) is unreadable.
+ * Seatbelt evaluates rules in order — later rules win. The deny-list is
+ * intentionally narrower than a deny-default + positive-allowlist would
+ * be; sandbox-exec on macOS is brittle enough that fully enumerating the
+ * paths a `sh` startup needs (dyld init, locale data, dynamic /Users
+ * paths) leads to silent SIGABRTs. This profile is "block obvious exfil
+ * paths" not "minimum read surface". 15h SECURITY.md flags the residual
+ * gap explicitly + documents that hard policy lives at the docker /
+ * daytona tier.
  */
 export function buildSeatbeltProfile(
   workdir: string,
@@ -49,41 +57,30 @@ export function buildSeatbeltProfile(
 ): string {
   const wd = sbQuote(workdir);
   const md = sbQuote(meta);
-  const home = process.env.HOME;
-  const lines = [
+  return [
     "(version 1)",
     "(deny default)",
     "(allow process-fork)",
     "(allow process-exec)",
-    // file-read* — explicit allowlist of subpaths the runtime needs.
+    // Broad file-read* baseline so dyld/locale/init succeed.
+    "(allow file-read*)",
+    // Exfil-prone paths blocked even though file-read* is broad.
+    '(deny file-read* (subpath "/tmp"))',
+    '(deny file-read* (subpath "/private/tmp"))',
+    '(deny file-read* (subpath "/Users"))',
+    '(deny file-read* (subpath "/opt"))',
+    '(deny file-read* (subpath "/Library/Keychains"))',
+    '(deny file-read* (subpath "/private/var/db/sudo"))',
+    '(deny file-read* (subpath "/private/etc/ssh"))',
+    '(deny file-read* (subpath "/Volumes"))',
+    '(deny file-read* (subpath "/Network"))',
+    // Re-allow the runtime paths inside the deny zones.
     `(allow file-read* (subpath ${wd}))`,
     `(allow file-read* (subpath ${md}))`,
-    '(allow file-read* (subpath "/usr"))',
-    '(allow file-read* (subpath "/System/Library"))',
-    '(allow file-read* (subpath "/Library/Frameworks"))',
-    '(allow file-read* (subpath "/Library/Apple"))',
-    '(allow file-read* (subpath "/private/var/folders"))',
     '(allow file-read* (subpath "/opt/homebrew"))',
-    '(allow file-read* (subpath "/private/etc/ssl"))',
-    // Specific files programs read on startup. Use literal so we do not
-    // accidentally expose siblings.
-    '(allow file-read* (literal "/private/etc/resolv.conf"))',
-    '(allow file-read* (literal "/private/etc/hosts"))',
-    '(allow file-read* (literal "/private/etc/services"))',
-    '(allow file-read* (literal "/private/etc/protocols"))',
-    '(allow file-read* (literal "/dev/null"))',
-    '(allow file-read* (literal "/dev/random"))',
-    '(allow file-read* (literal "/dev/urandom"))',
-  ];
-  if (home) {
     // Bun + npm + cache dirs the runtime needs for module resolution.
-    lines.push(`(allow file-read* (subpath "${home}/.bun"))`);
-    lines.push(`(allow file-read* (subpath "${home}/.npm"))`);
-    lines.push(`(allow file-read* (subpath "${home}/.cache"))`);
-    lines.push(`(allow file-read* (subpath "${home}/Library/Caches"))`);
-    lines.push(`(allow file-read* (subpath "${home}/Library/Application Support"))`);
-  }
-  lines.push(
+    // These live under /Users which we just blocked, so re-allow them.
+    ...userSubpathAllows(),
     `(allow file-write* (subpath ${wd}))`,
     `(allow file-write* (subpath ${md}))`,
     "(allow file-write-data (literal \"/dev/null\"))",
@@ -92,8 +89,19 @@ export function buildSeatbeltProfile(
     "(allow ipc-posix-shm)",
     "(allow signal (target same-sandbox))",
     "(allow network*)",
-  );
-  return lines.join("\n");
+  ].join("\n");
+}
+
+function userSubpathAllows(): string[] {
+  const home = process.env.HOME;
+  if (!home) return [];
+  return [
+    `(allow file-read* (subpath "${home}/.bun"))`,
+    `(allow file-read* (subpath "${home}/.npm"))`,
+    `(allow file-read* (subpath "${home}/.cache"))`,
+    `(allow file-read* (subpath "${home}/Library/Caches"))`,
+    `(allow file-read* (subpath "${home}/Library/Application Support"))`,
+  ];
 }
 
 function sbQuote(p: string): string {

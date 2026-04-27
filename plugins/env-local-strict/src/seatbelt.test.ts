@@ -28,6 +28,24 @@ describe("buildSeatbeltProfile", () => {
     expect(p).not.toMatch(/\(allow file-write\*\)\s*$/m);
   });
 
+  test("read deny-list covers exfil-prone paths", () => {
+    const p = buildSeatbeltProfile("/tmp/wd", "/tmp/meta");
+    expect(p).toContain('(deny file-read* (subpath "/tmp"))');
+    expect(p).toContain('(deny file-read* (subpath "/private/tmp"))');
+    expect(p).toContain('(deny file-read* (subpath "/Users"))');
+    expect(p).toContain('(deny file-read* (subpath "/opt"))');
+    expect(p).toContain('(deny file-read* (subpath "/Library/Keychains"))');
+    expect(p).toContain('(deny file-read* (subpath "/private/var/db/sudo"))');
+    expect(p).toContain('(deny file-read* (subpath "/private/etc/ssh"))');
+  });
+
+  test("workdir + meta + /opt/homebrew re-allowed inside the deny zones", () => {
+    const p = buildSeatbeltProfile("/tmp/wd", "/tmp/meta");
+    expect(p).toContain('(allow file-read* (subpath "/tmp/wd"))');
+    expect(p).toContain('(allow file-read* (subpath "/tmp/meta"))');
+    expect(p).toContain('(allow file-read* (subpath "/opt/homebrew"))');
+  });
+
   test("network is allow*-shaped (proxy enforces host policy, not seatbelt)", () => {
     const open = buildSeatbeltProfile("/tmp/wd", "/tmp/meta");
     expect(open).toContain("(allow network*)");
