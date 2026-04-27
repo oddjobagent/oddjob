@@ -22,6 +22,7 @@ import type { RunOutput } from "../types/output.ts";
 import { buildBuiltinTools, isBuiltinToolName, type EngineConfig } from "./builtin-tools/index.ts";
 import type { EngineLLM } from "../engine/engine-llm.ts";
 import type { PluginRegistry } from "../plugin/registry.ts";
+import { startEgressProxy } from "../security/proxy.ts";
 import { validateOutput } from "./output-validate.ts";
 import { buildMcpRuntime } from "./mcp-tool.ts";
 import {
@@ -152,15 +153,45 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   // pre-Phase-15 behavior for the trusted process backend). This is what the
   // session sees AND what tools resolve relative paths against.
   const effectiveCwd = environment.config.workingDir ?? blueprintDir;
+
+  // Start the egress proxy when the env's networking is "limited". The
+  // process provider injects HTTPS_PROXY into the spawned shell so all
+  // outbound HTTP from the agent + tools goes through it.
+  //
+  // The engine's required hosts (LLM provider base URLs) are auto-merged
+  // into the allowlist so a deployment can't accidentally lock the agent
+  // out of its own model API.
+  const networking = environment.config.networking;
+  let egressProxy: { url: string; caPem: string; stop: () => Promise<void> } | undefined;
+  if (networking?.type === "limited") {
+    const engineHosts = engineRequiredHosts(llm);
+    const allowedHosts = Array.from(new Set([...networking.allowedHosts, ...engineHosts]));
+    const handle = await startEgressProxy({
+      allowedHosts,
+      secrets: opts.secrets,
+      blockTokenShapes: true,
+      log: log ? { runId, provider: log } : undefined,
+    });
+    egressProxy = handle;
+  }
+
   // Spawn an environment session for this Run. The provider receives the
   // resolved EnvironmentConfig + per-spawn ergonomics (workdir, timeout,
-  // abort). Egress proxy injection (15c) reads from `environment.config`.
-  const session: EnvironmentSession = await environment.provider.spawn({
-    config: environment.config,
-    workdir: effectiveCwd,
-    timeoutMs: limits?.durationMs,
-    signal,
-  });
+  // abort, optional egress proxy injection). If spawn throws we MUST stop
+  // the proxy first so we don't leak a listener.
+  let session: EnvironmentSession;
+  try {
+    session = await environment.provider.spawn({
+      config: environment.config,
+      workdir: effectiveCwd,
+      timeoutMs: limits?.durationMs,
+      signal,
+      egressProxy: egressProxy ? { url: egressProxy.url, caPem: egressProxy.caPem } : undefined,
+    });
+  } catch (err) {
+    await egressProxy?.stop().catch(() => undefined);
+    throw err;
+  }
 
   const events: AgentEvent[] = [];
   const append = (entry: LogEntry) => {
@@ -556,9 +587,40 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       graderEvaluations: graderEvaluations.length > 0 ? graderEvaluations : undefined,
     };
   } finally {
-    await mcpRuntime?.close().catch(() => undefined);
-    await session.kill();
+    // Nested try/finally so a failure in any cleanup step doesn't skip the
+    // others (esp. egressProxy.stop() — leaks a TCP listener if skipped).
+    try {
+      try {
+        await mcpRuntime?.close().catch(() => undefined);
+      } finally {
+        try {
+          await session.kill();
+        } catch {
+          /* swallow — proxy stop must still run */
+        }
+      }
+    } finally {
+      await egressProxy?.stop().catch(() => undefined);
+    }
   }
+}
+
+/**
+ * Hosts the engine MUST be able to reach (LLM provider base URLs). Auto-
+ * merged into the env's allowedHosts so a deployment can't accidentally lock
+ * the agent out of its own model API.
+ */
+function engineRequiredHosts(llm: ResolvedLLM): readonly string[] {
+  const hosts = new Set<string>();
+  const baseUrl = (llm.model as { baseUrl?: string }).baseUrl;
+  if (baseUrl) {
+    try {
+      hosts.add(new URL(baseUrl).hostname);
+    } catch {
+      /* malformed url, skip */
+    }
+  }
+  return [...hosts];
 }
 
 function isErrorStop(stop: string | undefined): boolean {
