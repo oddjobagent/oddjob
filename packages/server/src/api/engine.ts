@@ -79,9 +79,10 @@ export const tools = (): Handler => () => {
 
 export const get =
   (rt: Runtime): Handler =>
-  () => {
+  async () => {
     const masked = redactEngine(rt.engine);
-    return json({
+    const defaultEnvironmentId = await rt.state.getEngineSetting<string>("default_environment_id");
+    const body: Record<string, unknown> = {
       engine: masked,
       restartRequired: {
         host: rt.config.host,
@@ -89,7 +90,9 @@ export const get =
         bearerTokenRequired: !!rt.bearerToken,
         maxWorkers: rt.config.maxWorkers,
       },
-    });
+    };
+    if (defaultEnvironmentId) body.defaultEnvironmentId = defaultEnvironmentId;
+    return json(body);
   };
 
 interface EnginePatchBody {

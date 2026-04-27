@@ -13,6 +13,9 @@ import { Route as blueprintsRoute } from "./routes/blueprints.tsx";
 import { Route as blueprintDetailRoute } from "./routes/blueprints.$id.tsx";
 import { Route as channelsRoute } from "./routes/channels.tsx";
 import { Route as engineRoute } from "./routes/engine.tsx";
+import { Route as environmentsRoute } from "./routes/environments.tsx";
+import { Route as environmentProvidersRoute } from "./routes/environments.providers.tsx";
+import { Route as deploymentEnvironmentRoute } from "./routes/deployments.$id.environment.tsx";
 import { Route as pluginsRoute } from "./routes/plugins.tsx";
 import { Route as providersRoute } from "./routes/providers.tsx";
 import { Route as secretsRoute } from "./routes/secrets.tsx";
@@ -25,11 +28,14 @@ const routeTree = rootRoute.addChildren([
   deploymentsRoute,
   deploymentNewRoute,
   deploymentEditRoute,
+  deploymentEnvironmentRoute,
   deploymentDetailRoute,
   blueprintsRoute,
   blueprintDetailRoute,
   channelsRoute,
   engineRoute,
+  environmentsRoute,
+  environmentProvidersRoute,
   pluginsRoute,
   providersRoute,
   secretsRoute,

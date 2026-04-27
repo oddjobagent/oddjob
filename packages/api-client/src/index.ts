@@ -5,7 +5,9 @@ import type {
   Deployment,
   EngineConfig,
   Environment,
+  EnvironmentConfig,
   EnvironmentInput,
+  EnvironmentProviderRef,
   LogEntry,
   ModelInfo,
   Run,
@@ -48,6 +50,48 @@ export interface BuiltinToolDescriptor {
   category: string;
   configurable: boolean;
 }
+
+export type EnvironmentTrustTier = "trusted" | "local-strict" | "container" | "remote-vm";
+
+export type EnvironmentPackageManagerKind = "apt" | "cargo" | "gem" | "go" | "npm" | "pip";
+
+export interface EnvironmentProviderCapabilities {
+  snapshot: boolean;
+  fork: boolean;
+  pauseResume: boolean;
+  exposePort: boolean;
+  egressAllowlist: boolean;
+  packageManagers: EnvironmentPackageManagerKind[];
+}
+
+export interface EnvironmentProviderDescriptor {
+  id: string;
+  displayName: string;
+  trustTier: EnvironmentTrustTier;
+  authHint?: string;
+  capabilities: EnvironmentProviderCapabilities;
+  available: { ok: boolean; reason?: string };
+}
+
+export type DeploymentEnvironmentInline = Omit<Partial<EnvironmentConfig>, "provider"> & {
+  provider?: Partial<EnvironmentProviderRef>;
+};
+
+/**
+ * Deployment environment selection — discriminated union forces callers to
+ * pick exactly one of the four cascade modes. The `kind` is a wire-protocol
+ * helper; the transport rewrites it into the {environmentId?, environmentInline?}
+ * shape the deployments PATCH endpoint accepts.
+ */
+export type DeploymentEnvironmentPatch =
+  | { kind: "engine-default" }
+  | { kind: "ref"; environmentId: string }
+  | { kind: "inline"; environmentInline: DeploymentEnvironmentInline }
+  | {
+      kind: "ref-with-override";
+      environmentId: string;
+      environmentInline: DeploymentEnvironmentInline;
+    };
 
 export interface OddjobApi {
   health: () => Promise<{
@@ -94,6 +138,7 @@ export interface OddjobApi {
     get: (id: string) => Promise<Deployment>;
     create: (input: unknown) => Promise<Deployment>;
     update: (id: string, patch: unknown) => Promise<Deployment>;
+    setEnvironment: (id: string, patch: DeploymentEnvironmentPatch) => Promise<Deployment>;
     remove: (id: string) => Promise<void>;
     trigger: (id: string, input?: unknown) => Promise<{ run_id: string }>;
     pause: (id: string) => Promise<Deployment>;
@@ -119,6 +164,8 @@ export interface OddjobApi {
   engine: {
     get: () => Promise<{
       engine?: EngineConfig;
+      /** Omitted when no engine default is set; never `null`. */
+      defaultEnvironmentId?: string;
       restartRequired: {
         host: string;
         port: number;
@@ -126,7 +173,11 @@ export interface OddjobApi {
         maxWorkers: number;
       };
     }>;
-    update: (patch: { builtinTools?: BuiltinToolsConfig }) => Promise<{
+    update: (patch: {
+      builtinTools?: BuiltinToolsConfig;
+      /** Pass `null` to clear the engine default; pass a string to set it. */
+      defaultEnvironmentId?: string | null;
+    }) => Promise<{
       engine?: EngineConfig;
       reloaded: string[];
       restartRequired: string[];
@@ -143,6 +194,12 @@ export interface OddjobApi {
     get: (id: string) => Promise<Environment>;
     upsert: (input: { toml?: string; environment?: EnvironmentInput }) => Promise<Environment>;
     remove: (id: string) => Promise<void>;
+    providers: () => Promise<{ providers: EnvironmentProviderDescriptor[] }>;
+    setDefault: (id: string | null) => Promise<{
+      engine?: EngineConfig;
+      reloaded: string[];
+      restartRequired: string[];
+    }>;
   };
 
   channels: {
@@ -334,6 +391,25 @@ export interface RoleSetInput {
   options?: Record<string, unknown>;
 }
 
+function deploymentEnvWireShape(patch: DeploymentEnvironmentPatch): {
+  environmentId: string | null;
+  environmentInline: DeploymentEnvironmentInline | null;
+} {
+  switch (patch.kind) {
+    case "engine-default":
+      return { environmentId: null, environmentInline: null };
+    case "ref":
+      return { environmentId: patch.environmentId, environmentInline: null };
+    case "inline":
+      return { environmentId: null, environmentInline: patch.environmentInline };
+    case "ref-with-override":
+      return {
+        environmentId: patch.environmentId,
+        environmentInline: patch.environmentInline,
+      };
+  }
+}
+
 export function createApi(opts: TransportOptions): OddjobApi {
   const r: Transport = createTransport(opts);
 
@@ -373,6 +449,8 @@ export function createApi(opts: TransportOptions): OddjobApi {
       get: (id) => r("GET", `/api/v1/deployments/${id}`),
       create: (input) => r("POST", "/api/v1/deployments", input),
       update: (id, patch) => r("PATCH", `/api/v1/deployments/${id}`, patch),
+      setEnvironment: (id, patch) =>
+        r("PATCH", `/api/v1/deployments/${id}`, deploymentEnvWireShape(patch)),
       remove: (id) => r("DELETE", `/api/v1/deployments/${id}`),
       trigger: (id, input) => r("POST", `/api/v1/deployments/${id}/run`, { input }),
       pause: (id) => r("POST", `/api/v1/deployments/${id}/pause`),
@@ -423,6 +501,8 @@ export function createApi(opts: TransportOptions): OddjobApi {
       get: (id) => r("GET", `/api/v1/environments/${id}`),
       upsert: (input) => r("POST", "/api/v1/environments", input),
       remove: (id) => r("DELETE", `/api/v1/environments/${id}`),
+      providers: () => r("GET", "/api/v1/environments/providers"),
+      setDefault: (id) => r("PATCH", "/api/v1/engine", { defaultEnvironmentId: id }),
     },
 
     channels: {

@@ -164,6 +164,14 @@ function DeploymentDetail(): React.JSX.Element {
             </Button>
           )}
           {!isArchived && (
+            <Button
+              variant="outline"
+              onClick={() => navigate({ to: "/deployments/$id/environment", params: { id } })}
+            >
+              Environment
+            </Button>
+          )}
+          {!isArchived && (
             <Button variant="destructive" onClick={() => setArchiveDialog(true)}>
               <Archive className="size-4" /> Archive
             </Button>

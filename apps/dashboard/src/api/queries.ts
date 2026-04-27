@@ -1,11 +1,20 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { Blueprint, ChannelConfig, Deployment, LogEntry, Run } from "@oddjob/core";
+import type {
+  Blueprint,
+  ChannelConfig,
+  Deployment,
+  Environment,
+  LogEntry,
+  Run,
+} from "@oddjob/core";
 import type {
   BuiltinToolDescriptor,
   ChannelTypeDescriptor,
   CredentialUpsert,
+  DeploymentEnvironmentPatch,
+  EnvironmentProviderDescriptor,
   ModelOption,
   PluginSummary,
   ProviderDetail,
@@ -450,4 +459,62 @@ export function useSecretMutations() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["secrets"] }),
   });
   return { set, remove };
+}
+
+// ── Environments ──────────────────────────────────────────────────────
+
+export function useEnvironments() {
+  return useQuery<{ environments: Environment[] }>({
+    queryKey: ["environments"],
+    queryFn: () => api.environments.list(),
+    refetchInterval: slow,
+  });
+}
+
+export function useEnvironment(id: string | undefined) {
+  return useQuery<Environment>({
+    queryKey: ["environments", id],
+    queryFn: () => api.environments.get(id!),
+    enabled: Boolean(id),
+  });
+}
+
+export function useEnvironmentProviders() {
+  return useQuery<{ providers: EnvironmentProviderDescriptor[] }>({
+    queryKey: ["environments", "providers"],
+    queryFn: () => api.environments.providers(),
+    refetchInterval: slow,
+  });
+}
+
+export function useEnvironmentMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["environments"] });
+    qc.invalidateQueries({ queryKey: ["engine"] });
+  };
+  const upsert = useMutation({
+    mutationFn: api.environments.upsert,
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.environments.remove(id),
+    onSuccess: invalidate,
+  });
+  const setDefault = useMutation({
+    mutationFn: (id: string | null) => api.environments.setDefault(id),
+    onSuccess: invalidate,
+  });
+  return { upsert, remove, setDefault };
+}
+
+export function useDeploymentEnvironment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: DeploymentEnvironmentPatch) => api.deployments.setEnvironment(id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deployments"] });
+      qc.invalidateQueries({ queryKey: ["deployments", id] });
+    },
+  });
 }
