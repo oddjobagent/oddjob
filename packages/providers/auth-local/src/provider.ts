@@ -80,10 +80,11 @@ export class AuthLocalProvider implements AuthProvider {
     return "authenticated";
   }
 
-  async refreshIfNeeded(connectorId: string): Promise<string> {
+  async refreshIfNeeded(connectorId: string, opts?: { force?: boolean }): Promise<string> {
     const rec = await this.state.getConnectorToken(connectorId);
     if (!rec) throw new Error(`no token for ${connectorId}`);
-    if (!rec.expiresAt || rec.expiresAt - this.refreshSkewMs > Date.now()) {
+    const force = opts?.force === true;
+    if (!force && (!rec.expiresAt || rec.expiresAt - this.refreshSkewMs > Date.now())) {
       return this.openToken(rec.accessTokenEncrypted, connectorId);
     }
     if (!rec.refreshTokenEncrypted || !rec.tokenUrl || !rec.clientId) {

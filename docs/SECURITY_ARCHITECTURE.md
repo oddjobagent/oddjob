@@ -66,12 +66,12 @@ Every Run is bound to exactly one Environment, which selects exactly one
 EnvironmentService (provider). The `trustTier` field on each service
 describes how strongly the host/sandbox boundary holds.
 
-| Tier           | Bundled provider                       | What enforces the boundary                                                                | Gaps (operator must accept or upgrade)                                              |
-| -------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `trusted`      | `process` (env-process)                | Curated host-env allowlist only (PATH/HOME/USER/SHELL/TMPDIR/LANG/LC_ALL).                | Same uid/fs/network as the daemon. Dev only.                                        |
-| `local-strict` | `seatbelt` (Mac), `bwrap` (Linux)      | OS sandbox: filesystem write-scoped to workdir + meta; reads denylisted on exfil paths.   | Network restricted only via egress proxy (kernel-level allow); raw sockets bypass.  |
-| `container`    | `docker` (env-docker)                  | OCI namespacing — mount, pid, net. Container is `--rm` per Run.                           | Default bridge network — operator may want `--network=oddjob-egress` custom bridge. |
-| `remote-vm`    | `daytona` (env-daytona)                | Firecracker MicroVM with kernel isolation. Total fs/net/proc isolation from host.        | Vendor trust (Daytona infra). API key required. Cold start ~90ms.                   |
+| Tier           | Bundled provider                  | What enforces the boundary                                                              | Gaps (operator must accept or upgrade)                                              |
+| -------------- | --------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `trusted`      | `process` (env-process)           | Curated host-env allowlist only (PATH/HOME/USER/SHELL/TMPDIR/LANG/LC_ALL).              | Same uid/fs/network as the daemon. Dev only.                                        |
+| `local-strict` | `seatbelt` (Mac), `bwrap` (Linux) | OS sandbox: filesystem write-scoped to workdir + meta; reads denylisted on exfil paths. | Network restricted only via egress proxy (kernel-level allow); raw sockets bypass.  |
+| `container`    | `docker` (env-docker)             | OCI namespacing — mount, pid, net. Container is `--rm` per Run.                         | Default bridge network — operator may want `--network=oddjob-egress` custom bridge. |
+| `remote-vm`    | `daytona` (env-daytona)           | Firecracker MicroVM with kernel isolation. Total fs/net/proc isolation from host.       | Vendor trust (Daytona infra). API key required. Cold start ~90ms.                   |
 
 Selection cascade (per Run):
 
@@ -223,8 +223,45 @@ Documented in [`SECURITY.md`](./SECURITY.md). The big one:
   the agent's HTTP libraries route through it. Raw sockets bypass
   entirely. Real network containment is the **environment provider's**
   job — `process` doesn't enforce, `local-strict` partially enforces
-  (kernel-level allow-net + proxy as convention), `container` and
-  `remote-vm` enforce via network namespace.
+  (kernel-level allow-net + proxy as convention), `container` provides
+  process + filesystem isolation but uses the default Docker bridge
+  network (no `--network=oddjob-egress` custom bridge yet, so a malicious
+  agent can still open arbitrary outbound sockets), and `remote-vm`
+  delegates network policy to the vendor (Daytona's `networkBlockAll`
+  flag, applied at the infrastructure layer).
+
+  v1.1 plan: ship a custom `oddjob-egress` Docker network with
+  iptables-style outbound filtering so the container tier matches
+  local-strict's posture instead of relying on proxy convention alone.
+  `egressAllowlist: false` on the env-docker service is a deliberate
+  self-attestation of this gap — a future v1.1 service flips it to
+  `true` once the custom bridge ships.
+
+- **Honestly enforce egress for every tier.** The broker binds the
+  operator's host loopback by default. Enforcement therefore varies by
+  tier:
+  - `process` / `local-strict` — proxy reachable directly on
+    `127.0.0.1:<port>`. Cooperating HTTP clients honour `HTTPS_PROXY`;
+    raw sockets bypass.
+  - `container` (env-docker) — `EnvironmentProvider.proxyBindAddress()`
+    returns the docker bridge gateway IP on Linux so the proxy actually
+    accepts connections from the container; on Mac/Win Docker Desktop a
+    127.0.0.1 bind keeps working because Docker Desktop forwards
+    loopback through `host.docker.internal`. env-docker rewrites the
+    proxy URL hostname (loopback / RFC1918) → `host.docker.internal`
+    inside container env vars and adds
+    `--add-host=host.docker.internal:host-gateway` to docker run argv.
+    **Convention only** — v1 does not block raw sockets; the agent can
+    still bypass via direct connect. v1.1 closes that with
+    `--network=oddjob-egress`.
+  - `remote-vm` (env-daytona) — VM cannot reach the operator host. v1
+    **skips proxy injection**, emits a `warn` log on session start, and
+    delegates egress containment to Daytona's network policy
+    (`networkBlockAll` is in effect when the env declares
+    `networking = "limited"`). The host allowlist + token-shape scrub
+    do NOT apply on this tier; vendor block-all replaces the per-host
+    gate. v1.1 ships an Oddjob-managed relay so the broker covers all
+    three tiers consistently.
 
 ---
 
@@ -245,7 +282,7 @@ Secrets reach the sandbox via three paths today:
    Env-process applies the curated host-env allowlist on top so OS
    secrets (AWS keys, SSH agent socket, etc.) are NOT inherited.
 2. **MCP connector auth** — for HTTP MCP, `Authorization: Bearer
-   ${secret:NAME}` is resolved client-side before the request. For
+${secret:NAME}` is resolved client-side before the request. For
    stdio MCP, the secret is set as an env var on the spawned MCP server.
 3. **Plain-HTTP placeholder rewrite** at the proxy — `${secret:NAME}` in
    the agent's outbound request body or headers.
@@ -305,15 +342,15 @@ tool args are filtered.
 
 The boundaries that matter:
 
-| Boundary                         | Enforced by                                                        |
-| -------------------------------- | ------------------------------------------------------------------ |
-| Operator → Blueprint Author      | Code review of pulled blueprints (operator's responsibility).      |
-| Blueprint Author → Agent (host)  | EnvironmentProvider tier (process/local-strict/container/remote-vm). |
-| Agent → outbound network         | Egress proxy (allowlist + IP-pin + token scrub + log redact).      |
-| Agent → host filesystem          | EnvironmentSession.writeFile/readFile + provider's fs scoping.     |
-| Agent → host process tree        | EnvironmentSession.exec runs in sandboxed shell.                   |
-| Agent → host secrets             | Curated env-allowlist; secrets only injected per blueprint config. |
-| Run history → operator (audit)   | Immutable `runs.environmentSnapshot` + redacted `run_logs`.        |
+| Boundary                        | Enforced by                                                          |
+| ------------------------------- | -------------------------------------------------------------------- |
+| Operator → Blueprint Author     | Code review of pulled blueprints (operator's responsibility).        |
+| Blueprint Author → Agent (host) | EnvironmentProvider tier (process/local-strict/container/remote-vm). |
+| Agent → outbound network        | Egress proxy (allowlist + IP-pin + token scrub + log redact).        |
+| Agent → host filesystem         | EnvironmentSession.writeFile/readFile + provider's fs scoping.       |
+| Agent → host process tree       | EnvironmentSession.exec runs in sandboxed shell.                     |
+| Agent → host secrets            | Curated env-allowlist; secrets only injected per blueprint config.   |
+| Run history → operator (audit)  | Immutable `runs.environmentSnapshot` + redacted `run_logs`.          |
 
 What's NOT defended against:
 

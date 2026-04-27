@@ -78,6 +78,7 @@ export const LimitsSchema = z.strictObject({
   tool_calls: z.number().int().positive().optional(),
   budget: z.number().positive().optional(),
   warn_threshold_pct: z.number().int().min(1).max(100).default(80),
+  enforce: z.boolean().default(false),
 });
 
 // Inline / override block under `[environment]` in deploy.toml. All fields
@@ -132,7 +133,7 @@ export const DeploymentRawSchema = z.strictObject({
   name: z.string().optional(),
   trigger: z.array(TriggerSchema).default([]),
   channel: z.array(ChannelConfigSchema).default([]),
-  limits: LimitsSchema.default({ warn_threshold_pct: 80 }),
+  limits: LimitsSchema.default({ warn_threshold_pct: 80, enforce: false }),
   /** Reference to a stored environment by id. */
   environment: z.string().min(1).optional(),
   /** Inline override (or full inline body when `environment` is unset). */

@@ -193,6 +193,102 @@ describe("runOnce - faux LLM", () => {
     reg.unregister();
   });
 
+  test("output schema validation failure flips run to failed", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-bad-output" }] });
+    reg.setResponses([
+      fauxAssistantMessage('```json\n{"summary":"missing title field"}\n```', {
+        stopReason: "stop",
+      }),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/structured-output", {
+      validate: true,
+      checkFs: true,
+    });
+    const r = await runOnce({
+      blueprint: { ...bp, model: "faux/test-bad-output" },
+      llm: { model: reg.getModel() },
+      environment: testEnv,
+      input: "extract: anything",
+    });
+
+    expect(r.run.status).toBe("failed");
+    expect(r.run.error).toContain("output validation failed");
+    reg.unregister();
+  });
+
+  test("schema validation failure overrides report_status success", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-validation-vs-verdict" }] });
+    reg.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "report_status",
+            { outcome: "success", reason: "agent thinks all good" },
+            { id: "v-1" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage('```json\n{"summary":"missing title field"}\n```', {
+        stopReason: "stop",
+      }),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/structured-output", {
+      validate: true,
+      checkFs: true,
+    });
+    const r = await runOnce({
+      blueprint: {
+        ...bp,
+        model: "faux/test-validation-vs-verdict",
+        outcomes: {
+          success: "ok",
+          warning: "transient",
+          error: "fatal",
+          warningTools: [],
+          errorTools: [],
+          maxRetries: 0,
+          retryBackoffMs: 0,
+        },
+      },
+      llm: { model: reg.getModel() },
+      environment: testEnv,
+      input: "extract: anything",
+    });
+
+    expect(r.run.status).toBe("failed");
+    expect(r.run.error).toContain("output validation failed");
+    reg.unregister();
+  });
+
+  test("limits.enforce + tool_calls cap aborts the run as failed", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-enforce-tools" }] });
+    reg.setResponses([
+      fauxAssistantMessage([fauxToolCall("count_words", { text: "one" }, { id: "t-1" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxToolCall("count_words", { text: "two" }, { id: "t-2" })], {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage([fauxText("done")], { stopReason: "stop" }),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/word-count", { validate: true, checkFs: true });
+    const r = await runOnce({
+      blueprint: { ...bp, model: "faux/test-enforce-tools" },
+      llm: { model: reg.getModel() },
+      environment: testEnv,
+      input: "x",
+      limits: { toolCalls: 1, warnThresholdPct: 80, enforce: true },
+    });
+
+    expect(r.run.status).toBe("failed");
+    expect(r.run.error).toContain("limit exceeded");
+    reg.unregister();
+  });
+
   test("structured output extracts JSON from final assistant text", async () => {
     const reg = registerFauxProvider({ models: [{ id: "test-struct" }] });
     reg.setResponses([

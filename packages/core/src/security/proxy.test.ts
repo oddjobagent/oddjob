@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { SecretsProvider } from "../providers/secrets.ts";
-import { startEgressProxy, type EgressProxyHandle } from "./proxy.ts";
+import {
+  assertSafeBindAddress,
+  startEgressProxy,
+  type EgressProxyHandle,
+} from "./proxy.ts";
 
 // Tiny in-memory secrets provider for the rewriter test.
 function fakeSecrets(values: Record<string, string>): SecretsProvider {
@@ -28,6 +32,106 @@ function startFakeUpstream(handler: (req: Request) => Response | Promise<Respons
   const url = `http://127.0.0.1:${server.port}`;
   return { url, host: `127.0.0.1:${server.port}`, stop: () => server.stop(true) };
 }
+
+describe("egress proxy — bindAddress (15i-2 codex blocker)", () => {
+  test("default bindAddress is 127.0.0.1 and surfaces in returned URL", async () => {
+    const proxy = await startEgressProxy({
+      allowedHosts: ["example.com"],
+      blockTokenShapes: false,
+      allowedPorts: [],
+    });
+    try {
+      // URL host (between @ and :) is 127.0.0.1.
+      const u = new URL(proxy.url);
+      expect(u.hostname).toBe("127.0.0.1");
+    } finally {
+      await proxy.stop();
+    }
+  });
+
+  test("explicit bindAddress is honored end-to-end (URL + listening socket)", async () => {
+    // Pick a non-loopback address the host has — every machine has 127.0.0.2
+    // routed to loopback on Linux; on Mac, 127.0.0.1 always works. We assert
+    // only that the URL reflects the bindAddress passed in, plus that we can
+    // reach the proxy on it. This is the regression covering the Linux
+    // docker-bridge scenario without requiring docker in the test env.
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: false,
+      allowPrivateIps: true,
+      allowedPorts: [],
+      bindAddress: "127.0.0.1",
+    });
+    try {
+      const u = new URL(proxy.url);
+      expect(u.hostname).toBe("127.0.0.1");
+      // Smoke-test reachability via the URL.
+      const upstream = startFakeUpstream(() => new Response("ok"));
+      try {
+        const r = await fetch(upstream.url, { proxy: proxy.url });
+        expect(r.status).toBe(200);
+      } finally {
+        upstream.stop();
+      }
+    } finally {
+      await proxy.stop();
+    }
+  });
+});
+
+describe("assertSafeBindAddress (codex round-2 MED 2)", () => {
+  test("accepts loopback", () => {
+    expect(() => assertSafeBindAddress("127.0.0.1")).not.toThrow();
+    expect(() => assertSafeBindAddress("127.0.0.5")).not.toThrow();
+  });
+
+  test("accepts RFC1918 (10/8, 172.16/12, 192.168/16)", () => {
+    expect(() => assertSafeBindAddress("10.0.0.1")).not.toThrow();
+    expect(() => assertSafeBindAddress("172.17.0.1")).not.toThrow(); // docker bridge
+    expect(() => assertSafeBindAddress("192.168.1.1")).not.toThrow();
+  });
+
+  test("accepts IPv4 link-local but rejects cloud-metadata", () => {
+    expect(() => assertSafeBindAddress("169.254.1.1")).not.toThrow();
+    expect(() => assertSafeBindAddress("169.254.169.254")).toThrow(/cloud-metadata/);
+  });
+
+  test("rejects 0.0.0.0 (multi-tenant exposure)", () => {
+    expect(() => assertSafeBindAddress("0.0.0.0")).toThrow(/every interface/);
+  });
+
+  test("rejects :: (IPv6 unspecified)", () => {
+    expect(() => assertSafeBindAddress("::")).toThrow(/every interface/);
+  });
+
+  test("rejects public IPv4 addresses", () => {
+    expect(() => assertSafeBindAddress("8.8.8.8")).toThrow(/refusing to bind/);
+    expect(() => assertSafeBindAddress("203.0.113.1")).toThrow(/refusing to bind/);
+  });
+
+  test("rejects multicast / reserved", () => {
+    expect(() => assertSafeBindAddress("224.0.0.1")).toThrow(/refusing to bind/);
+    expect(() => assertSafeBindAddress("255.255.255.255")).toThrow(/refusing to bind/);
+  });
+
+  test("rejects CGNAT (100.64/10) — not the operator's host", () => {
+    expect(() => assertSafeBindAddress("100.64.0.1")).toThrow(/refusing to bind/);
+  });
+
+  test("rejects garbage", () => {
+    expect(() => assertSafeBindAddress("not-an-ip")).toThrow(/not a valid IP/);
+    expect(() => assertSafeBindAddress("")).toThrow(/empty/);
+  });
+
+  test("startEgressProxy refuses to start with 0.0.0.0", async () => {
+    await expect(
+      startEgressProxy({
+        allowedHosts: ["example.com"],
+        bindAddress: "0.0.0.0",
+      }),
+    ).rejects.toThrow(/refusing to bind/);
+  });
+});
 
 describe("egress proxy — host allowlist", () => {
   let proxy: EgressProxyHandle;

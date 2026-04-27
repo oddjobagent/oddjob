@@ -36,17 +36,45 @@ export class DaytonaEnvironmentProvider implements EnvironmentProvider {
     const networkBlockAll = config.config?.networking?.type === "limited";
     const envVars: Record<string, string> = { ...config.env };
     if (config.egressProxy) {
-      envVars.HTTPS_PROXY = config.egressProxy.url;
-      envVars.HTTP_PROXY = config.egressProxy.url;
-      envVars.https_proxy = config.egressProxy.url;
-      envVars.http_proxy = config.egressProxy.url;
-      envVars.NO_PROXY = "";
-      envVars.no_proxy = "";
-      envVars.NODE_USE_ENV_PROXY = "1";
-      // The caPem string would need to be uploaded as a file inside the
-      // sandbox after spawn so the proxy CA can be pinned. Deferred to 15h
-      // SECURITY.md as a TODO since the v1 proxy emits caPem="" today.
+      // 15i-2: remote-vm tier cannot reach the operator's host loopback, so
+      // injecting HTTPS_PROXY=http://127.0.0.1:N would silently fail (the VM
+      // resolves 127.0.0.1 to itself). For v1 we drop the proxy env entirely
+      // and surface a warning so operators understand egress falls through to
+      // Daytona's network policy (`networkBlockAll` is in effect when the env
+      // declared `networking = "limited"` — vendor block-all replaces the
+      // per-host allowlist gate the broker would normally enforce). v1.1 is
+      // slated to ship an Oddjob-managed relay so the credential broker
+      // covers all tiers consistently.
+      //
+      // The proxy URL embeds a per-Run Basic-auth token; surface only host +
+      // port in the log meta so the secret never lands in run_logs (which
+      // are user-readable via the dashboard log tail).
+      const meta: Record<string, unknown> = {};
+      try {
+        const u = new URL(config.egressProxy.url);
+        meta.proxyHost = u.hostname;
+        meta.proxyPort = u.port;
+      } catch {
+        // Malformed URL — emit a constant marker rather than the raw string
+        // so we never leak whatever the URL parser tripped on.
+        meta.proxyHost = "<unparseable>";
+      }
+      config.onLog?.({
+        timestamp: Date.now(),
+        level: "warn",
+        message:
+          "egress proxy not applied: env-daytona (remote-vm tier) cannot reach operator localhost. Daytona networkBlockAll is in effect when `networking = \"limited\"`; the per-host allowlist gate the broker would otherwise enforce is therefore not active. v1.1 will introduce an Oddjob-managed relay.",
+        meta,
+      });
     }
+    // Remote-VM tier: hostWorkdir is only used for upload-time references
+    // (sandbox.fs.uploadFile); sessionWorkdir is the in-VM path that tools
+    // receive as their default cwd.
+    const sessionWorkdir =
+      config.sessionWorkdir ??
+      config.config?.workingDir ??
+      config.workdir ??
+      "/home/daytona/work";
     const sandbox = await this.client.create(
       {
         image,
@@ -55,17 +83,21 @@ export class DaytonaEnvironmentProvider implements EnvironmentProvider {
       },
       { timeout: 90 },
     );
-    return new DaytonaEnvironmentSession(this.client, sandbox);
+    return new DaytonaEnvironmentSession(this.client, sandbox, sessionWorkdir);
   }
 }
 
 export class DaytonaEnvironmentSession implements EnvironmentSession {
   private destroyed = false;
+  readonly sessionWorkdir: string;
 
   constructor(
     private readonly client: Daytona,
     private readonly sandbox: Sandbox,
-  ) {}
+    sessionWorkdir: string,
+  ) {
+    this.sessionWorkdir = sessionWorkdir;
+  }
 
   async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
     if (this.destroyed) throw new Error("env-daytona: session destroyed");
@@ -78,7 +110,7 @@ export class DaytonaEnvironmentSession implements EnvironmentSession {
     try {
       const r = await this.sandbox.process.executeCommand(
         wrapped,
-        options.cwd,
+        options.cwd ?? this.sessionWorkdir,
         options.env,
         timeoutSec,
       );
@@ -138,7 +170,7 @@ export class DaytonaEnvironmentSession implements EnvironmentSession {
   async fork(): Promise<EnvironmentSession> {
     if (this.destroyed) throw new Error("env-daytona: session destroyed");
     const forked = await this.sandbox._experimental_fork({});
-    return new DaytonaEnvironmentSession(this.client, forked);
+    return new DaytonaEnvironmentSession(this.client, forked, this.sessionWorkdir);
   }
 
   async pause(): Promise<void> {

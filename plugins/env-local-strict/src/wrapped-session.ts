@@ -54,11 +54,14 @@ export class WrappedSession implements EnvironmentSession {
   private prepared = false;
   private readonly sessionAbort: AbortSignal | undefined;
   private readonly sessionAbortHandlers = new Set<() => void>();
+  /** Strict-local tier: session path equals host path (no namespace boundary). */
+  readonly sessionWorkdir: string;
 
   constructor(
     private readonly ctx: WrapperContext,
     private readonly wrapper: CommandWrapper,
   ) {
+    this.sessionWorkdir = ctx.root;
     this.sessionAbort = ctx.config.signal;
     if (this.sessionAbort) {
       const fanout = (): void => {
@@ -189,7 +192,9 @@ export class WrappedSession implements EnvironmentSession {
     } catch {
       /* ignore */
     }
-    if (!this.ctx.config.workdir) {
+    const callerSuppliedWorkdir =
+      this.ctx.config.hostWorkdir ?? this.ctx.config.sessionWorkdir ?? this.ctx.config.workdir;
+    if (!callerSuppliedWorkdir) {
       await rm(this.ctx.root, { recursive: true, force: true });
     }
     await rm(this.ctx.meta, { recursive: true, force: true });
@@ -206,10 +211,13 @@ export async function newWrapperContext(
   rootPrefix: string,
   metaPrefix: string,
 ): Promise<WrapperContext> {
+  // Strict-local tier: host == session (no namespace boundary). Resolve the
+  // workdir from any of the three caller-supplied aliases.
+  const callerSuppliedWorkdir = config.hostWorkdir ?? config.sessionWorkdir ?? config.workdir;
   let root: string;
-  if (config.workdir) {
-    await validateStrictWorkdir(config.workdir);
-    root = config.workdir;
+  if (callerSuppliedWorkdir) {
+    await validateStrictWorkdir(callerSuppliedWorkdir);
+    root = callerSuppliedWorkdir;
   } else {
     root = await mkdtemp(join(tmpdir(), rootPrefix));
   }

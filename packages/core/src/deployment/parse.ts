@@ -51,6 +51,7 @@ function normalizeDeployment(raw: DeploymentRaw, options: ParseDeploymentOptions
     toolCalls: raw.limits.tool_calls,
     budgetUsd: raw.limits.budget,
     warnThresholdPct: raw.limits.warn_threshold_pct,
+    enforce: raw.limits.enforce,
   };
 
   const environmentInline = raw.environment_inline

@@ -45,7 +45,16 @@ interface PoolState {
   abortControllers: Map<string, AbortController>;
   /** Per-run map of pending confirmation requests waiting on user input. */
   pendingConfirmations: Map<string, Map<string, PendingConfirmation>>;
+  /**
+   * Last-fired timestamp per `<deploymentId>:<connectorName>` for reauth
+   * notifications. Throttles concurrent runs sharing the same connector so
+   * we only nag the user once per window.
+   */
+  reauthNotifiedAt: Map<string, number>;
 }
+
+/** Don't fire reauth notifications more often than once per N ms per connector. */
+const REAUTH_NOTIFY_THROTTLE_MS = 5 * 60_000;
 
 interface PendingConfirmation {
   toolName: string;
@@ -72,6 +81,7 @@ export class WorkerPool {
       heartbeats: new Map(),
       abortControllers: new Map(),
       pendingConfirmations: new Map(),
+      reauthNotifiedAt: new Map(),
     };
   }
 
@@ -317,6 +327,7 @@ export class WorkerPool {
         grader: graderResolved
           ? { llm: { model: graderResolved.model, apiKey: graderResolved.apiKey } }
           : undefined,
+        onMcpReauthNeeded: (tokenKey) => this.dispatchReauthNotification(tokenKey, runId),
         onConfirmRequest: async (req) => {
           await this.rt.state.updateRun(runId, { status: "awaiting_confirmation" });
           await this.notifyPendingConfirmation(dep, req);
@@ -501,6 +512,89 @@ export class WorkerPool {
       return "queued";
     }
     return "unknown";
+  }
+
+  /**
+   * Channel-dispatch hub for MCP `reauth_needed` events.
+   *
+   * Token keys are `<deploymentId>:<connectorName>`. We resolve the
+   * deployment from the prefix, send a short message through each of its
+   * configured channels, and throttle so concurrent runs sharing the same
+   * connector only nag the user once per `REAUTH_NOTIFY_THROTTLE_MS`.
+   */
+  async dispatchReauthNotification(tokenKey: string, runId: string): Promise<void> {
+    const last = this.state.reauthNotifiedAt.get(tokenKey) ?? 0;
+    const now = Date.now();
+    if (now - last < REAUTH_NOTIFY_THROTTLE_MS) {
+      await this.rt.log
+        .log(runId, {
+          timestamp: now,
+          level: "warn",
+          message: `connector '${tokenKey}' needs reauth (notification throttled)`,
+        })
+        .catch(() => undefined);
+      return;
+    }
+    this.state.reauthNotifiedAt.set(tokenKey, now);
+
+    const idx = tokenKey.indexOf(":");
+    const deploymentId = idx === -1 ? "" : tokenKey.slice(0, idx);
+    const connectorName = idx === -1 ? tokenKey : tokenKey.slice(idx + 1);
+    const dep = deploymentId
+      ? await this.rt.state.getDeployment(deploymentId).catch(() => null)
+      : null;
+    if (!dep) {
+      await this.rt.log
+        .log(runId, {
+          timestamp: now,
+          level: "warn",
+          message: `reauth needed for '${tokenKey}' but deployment not found — no channel dispatch`,
+        })
+        .catch(() => undefined);
+      return;
+    }
+
+    const body = [
+      `**MCP connector requires re-authentication**`,
+      `connector: \`${connectorName}\``,
+      `deployment: \`${dep.name}\``,
+      "",
+      `Run \`oddjob mcp auth ${dep.name}/${connectorName}\` to restore access.`,
+    ].join("\n");
+
+    for (const ch of dep.channels) {
+      const provider = this.rt.channelFor(ch.type);
+      if (!provider) continue;
+      try {
+        await provider.send({
+          body,
+          format: "markdown",
+          meta: {
+            kind: "reauth_needed",
+            connectorId: tokenKey,
+            connectorName,
+            deploymentId: dep.id,
+            deploymentName: dep.name,
+            channelConfig: ch,
+          },
+        });
+        await this.rt.log
+          .log(runId, {
+            timestamp: Date.now(),
+            level: "info",
+            message: `reauth notification sent via ${ch.type} for connector '${tokenKey}'`,
+          })
+          .catch(() => undefined);
+      } catch (err) {
+        await this.rt.log
+          .log(runId, {
+            timestamp: Date.now(),
+            level: "warn",
+            message: `reauth notification via ${ch.type} failed: ${(err as Error).message}`,
+          })
+          .catch(() => undefined);
+      }
+    }
   }
 
   private async notifyPendingConfirmation(

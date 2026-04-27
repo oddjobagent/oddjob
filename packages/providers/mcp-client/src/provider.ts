@@ -6,7 +6,9 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type {
   Connector,
   HttpConnector,
+  McpGetTokenFn,
   McpProvider,
+  McpProviderCallbacks,
   McpSession,
   StdioConnector,
   ToolCall,
@@ -28,18 +30,27 @@ export class McpClientProvider implements McpProvider {
   async open(
     connectorId: string,
     connector: Connector,
-    getToken: () => Promise<string | null>,
+    getToken: McpGetTokenFn,
+    callbacks?: McpProviderCallbacks,
   ): Promise<McpSession> {
-    const client = new Client(CLIENT_INFO, { capabilities: {} });
-    if (connector.transport === "stdio") {
-      const transport = makeStdioTransport(connector, await getToken());
-      await client.connect(transport);
-    } else {
-      const transport = await makeHttpTransport(connector, await getToken());
-      await client.connect(transport);
-    }
-    return new McpClientSession(connectorId, client, connector);
+    const client = await openClientForConnector(connector, getToken);
+    return new McpClientSession(connectorId, client, connector, getToken, callbacks);
   }
+}
+
+async function openClientForConnector(
+  connector: Connector,
+  getToken: McpGetTokenFn,
+): Promise<Client> {
+  const client = new Client(CLIENT_INFO, { capabilities: {} });
+  if (connector.transport === "stdio") {
+    const transport = makeStdioTransport(connector, await getToken());
+    await client.connect(transport);
+  } else {
+    const transport = await makeHttpTransport(connector, await getToken());
+    await client.connect(transport);
+  }
+  return client;
 }
 
 function makeStdioTransport(connector: StdioConnector, token: string | null): StdioClientTransport {
@@ -81,12 +92,35 @@ async function makeHttpTransport(
   });
 }
 
-class McpClientSession implements McpSession {
+export type McpClientFactory = (
+  connector: Connector,
+  getToken: McpGetTokenFn,
+) => Promise<Client>;
+
+export class McpClientSession implements McpSession {
+  private client: Client;
+  private readonly clientFactory: McpClientFactory;
+
   constructor(
     public readonly connectorId: string,
-    private readonly client: Client,
+    initialClient: Client,
     private readonly connector: Connector,
-  ) {}
+    private readonly getToken: McpGetTokenFn,
+    private readonly callbacks?: McpProviderCallbacks,
+    clientFactory?: McpClientFactory,
+  ) {
+    this.client = initialClient;
+    this.clientFactory = clientFactory ?? openClientForConnector;
+  }
+
+  private async reconnect(): Promise<void> {
+    try {
+      await this.client.close();
+    } catch {
+      /* ignore */
+    }
+    this.client = await this.clientFactory(this.connector, this.getToken);
+  }
 
   async listTools(): Promise<ToolDefinition[]> {
     const r = await this.client.listTools();
@@ -117,12 +151,75 @@ class McpClientSession implements McpSession {
         durationMs: Date.now() - start,
       };
     } catch (err) {
-      return {
-        toolCallId: call.id,
-        content: (err as Error).message,
-        isError: true,
-        durationMs: Date.now() - start,
-      };
+      if (!is401(err)) {
+        return {
+          toolCallId: call.id,
+          content: (err as Error).message,
+          isError: true,
+          durationMs: Date.now() - start,
+        };
+      }
+      // OAuth2 connectors only — other auth kinds can't be refreshed mid-session.
+      if (this.connector.auth.kind !== "oauth2") {
+        return {
+          toolCallId: call.id,
+          content: (err as Error).message,
+          isError: true,
+          durationMs: Date.now() - start,
+        };
+      }
+      // Force a refresh and rebuild the transport so the retry uses the new token.
+      // The MCP SDK reads requestInit.headers once at connect time; without a
+      // reconnect the retry would re-send the stale Authorization header and
+      // produce a spurious second 401.
+      let reconnected = false;
+      try {
+        await this.getToken({ forceRefresh: true });
+        await this.reconnect();
+        reconnected = true;
+      } catch {
+        // refresh or reconnect threw → fall through to reauth notification
+      }
+      if (!reconnected) {
+        try {
+          await this.callbacks?.onReauthNeeded?.(this.connectorId);
+        } catch {
+          /* swallow */
+        }
+        return {
+          toolCallId: call.id,
+          content: (err as Error).message,
+          isError: true,
+          durationMs: Date.now() - start,
+        };
+      }
+      try {
+        const result = await this.client.callTool({
+          name: remoteName,
+          arguments: call.input,
+        });
+        const text = stringifyContent(result.content as Array<{ type: string; text?: string }>);
+        return {
+          toolCallId: call.id,
+          content: text,
+          isError: Boolean(result.isError),
+          durationMs: Date.now() - start,
+        };
+      } catch (err2) {
+        if (is401(err2)) {
+          try {
+            await this.callbacks?.onReauthNeeded?.(this.connectorId);
+          } catch {
+            /* swallow — never let dispatch errors crash a tool call */
+          }
+        }
+        return {
+          toolCallId: call.id,
+          content: (err2 as Error).message,
+          isError: true,
+          durationMs: Date.now() - start,
+        };
+      }
     }
   }
 
@@ -133,6 +230,15 @@ class McpClientSession implements McpSession {
       /* ignore */
     }
   }
+}
+
+function is401(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; status?: unknown; name?: unknown; message?: unknown };
+  if (e.code === 401 || e.status === 401) return true;
+  if (typeof e.name === "string" && e.name === "UnauthorizedError") return true;
+  if (typeof e.message === "string" && /\b401\b|Unauthorized/i.test(e.message)) return true;
+  return false;
 }
 
 function prefixed(connectorId: string, name: string): string {

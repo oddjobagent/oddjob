@@ -268,12 +268,12 @@ table and are referenced by deployments via `environment = "<id>"` in
 
 ### Trust tiers
 
-| Tier           | Bundled provider                        | Use for                                       |
-| -------------- | --------------------------------------- | --------------------------------------------- |
-| `trusted`      | `process` (env-process)                 | Dev only — same uid/fs/network as the daemon. |
-| `local-strict` | `seatbelt` (Mac), `bwrap` (Linux)       | Default. OS-level fs scoping.                 |
-| `container`    | `docker` (env-docker)                   | Self-host with Docker daemon available.       |
-| `remote-vm`    | `daytona` (env-daytona)                 | Hosted Oddjob, untrusted blueprints.          |
+| Tier           | Bundled provider                  | Use for                                       |
+| -------------- | --------------------------------- | --------------------------------------------- |
+| `trusted`      | `process` (env-process)           | Dev only — same uid/fs/network as the daemon. |
+| `local-strict` | `seatbelt` (Mac), `bwrap` (Linux) | Default. OS-level fs scoping.                 |
+| `container`    | `docker` (env-docker)             | Self-host with Docker daemon available.       |
+| `remote-vm`    | `daytona` (env-daytona)           | Hosted Oddjob, untrusted blueprints.          |
 
 `oddjob setup` picks the platform-appropriate default automatically
 (seatbelt on Mac, bwrap on Linux). Switch via:

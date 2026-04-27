@@ -282,6 +282,33 @@ async function loadProviderCredentials(
   return out;
 }
 
+/**
+ * Resolve the effective default-environment service id. Mirrors the worker's
+ * cascade for the no-deployment-override case: engine setting > "default" row
+ * > "process" fallback. Used by the CLI to surface a sandbox-warning banner.
+ */
+export async function resolveDefaultEnvServiceId(rt: Runtime): Promise<string> {
+  const engineDefaultId =
+    (await rt.state.getEngineSetting<string>("default_environment_id")) ?? "default";
+  const env = await rt.state.getEnvironment(engineDefaultId);
+  return env?.config.provider?.service ?? "process";
+}
+
+export async function warnIfBareProcessEnv(rt: Runtime): Promise<void> {
+  const serviceId = await resolveDefaultEnvServiceId(rt);
+  if (serviceId !== "process") return;
+  const banner = [
+    "",
+    "\x1b[33;1m⚠  Running with `process` environment — NO sandbox isolation.\x1b[0m",
+    "\x1b[33;1m   Trusted-local blueprints only. Untrusted code can read/write your\x1b[0m",
+    "\x1b[33;1m   host filesystem and network. To sandbox: `oddjob env set-default\x1b[0m",
+    "\x1b[33;1m   local-strict` (macOS seatbelt / Linux bwrap) or `... docker`.\x1b[0m",
+    "",
+    "",
+  ].join("\n");
+  process.stderr.write(banner);
+}
+
 export async function shutdownRuntime(rt: Runtime): Promise<void> {
   await rt.scheduler?.disconnect();
   await Promise.all([

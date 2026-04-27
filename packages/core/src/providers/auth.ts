@@ -6,5 +6,11 @@ export interface AuthProvider extends Provider {
   initiateFlow(connectorId: string, connector: Connector): Promise<AuthFlowResult>;
   revokeToken(connectorId: string): Promise<void>;
   status(connectorId: string): Promise<AuthStatus>;
-  refreshIfNeeded(connectorId: string): Promise<string>;
+  /**
+   * Returns a fresh access token. Refreshes against the OAuth2 token endpoint
+   * when (a) the token is past `expiresAt - refreshSkew`, OR (b) `force` is
+   * true (used after the resource server returned 401 despite an
+   * unexpired-looking token).
+   */
+  refreshIfNeeded(connectorId: string, opts?: { force?: boolean }): Promise<string>;
 }

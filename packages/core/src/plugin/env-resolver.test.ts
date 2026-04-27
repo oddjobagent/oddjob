@@ -12,6 +12,7 @@ import {
 import { PluginRegistry } from "./registry.ts";
 
 const fakeSession = {
+  sessionWorkdir: "/tmp",
   exec: async () => ({ exitCode: 0, stdout: "", stderr: "", durationMs: 0, truncated: false }),
   writeFile: async () => undefined,
   readFile: async () => "",

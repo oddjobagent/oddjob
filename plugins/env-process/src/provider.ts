@@ -40,7 +40,14 @@ export class ProcessEnvironmentProvider implements EnvironmentProvider {
   }
 
   async spawn(config: EnvironmentRunConfig): Promise<EnvironmentSession> {
-    const root = config.workdir ?? (await mkdtemp(join(tmpdir(), "oddjob-sb-")));
+    // Trusted-tier: host == session (no namespace boundary), so the same path
+    // is bound to both `hostWorkdir` and `sessionWorkdir`. The legacy
+    // `workdir` field is honored as a fallback for pre-15i callers.
+    const root =
+      config.hostWorkdir ??
+      config.sessionWorkdir ??
+      config.workdir ??
+      (await mkdtemp(join(tmpdir(), "oddjob-sb-")));
     return new ProcessSession(root, config);
   }
 }
@@ -57,11 +64,14 @@ class ProcessSession implements EnvironmentSession {
   private readonly sessionAbortHandlers = new Set<() => void>();
   private caPemPath: string | undefined;
   private caPemDir: string | undefined;
+  /** Trusted tier: session path equals host path. */
+  readonly sessionWorkdir: string;
 
   constructor(
     private readonly root: string,
     private readonly config: EnvironmentRunConfig,
   ) {
+    this.sessionWorkdir = root;
     this.sessionAbort = config.signal;
     if (this.sessionAbort) {
       const fanout = (): void => {
@@ -198,7 +208,9 @@ class ProcessSession implements EnvironmentSession {
     await Promise.all(handles.map((h) => h.awaitExit.catch(() => undefined)));
     this.active.clear();
     this.sessionAbortHandlers.clear();
-    if (!this.config.workdir) {
+    const callerSuppliedWorkdir =
+      this.config.hostWorkdir ?? this.config.sessionWorkdir ?? this.config.workdir;
+    if (!callerSuppliedWorkdir) {
       await rm(this.root, { recursive: true, force: true });
     }
     if (this.caPemDir) {

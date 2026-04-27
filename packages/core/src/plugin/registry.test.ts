@@ -4,6 +4,7 @@ import { definePlugin } from "../../../sdk/src/index.ts";
 import { PluginRegistry } from "./registry.ts";
 
 const fakeSession = {
+  sessionWorkdir: "/tmp",
   async exec() {
     return { exitCode: 0, stdout: "", stderr: "", durationMs: 0, truncated: false };
   },

@@ -5,6 +5,7 @@ import type {
   AuthProvider,
   Blueprint,
   McpProvider,
+  McpProviderCallbacks,
   McpSession,
   SecretsProvider,
 } from "../index.ts";
@@ -16,6 +17,14 @@ export interface McpToolBuilderOptions {
   auth?: AuthProvider;
   /** Used to namespace OAuth tokens per deployment. */
   deploymentId?: string;
+  /**
+   * Fired when an MCP call hits 401 even after a forced refresh — caller
+   * dispatches a reauth-needed notification through the deployment's
+   * channels. Receives the fully-namespaced token key
+   * (`<deploymentId>:<connectorName>`) so the dispatcher can resolve the
+   * deployment + connector from state.
+   */
+  onReauthNeeded?: (tokenKey: string) => Promise<void> | void;
 }
 
 export interface McpRuntime {
@@ -32,26 +41,36 @@ export async function buildMcpRuntime(opts: McpToolBuilderOptions): Promise<McpR
   }
 
   for (const [connectorId, connector] of Object.entries(opts.blueprint.connectors)) {
-    const session = await opts.mcp.open(connectorId, connector, async () => {
-      const auth = connector.auth;
-      if (auth.kind === "api_key" || auth.kind === "bearer") {
-        if (opts.secrets) {
-          const v = await opts.secrets.get(auth.secretRef);
-          if (v) return v;
+    const tokenKey = `${opts.deploymentId ?? "_global"}:${connectorId}`;
+    const callbacks: McpProviderCallbacks | undefined = opts.onReauthNeeded
+      ? {
+          onReauthNeeded: (_id) => opts.onReauthNeeded!(tokenKey),
         }
-        return process.env[auth.secretRef] ?? null;
-      }
-      if (auth.kind === "oauth2") {
-        if (!opts.auth) return null;
-        const tokenKey = `${opts.deploymentId ?? "_global"}:${connectorId}`;
-        try {
-          return await opts.auth.refreshIfNeeded(tokenKey);
-        } catch {
-          return null;
+      : undefined;
+    const session = await opts.mcp.open(
+      connectorId,
+      connector,
+      async (callOpts) => {
+        const auth = connector.auth;
+        if (auth.kind === "api_key" || auth.kind === "bearer") {
+          if (opts.secrets) {
+            const v = await opts.secrets.get(auth.secretRef);
+            if (v) return v;
+          }
+          return process.env[auth.secretRef] ?? null;
         }
-      }
-      return null;
-    });
+        if (auth.kind === "oauth2") {
+          if (!opts.auth) return null;
+          try {
+            return await opts.auth.refreshIfNeeded(tokenKey, { force: callOpts?.forceRefresh });
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      },
+      callbacks,
+    );
     sessions.push(session);
 
     const remoteTools = await session.listTools();

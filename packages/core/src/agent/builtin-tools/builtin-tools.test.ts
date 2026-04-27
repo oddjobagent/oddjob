@@ -8,6 +8,7 @@ import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 import { buildBuiltinTools, BUILTIN_TOOL_NAMES, isBuiltinToolName } from "./index.ts";
 
 const NOOP_SESSION = {
+  sessionWorkdir: "/tmp",
   exec: async () => ({ exitCode: 0, stdout: "", stderr: "", durationMs: 0, truncated: false }),
   writeFile: async () => undefined,
   readFile: async () => "",

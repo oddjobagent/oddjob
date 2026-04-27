@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, posix } from "node:path";
+import { resolve } from "node:path";
 
 import type { TSchema } from "typebox";
 import { Type } from "typebox";
@@ -13,7 +14,26 @@ import type { EnvironmentSession } from "../providers/environment.ts";
 export interface ScriptToolOptions {
   blueprint: Blueprint;
   environment: EnvironmentSession;
+  /**
+   * Host directory the script paths in `blueprint.scripts` resolve against
+   * for HOST-SIDE operations (sidecar schema lookup, existence checks).
+   */
   blueprintDir: string;
+  /**
+   * Path INSIDE the session that maps to `blueprintDir` (`session.sessionWorkdir`
+   * for the common case where the runtime bind-mounts the blueprint dir as
+   * the workdir). Relative `blueprint.scripts` entries are rebased onto this
+   * so `bun run …` runs against the in-session path, not the host path —
+   * which would not exist inside a container or remote VM.
+   *
+   * For trusted / local-strict tiers `sessionScriptsRoot === blueprintDir`
+   * and the rebase is a no-op. For env-docker the bind-mount makes the
+   * blueprint dir visible at `/work` so `<host>/scripts/x.ts` becomes
+   * `/work/scripts/x.ts`. env-daytona has no bind-mount so absolute host
+   * paths still won't resolve there — caller should not invoke script tools
+   * on remote-vm tier without first uploading the script body (TODO v1.1).
+   */
+  sessionScriptsRoot: string;
   onLog?: (entry: LogEntry) => void;
 }
 
@@ -30,8 +50,19 @@ type FreeFormParams = Record<string, unknown>;
 export function buildScriptTools(opts: ScriptToolOptions): AgentTool<TSchema>[] {
   const tools: AgentTool<TSchema>[] = [];
   for (const [toolName, scriptPath] of Object.entries(opts.blueprint.scripts)) {
-    const abs = isAbsolute(scriptPath) ? scriptPath : resolve(opts.blueprintDir, scriptPath);
-    tools.push(makeScriptTool(toolName, abs, opts));
+    // Host-side absolute path used for sidecar lookup at build time.
+    const hostAbs = isAbsolute(scriptPath) ? scriptPath : resolve(opts.blueprintDir, scriptPath);
+    // Session-side absolute path used at execute time. Absolute host paths
+    // can't be rebased — pass through and trust the caller (env-process /
+    // env-local-strict where host == session). Relative paths rebase onto
+    // the session-side root so the script is reachable inside containers.
+    // Use posix.join so forward slashes are emitted regardless of host OS;
+    // sessionWorkdir is always a Unix-shape path (we don't run Windows
+    // sandboxes today).
+    const sessionAbs = isAbsolute(scriptPath)
+      ? scriptPath
+      : posix.join(opts.sessionScriptsRoot, scriptPath);
+    tools.push(makeScriptTool(toolName, hostAbs, sessionAbs, opts));
   }
   return tools;
 }
@@ -66,10 +97,12 @@ function loadSchemaSidecar(scriptAbsPath: string): {
 
 function makeScriptTool(
   toolName: string,
-  scriptAbsPath: string,
+  hostAbsPath: string,
+  sessionAbsPath: string,
   opts: ScriptToolOptions,
 ): AgentTool<TSchema, ScriptToolDetails> {
-  const { schema, description } = loadSchemaSidecar(scriptAbsPath);
+  // Sidecar JSON schema is read at build time from the HOST filesystem.
+  const { schema, description } = loadSchemaSidecar(hostAbsPath);
   const tool: AgentTool<TSchema, ScriptToolDetails> = {
     name: toolName,
     label: toolName,
@@ -84,7 +117,10 @@ function makeScriptTool(
         };
       }
       const stdinJson = JSON.stringify((params ?? {}) as FreeFormParams);
-      const cmd = `bun run ${quoteShell(scriptAbsPath)}`;
+      // 15i-3 codex follow-up: invoke against the SESSION-side abs path so
+      // the script resolves inside containers / remote VMs (the host abs
+      // path doesn't exist there).
+      const cmd = `bun run ${quoteShell(sessionAbsPath)}`;
       const r = await opts.environment.exec(cmd, { stdin: stdinJson, signal });
       opts.onLog?.({
         timestamp: Date.now(),

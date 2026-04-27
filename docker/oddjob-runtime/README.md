@@ -14,6 +14,7 @@ to a private registry of their choice and override `[config.image]` in the
 Environment record.
 
 Contents (~150 MB):
+
 - `debian:bookworm-slim`
 - `bun` (latest, installed to `/usr/local/bin/bun`)
 - `python3` + `python3-pip`

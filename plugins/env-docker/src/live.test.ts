@@ -28,6 +28,16 @@ describeLive("DockerEnvironmentProvider (live)", () => {
     expect(r.stdout.trim()).toBe("docker-hello");
   }, 30_000);
 
+  test("session.sessionWorkdir is /work and pwd inside container matches", async () => {
+    expect(session.sessionWorkdir).toBe("/work");
+    // Default cwd must be sessionWorkdir, not the host bind path. Regression
+    // for 15i-1: provider previously routed the host workdir into
+    // `docker exec -w` which fails with "no such directory" inside container.
+    const r = await session.exec("pwd");
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.trim()).toBe("/work");
+  }, 30_000);
+
   test("exec captures non-zero exit", async () => {
     const r = await session.exec("ls /definitely-not-real; exit 7");
     expect(r.exitCode).toBe(7);

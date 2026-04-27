@@ -154,6 +154,15 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
     bindAddress = "127.0.0.1",
   } = opts;
 
+  // Codex round-2 MED 2: bindAddress must be a host-side private IP we
+  // control — loopback (127/8) or RFC1918 (10/8, 172.16/12, 192.168/16) or
+  // IPv4 link-local (169.254/16, with 169.254.169.254 cloud-metadata
+  // explicitly excluded). Reject 0.0.0.0 (multi-tenant exposure), public
+  // IPs, multicast, cloud-metadata. Per-Run Proxy-Auth still gates every
+  // request, but we refuse to even open the listening socket on something
+  // that's clearly not "the operator's host".
+  assertSafeBindAddress(bindAddress);
+
   const isAllowed = makeAllowlist(allowedHosts);
   const portAllowed = makePortAllowlist(allowedPorts);
   const emit = (entry: LogEntry): void => {
@@ -918,6 +927,60 @@ async function defaultResolveHost(host: string): Promise<string> {
   if (isIP(host)) return host;
   const r = await lookup(host);
   return r.address;
+}
+
+/**
+ * Validate a proxy bindAddress before handing it to Bun.listen.
+ *
+ * Allowed: loopback (127/8 / ::1), RFC1918 (10/8, 172.16/12, 192.168/16),
+ * IPv4 link-local (169.254/16) EXCEPT the cloud-metadata IP. These are all
+ * host-side addresses the operator unambiguously controls.
+ *
+ * Rejected: `0.0.0.0` / `::` (binds to every interface — multi-tenant box
+ * exposure), public IPs (would expose the proxy to the internet), multicast,
+ * cloud-metadata `169.254.169.254`, IPv6 link-local (kernel-assigned;
+ * usually not what the operator means), ULA `fc00::/7` (could be routed),
+ * and anything not parseable as an IP.
+ *
+ * Per-Run Proxy-Auth still gates every request, but binding off-private
+ * addresses is treated as a config bug. Throws Error on rejection.
+ */
+export function assertSafeBindAddress(addr: string): void {
+  if (!addr) throw new Error("egress proxy: bindAddress is empty");
+  // Block the unspecified address explicitly so the regex below doesn't
+  // surprise us (`0.0.0.0` would otherwise reach `isPrivateOrSensitiveIP`
+  // which classifies it as `this-network` — same intent, clearer message).
+  if (addr === "0.0.0.0" || addr === "::") {
+    throw new Error(
+      `egress proxy: refusing to bind on ${addr} (binds to every interface; ` +
+        "multi-tenant exposure risk). Use a specific loopback or RFC1918 address.",
+    );
+  }
+  if (addr === "169.254.169.254") {
+    throw new Error(
+      "egress proxy: refusing to bind on the cloud-metadata IP (169.254.169.254)",
+    );
+  }
+  if (isIP(addr) === 0) {
+    throw new Error(`egress proxy: bindAddress is not a valid IP: ${addr}`);
+  }
+  const reason = isPrivateOrSensitiveIP(addr);
+  // Allowed reasons map to "host-side private IP we control".
+  const ALLOWED_REASONS = new Set([
+    "loopback",
+    "rfc1918-10",
+    "rfc1918-172",
+    "rfc1918-192",
+    "link-local",
+  ]);
+  if (!reason || !ALLOWED_REASONS.has(reason)) {
+    throw new Error(
+      `egress proxy: refusing to bind on ${addr} ` +
+        `(${reason ?? "public-or-non-private"}). Allowed: loopback (127/8) or ` +
+        "RFC1918 (10/8, 172.16/12, 192.168/16) or IPv4 link-local (169.254/16, " +
+        "excluding cloud metadata).",
+    );
+  }
 }
 
 /**

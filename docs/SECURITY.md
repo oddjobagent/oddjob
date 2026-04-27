@@ -89,6 +89,49 @@ The token-shape catalog covers OpenAI (`sk-...`), Anthropic
   `HTTPS_PROXY/NO_PROXY=""/NODE_USE_ENV_PROXY=1` for clients that
   cooperate, but offers zero containment for clients that don't.
 
+- **Apply the egress proxy to the remote-vm tier (Daytona).** The proxy
+  binds the operator's loopback (`127.0.0.1:N`); a Daytona MicroVM cannot
+  reach the operator host, so v1 explicitly **skips proxy injection** for
+  env-daytona Runs and emits a `warn` log on session start so operators
+  see the gap. Egress for the remote-vm tier is governed by Daytona's own
+  network policy (`networkBlockAll` when the env declares
+  `networking = "limited"`); the host allowlist + token-shape scrub the
+  broker normally enforces are not in effect.
+
+  v1.1 plan: ship an Oddjob-managed relay reachable from each tier so the
+  broker covers Daytona consistently with the local + container tiers.
+
+  **Known v1 limitation: blueprint script tools on remote-vm tier.**
+  Script tools declared via `blueprint.scripts` are invoked as
+  `bun run <session-abs-path>` against the per-Run session. For env-process,
+  env-local-strict, and env-docker the runtime ensures that path resolves
+  inside the session — the trusted/local-strict tiers run on the host
+  filesystem directly; env-docker bind-mounts the blueprint dir at the
+  session workdir. **env-daytona has no bind-mount equivalent**, so a
+  blueprint that ships scripts AND targets the Daytona tier must currently
+  bake those scripts into the daytona image (so the path exists inside the
+  VM at the same absolute location). v1.1 will add upload-on-first-call
+  via `session.writeFile` so script tools work transparently on remote-vm.
+
+- **Reach the proxy from the container tier (Docker).** Inside a
+  container, `127.0.0.1` is the container itself; on Linux Docker engine
+  `host.docker.internal` resolves to the bridge gateway IP (typically
+  `172.17.0.1`), not the host loopback. env-docker therefore (a) reports
+  the bridge gateway IP via `EnvironmentProvider.proxyBindAddress()` so
+  the runtime binds the proxy on that address rather than `127.0.0.1`,
+  (b) rewrites loopback / RFC1918 proxy URL hostnames to
+  `host.docker.internal` inside the container env, and (c) adds
+  `--add-host=host.docker.internal:host-gateway` to the `docker run`
+  argv so the alias resolves to the gateway on Linux engines ≥20.10.
+  Docker Desktop on Mac/Win ships the alias built-in and forwards
+  loopback automatically, so a 127.0.0.1 bind still works there. **Note:
+  this is proxy-convention enforcement only**; the env-docker service
+  declares `egressAllowlist: false` because v1 still uses the default
+  Docker bridge network. A malicious agent can still open raw outbound
+  sockets that bypass the proxy entirely. v1.1 ships
+  `--network=oddjob-egress` with iptables-level filtering for hard
+  enforcement parity with local-strict.
+
 ### Sandbox env vars
 
 Sandbox env continues to receive credentials via process env vars

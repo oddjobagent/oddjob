@@ -23,6 +23,7 @@ import { buildBuiltinTools, isBuiltinToolName, type EngineConfig } from "./built
 import type { EngineLLM } from "../engine/engine-llm.ts";
 import type { PluginRegistry } from "../plugin/registry.ts";
 import { startEgressProxy } from "../security/proxy.ts";
+import { deepRedact } from "../security/redact.ts";
 import { validateOutput } from "./output-validate.ts";
 import { buildMcpRuntime } from "./mcp-tool.ts";
 import {
@@ -105,6 +106,12 @@ export interface RunOnceOptions {
    * The worker pool wires this to `POST /api/v1/runs/:id/confirm`.
    */
   onConfirmRequest?: (req: ConfirmRequest) => Promise<ConfirmResolution>;
+  /**
+   * Fired when an MCP connector returns 401 after a forced token refresh.
+   * Receives `<deploymentId>:<connectorName>`. The worker pool wires this to
+   * a channel-dispatch hub so users get notified to re-run `oddjob mcp auth`.
+   */
+  onMcpReauthNeeded?: (tokenKey: string) => Promise<void> | void;
 }
 
 export interface ConfirmRequest {
@@ -148,11 +155,13 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const startedAt = Date.now();
 
   const blueprintDir = isAbsolute(blueprint.path) ? dirname(blueprint.path) : process.cwd();
-  // Effective workdir for this Run: the EnvironmentConfig.workingDir wins
-  // when set, otherwise fall back to the blueprint's host directory (matches
-  // pre-Phase-15 behavior for the trusted process backend). This is what the
-  // session sees AND what tools resolve relative paths against.
-  const effectiveCwd = environment.config.workingDir ?? blueprintDir;
+  // Effective HOST workdir for this Run: the EnvironmentConfig.workingDir
+  // wins when set, otherwise fall back to the blueprint's host directory
+  // (matches pre-Phase-15 behavior for the trusted process backend). This is
+  // a HOST path — providers may bind-mount or upload from it but tools never
+  // see it directly. Tools always resolve cwd against `sessionWorkdir`
+  // (resolved by the provider; see EnvironmentRunConfig).
+  const hostWorkdir = environment.config.workingDir ?? blueprintDir;
 
   // Start the egress proxy when the env's networking is "limited". The
   // process provider injects HTTPS_PROXY into the spawned shell so all
@@ -162,15 +171,43 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   // into the allowlist so a deployment can't accidentally lock the agent
   // out of its own model API.
   const networking = environment.config.networking;
+  // Engine-required hosts (LLM provider base URL + MCP connector hosts) are
+  // computed unconditionally so both the egress proxy AND the in-process
+  // web_fetch / web_search dispatchers gate against the same union.
+  const engineHosts = engineRequiredHosts(llm, blueprint);
+  // `envAllowedHosts` is the env's declared allowlist when networking is
+  // `"limited"`, undefined otherwise. The web_fetch / web_search dispatchers
+  // treat undefined as "no env-side gate" (open networking).
+  const envAllowedHosts: readonly string[] | undefined =
+    networking?.type === "limited" ? networking.allowedHosts : undefined;
   let egressProxy: { url: string; caPem: string; stop: () => Promise<void> } | undefined;
   if (networking?.type === "limited") {
-    const engineHosts = engineRequiredHosts(llm, blueprint);
     const allowedHosts = Array.from(new Set([...networking.allowedHosts, ...engineHosts]));
+    // Provider may need the proxy bound on a non-loopback IP so its sessions
+    // can reach it. env-docker on Linux returns the docker bridge gateway IP
+    // (container loopback != host loopback). undefined means "no opinion;
+    // loopback is fine for this tier" (env-process, env-local-strict,
+    // env-docker on Mac/Win Docker Desktop).
+    //
+    // Codex round-2: providers that REQUIRE a custom bind but cannot resolve
+    // it (e.g. Linux env-docker without a working `bridge` network) THROW
+    // here. We catch and surface a clear error rather than silently falling
+    // back to loopback — silent fallback was the bug that made the round-1
+    // fix ineffective on Linux.
+    let bindAddress: string | undefined;
+    try {
+      bindAddress = (await environment.provider.proxyBindAddress?.()) ?? undefined;
+    } catch (err) {
+      throw new Error(
+        `egress proxy unreachable from configured environment: ${(err as Error).message}`,
+      );
+    }
     const handle = await startEgressProxy({
       allowedHosts,
       secrets: opts.secrets,
       blockTokenShapes: true,
       log: log ? { runId, provider: log } : undefined,
+      ...(bindAddress ? { bindAddress } : {}),
     });
     egressProxy = handle;
   }
@@ -180,29 +217,34 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   // abort, optional egress proxy injection). If spawn throws we MUST stop
   // the proxy first so we don't leak a listener.
   let session: EnvironmentSession;
+  const events: AgentEvent[] = [];
+  const append = (entry: LogEntry) => {
+    if (log) void log.log(runId, entry);
+  };
+
   try {
     session = await environment.provider.spawn({
       config: environment.config,
-      workdir: effectiveCwd,
+      hostWorkdir,
+      // sessionWorkdir is left undefined; the provider chooses its own default
+      // (e.g. env-docker → "/work"; env-daytona → "/home/daytona/work") and
+      // surfaces the resolved value via session.sessionWorkdir for tools.
       timeoutMs: limits?.durationMs,
       signal,
       egressProxy: egressProxy ? { url: egressProxy.url, caPem: egressProxy.caPem } : undefined,
+      onLog: append,
     });
   } catch (err) {
     await egressProxy?.stop().catch(() => undefined);
     throw err;
   }
 
-  const events: AgentEvent[] = [];
-  const append = (entry: LogEntry) => {
-    if (log) void log.log(runId, entry);
-  };
-
   let toolCalls = 0;
   let toolErrorCount = 0;
   let lastToolError: string | undefined;
   let lastToolErrorName: string | undefined;
   let verdict: RunVerdict | undefined;
+  let hardFailureVerdict: RunVerdict | undefined;
   let usageTotal: Usage | undefined;
   let mcpRuntime: Awaited<ReturnType<typeof buildMcpRuntime>> | undefined;
   try {
@@ -211,10 +253,15 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const scriptTools = buildScriptTools({
       blueprint,
       environment: session,
-      // Script tools resolve sidecar files from the host blueprint dir at
-      // build-time, but execute inside the session — keep blueprintDir for
-      // the host-side lookup and rely on the session to receive its own cwd.
+      // Script tools resolve sidecar JSON schemas from the host blueprint
+      // dir at build-time, but invoke `bun run …` inside the session — so
+      // we hand them BOTH the host abs root (for sidecar lookup) and the
+      // session-side root (for the in-session script path). The runtime
+      // bind-mounts hostWorkdir → sessionWorkdir, and hostWorkdir defaults
+      // to blueprintDir, so a script declared as `scripts/parse.ts` resolves
+      // to `<sessionWorkdir>/scripts/parse.ts` inside docker / local-strict.
       blueprintDir,
+      sessionScriptsRoot: session.sessionWorkdir,
       onLog: append,
     });
     mcpRuntime = await buildMcpRuntime({
@@ -223,19 +270,23 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       secrets: opts.secrets,
       auth: opts.auth,
       deploymentId,
+      onReauthNeeded: opts.onMcpReauthNeeded,
     });
     const builtinTools = buildBuiltinTools({
       allowlist: blueprint.tools,
       environment: session,
       // Builtin tools (bash/read/write/etc) operate inside the session. Use
-      // the effective workdir so they resolve relative paths against the same
-      // root the session was spawned in, not the host blueprint dir.
-      blueprintDir: effectiveCwd,
+      // the SESSION-side workdir (e.g. "/work" inside docker) so cwd values
+      // passed to `docker exec -w …` resolve inside the container, not on the
+      // host filesystem.
+      blueprintDir: session.sessionWorkdir,
       engine: opts.engine,
       onLog: append,
       plugins: opts.plugins,
       secrets: opts.secrets,
       state: opts.state,
+      envAllowedHosts,
+      engineRequiredHosts: engineHosts,
     });
     // Plugin-supplied tools: any name in the allowlist that isn't a builtin
     // and IS registered in the plugin registry.
@@ -250,7 +301,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           out.push(
             svc.build({
               environment: session,
-              blueprintDir: effectiveCwd,
+              blueprintDir: session.sessionWorkdir,
               engine: opts.engine,
               onLog: append,
             }) as (typeof out)[number],
@@ -321,9 +372,24 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           timestamp: Date.now(),
           level: "info",
           message: `tool call ${ctx.toolCall.name}`,
-          meta: { args: ctx.args, toolCalls },
+          meta: { args: deepRedact(ctx.args), toolCalls },
         });
         if (limits?.toolCalls && toolCalls > limits.toolCalls) {
+          if (limits.enforce) {
+            hardFailureVerdict = {
+              outcome: "error",
+              reason: `limit exceeded: tool_calls ${toolCalls}/${limits.toolCalls}`,
+            };
+            append({
+              timestamp: Date.now(),
+              level: "error",
+              message: `tool call limit ${limits.toolCalls} exceeded (enforced, aborting)`,
+            });
+            return {
+              block: true,
+              reason: `limit exceeded: tool_calls ${toolCalls}/${limits.toolCalls}`,
+            };
+          }
           append({
             timestamp: Date.now(),
             level: "warn",
@@ -484,9 +550,17 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     if (!outputValidation.ok) {
       append({
         timestamp: Date.now(),
-        level: "warn",
+        level: "error",
         message: `output failed schema validation: ${outputValidation.errors?.map((e) => `${e.path} ${e.message}`).join("; ") ?? "(unknown)"}`,
       });
+      if (blueprint.outputSchema) {
+        const first = outputValidation.errors?.[0];
+        const detail = first ? `${first.path}: ${first.message}` : "(unknown)";
+        hardFailureVerdict = {
+          outcome: "error",
+          reason: `output validation failed: ${detail}`,
+        };
+      }
     }
 
     // Apply final grader verdict if grader ran and is now decisive.
@@ -512,11 +586,23 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const tokenOutput = usageTotal?.output ?? 0;
 
     if (limits?.budgetUsd && cost > limits.budgetUsd) {
-      append({
-        timestamp: finishedAt,
-        level: "warn",
-        message: `budget ${limits.budgetUsd} USD exceeded, actual ${cost.toFixed(4)} (soft warning)`,
-      });
+      if (limits.enforce) {
+        hardFailureVerdict = {
+          outcome: "error",
+          reason: `limit exceeded: budget ${cost.toFixed(4)}/${limits.budgetUsd}`,
+        };
+        append({
+          timestamp: finishedAt,
+          level: "error",
+          message: `budget ${limits.budgetUsd} USD exceeded, actual ${cost.toFixed(4)} (enforced)`,
+        });
+      } else {
+        append({
+          timestamp: finishedAt,
+          level: "warn",
+          message: `budget ${limits.budgetUsd} USD exceeded, actual ${cost.toFixed(4)} (soft warning)`,
+        });
+      }
     } else if (
       limits?.budgetUsd &&
       limits.warnThresholdPct &&
@@ -530,9 +616,10 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     }
 
     const stoppedWithError = isErrorStop(finalAssistant?.stopReason);
+    const effectiveVerdict = hardFailureVerdict ?? verdict;
     const classification = classifyRun({
       blueprint,
-      verdict,
+      verdict: effectiveVerdict,
       stoppedWithError,
       toolErrorCount,
       lastToolErrorName,
@@ -546,13 +633,13 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         timestamp: finishedAt,
         level: "error",
         message: `run failed: ${error}`,
-        meta: { toolErrorCount, verdict: verdict?.outcome },
+        meta: { toolErrorCount, verdict: effectiveVerdict?.outcome },
       });
-    } else if (verdict) {
+    } else if (effectiveVerdict) {
       append({
         timestamp: finishedAt,
         level: "info",
-        message: `run complete: ${verdict.outcome}`,
+        message: `run complete: ${effectiveVerdict.outcome}`,
       });
     }
 

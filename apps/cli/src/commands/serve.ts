@@ -3,7 +3,7 @@ import { defineCommand } from "citty";
 import { startServer, type HtmlBundle } from "@oddjob/server";
 
 import { loadConfig } from "../lib/config.ts";
-import { buildRuntime, shutdownRuntime } from "../lib/runtime.ts";
+import { buildRuntime, shutdownRuntime, warnIfBareProcessEnv } from "../lib/runtime.ts";
 
 // Static import keeps the dashboard bundled into `bun build --compile` output.
 // The future split removes this import + the --no-ui flag.
@@ -30,6 +30,7 @@ export default defineCommand({
     const dashboard: HtmlBundle | undefined = args.ui ? (dashboardHtml as HtmlBundle) : undefined;
 
     const rt = await buildRuntime(cfg);
+    await warnIfBareProcessEnv(rt);
     const server = await startServer({ runtime: rt, dashboard });
     process.stdout.write(`oddjob serving on ${server.url}\n`);
     if (dashboard) {

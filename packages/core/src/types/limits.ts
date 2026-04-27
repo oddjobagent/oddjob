@@ -3,6 +3,7 @@ export interface Limits {
   toolCalls?: number;
   budgetUsd?: number;
   warnThresholdPct: number;
+  enforce?: boolean;
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -10,4 +11,5 @@ export const DEFAULT_LIMITS: Limits = {
   toolCalls: 50,
   budgetUsd: 0.5,
   warnThresholdPct: 80,
+  enforce: false,
 };
