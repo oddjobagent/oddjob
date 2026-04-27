@@ -16,6 +16,7 @@ import { loadBlueprint } from "../blueprint/index.ts";
 
 let dir: string;
 const sandbox = new SandboxProcessProvider();
+const testEnv = { provider: sandbox, config: { type: "local" as const } };
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "oddjob-agent-"));
@@ -34,7 +35,7 @@ describe("runOnce - faux LLM", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-echo" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "Hi",
     });
 
@@ -58,7 +59,7 @@ describe("runOnce - faux LLM", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-tools" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "Count words in: the quick brown fox",
     });
 
@@ -100,7 +101,7 @@ describe("runOnce - faux LLM", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "x",
     });
 
@@ -140,7 +141,7 @@ describe("runOnce - faux LLM", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "x",
     });
 
@@ -166,7 +167,7 @@ describe("runOnce - faux LLM", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-dyn-ch" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "anything",
       dynamicChannels: [
         {
@@ -208,7 +209,7 @@ describe("runOnce - faux LLM", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-struct" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "extract: meeting tomorrow with A and B",
     });
 

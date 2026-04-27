@@ -28,6 +28,12 @@ export type {
   EnvironmentServiceCapabilities,
   EnvironmentTrustTier,
   PackageManagerKind,
+  WebSearchService,
+  WebSearchResult,
+  WebSearchOptions,
+  WebFetchService,
+  WebFetchResult,
+  WebFetchOptions,
 } from "@oddjob/core";
 
 export { STANDARD_ROLES } from "@oddjob/core";
@@ -42,6 +48,8 @@ import type {
   PluginService,
   SkillPackService,
   ToolService,
+  WebFetchService,
+  WebSearchService,
 } from "@oddjob/core";
 
 export interface DefinePluginManifestInput {
@@ -63,6 +71,8 @@ export interface PluginBuilder {
   mcpBundle(svc: Omit<McpBundleService, "kind">): void;
   skillPack(svc: Omit<SkillPackService, "kind">): void;
   environment(svc: Omit<EnvironmentService, "kind">): void;
+  webSearch(svc: Omit<WebSearchService, "kind">): void;
+  webFetch(svc: Omit<WebFetchService, "kind">): void;
 }
 
 /**
@@ -99,6 +109,12 @@ export function definePlugin(
     },
     environment: (svc) => {
       services.push({ kind: "environment", ...svc });
+    },
+    webSearch: (svc) => {
+      services.push({ kind: "web-search", ...svc });
+    },
+    webFetch: (svc) => {
+      services.push({ kind: "web-fetch", ...svc });
     },
   };
   build(builder);

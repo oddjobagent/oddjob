@@ -16,6 +16,7 @@ import { loadBlueprint } from "../blueprint/index.ts";
 
 let dir: string;
 const sandbox = new SandboxProcessProvider();
+const testEnv = { provider: sandbox, config: { type: "local" as const } };
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "oddjob-perm-"));
@@ -45,7 +46,7 @@ describe("permission policy: confirm gate", () => {
         toolPolicies: { count_words: { confirm: true } },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "x",
       onConfirmRequest: async (req) => {
         requests.push({ toolUseId: req.toolUseId, toolName: req.toolName });
@@ -77,7 +78,7 @@ describe("permission policy: confirm gate", () => {
         toolPolicies: { count_words: { confirm: true } },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "x",
       onConfirmRequest: async () => ({ allow: false, denyMessage: "not now" }),
     });
@@ -104,7 +105,7 @@ describe("permission policy: confirm gate", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-perm-skip" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "x",
       onConfirmRequest: async () => {
         called = true;

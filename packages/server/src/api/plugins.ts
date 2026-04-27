@@ -25,6 +25,10 @@ function summarize(rt: Runtime): PluginSummary[] {
       if (s.kind === "model-provider") return { kind: s.kind, id: s.id };
       if (s.kind === "channel") return { kind: s.kind, type: s.type };
       if (s.kind === "tool") return { kind: s.kind, name: s.name };
+      if (s.kind === "web-search" || s.kind === "web-fetch") {
+        return { kind: s.kind, id: s.id };
+      }
+      if (s.kind === "environment") return { kind: s.kind, id: s.id };
       return { kind: s.kind };
     });
     out.push({
@@ -80,6 +84,9 @@ export const get =
         };
       }
       if (s.kind === "skill-pack") return { kind: s.kind, count: s.skills.length };
+      if (s.kind === "web-search" || s.kind === "web-fetch") {
+        return { kind: s.kind, id: s.id, displayName: s.displayName, authHint: s.authHint };
+      }
       // environment service.
       return {
         kind: s.kind,

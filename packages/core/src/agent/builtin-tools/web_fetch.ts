@@ -1,19 +1,28 @@
+// web_fetch builtin — dispatcher that resolves the configured WebFetchService
+// plugin via the engine config (`[builtin_tools.web_fetch] plugin = "..."`),
+// applies the SSRF guard at this layer (so all backends inherit it), then
+// delegates the actual fetch.
+//
+// Defaults to plugin "raw" when registered. The "raw" backend is the
+// Bun-native fetch + HTML→markdown lifted into @oddjob/plugin-web-fetch-core.
+
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import TurndownService from "turndown";
 
 import type { LogEntry } from "../../providers/logging.ts";
+import type { SecretsProvider } from "../../providers/secrets.ts";
+import type { StateProvider } from "../../providers/state.ts";
+import type { PluginRegistry } from "../../plugin/registry.ts";
+import type { ProviderCredential } from "../../plugin/types.ts";
 import type { WebFetchConfig } from "./index.ts";
 import { assertSafeUrl, SsrfBlockedError } from "./ssrf.ts";
 
 const schema = Type.Object({
-  url: Type.String({
-    description: "Absolute http(s) URL to fetch.",
-  }),
+  url: Type.String({ description: "Absolute http(s) URL to fetch." }),
   format: Type.Optional(
     Type.Union([Type.Literal("markdown"), Type.Literal("text"), Type.Literal("raw")], {
-      description: "Output format. Default: markdown for HTML, text otherwise.",
+      description: "Output format hint (raw passes through unchanged).",
     }),
   ),
 });
@@ -21,143 +30,135 @@ type FetchInput = Static<typeof schema>;
 
 interface FetchDetails {
   status: number;
-  contentType: string;
   bytesIn: number;
   truncated: boolean;
-  redirects: number;
+  format: string;
+  plugin: string;
 }
 
 export interface WebFetchToolOptions {
   config?: WebFetchConfig;
   onLog?: (entry: LogEntry) => void;
   fetchImpl?: typeof fetch;
+  plugins?: PluginRegistry;
+  secrets?: SecretsProvider;
+  state?: StateProvider;
 }
-
-const MAX_REDIRECTS = 3;
 
 export function createWebFetchTool(opts: WebFetchToolOptions = {}): AgentTool<typeof schema> {
   const cfg = opts.config ?? {};
+  const slug = cfg.plugin ?? "raw";
   const maxBytes = (cfg.maxBodyMb ?? 5) * 1024 * 1024;
-  const fetchFn = opts.fetchImpl ?? fetch;
   return {
     name: "web_fetch",
     label: "Web Fetch",
     description:
-      "Fetch a URL via HTTPS and return the body (HTML rendered to markdown by default). Refuses private/localhost addresses unless explicitly enabled.",
+      "Fetch a URL via HTTPS and return the body. Backend chosen by [builtin_tools.web_fetch] plugin = ... (raw / browserbase / firecrawl / scrapingbee). SSRF-guarded.",
     parameters: schema,
     async execute(_id, params: FetchInput, signal): Promise<AgentToolResult<FetchDetails>> {
       const start = Date.now();
+      // SSRF guard at dispatcher level so every backend inherits it.
+      let safeUrl: string;
       try {
-        let target = await assertSafeUrl(params.url, {
+        const target = await assertSafeUrl(params.url, {
           privateIpsAllowed: cfg.privateIpsAllowed,
           allowlist: cfg.allowlist,
           blocklist: cfg.blocklist,
         });
-        let redirects = 0;
-        let resp: Response;
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          resp = await fetchFn(target.toString(), {
-            method: "GET",
-            redirect: "manual",
-            signal,
-            headers: { "user-agent": "oddjob-web-fetch/0.1" },
-          });
-          if (resp.status >= 300 && resp.status < 400 && resp.headers.has("location")) {
-            if (redirects >= MAX_REDIRECTS) {
-              return errorResult(`too many redirects (>${MAX_REDIRECTS})`);
-            }
-            const next = new URL(resp.headers.get("location")!, target);
-            target = await assertSafeUrl(next.toString(), {
-              privateIpsAllowed: cfg.privateIpsAllowed,
-              allowlist: cfg.allowlist,
-              blocklist: cfg.blocklist,
-            });
-            redirects++;
-            continue;
-          }
-          break;
-        }
-        const status = resp.status;
-        const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
-        const { body, bytes, truncated } = await readCapped(resp, maxBytes);
-        const fmt = params.format ?? (contentType.includes("text/html") ? "markdown" : "text");
-        const text = renderBody(body, contentType, fmt);
+        safeUrl = target.toString();
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) return errorResult(err.message, slug);
+        return errorResult((err as Error).message ?? "ssrf check failed", slug);
+      }
+
+      if (!opts.plugins) {
+        return errorResult(
+          `web_fetch plugin registry unavailable; cannot dispatch '${slug}'`,
+          slug,
+        );
+      }
+      const svc = opts.plugins.webFetchFor(slug);
+      if (!svc) {
+        return errorResult(`web-fetch plugin '${slug}' not registered or disabled`, slug);
+      }
+      const credential = await materializeCredential(slug, opts.state, opts.secrets, cfg);
+      try {
+        const result = await svc.fetch(safeUrl, credential, {
+          maxBytes,
+          signal,
+          fetchImpl: opts.fetchImpl,
+          renderJs: cfg.renderJs,
+        });
         opts.onLog?.({
           timestamp: Date.now(),
-          level: status >= 400 ? "warn" : "info",
-          message: `web_fetch ${status} ${target.toString()}`,
-          meta: { bytes, redirects, durationMs: Date.now() - start },
+          level: result.status >= 400 ? "warn" : "info",
+          message: `web_fetch ${svc.id} ${result.status} ${result.finalUrl}`,
+          meta: { durationMs: Date.now() - start, format: result.format },
         });
-        const prefix = status >= 400 ? `[HTTP ${status}]\n` : "";
+        const text = renderForOutput(result.body, result.format, params.format);
+        const prefix = result.status >= 400 ? `[HTTP ${result.status}]\n` : "";
         return {
           content: [{ type: "text", text: prefix + text }],
-          details: { status, contentType, bytesIn: bytes, truncated, redirects },
+          details: {
+            status: result.status,
+            bytesIn: text.length,
+            truncated: result.truncated,
+            format: result.format,
+            plugin: svc.id,
+          },
         };
       } catch (err) {
-        if (err instanceof SsrfBlockedError) return errorResult(err.message);
-        return errorResult((err as Error).message ?? "fetch failed");
+        return errorResult((err as Error).message ?? "fetch failed", svc.id);
       }
     },
   };
 }
 
-function errorResult(message: string): AgentToolResult<FetchDetails> {
+function errorResult(message: string, plugin: string): AgentToolResult<FetchDetails> {
   return {
     content: [{ type: "text", text: `web_fetch error: ${message}` }],
-    details: { status: 0, contentType: "", bytesIn: 0, truncated: false, redirects: 0 },
+    details: { status: 0, bytesIn: 0, truncated: false, format: "text", plugin },
   };
 }
 
-async function readCapped(
-  resp: Response,
-  maxBytes: number,
-): Promise<{ body: string; bytes: number; truncated: boolean }> {
-  if (!resp.body) return { body: "", bytes: 0, truncated: false };
-  const reader = resp.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  let truncated = false;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    if (total + value.length > maxBytes) {
-      const remain = maxBytes - total;
-      if (remain > 0) chunks.push(value.slice(0, remain));
-      total = maxBytes;
-      truncated = true;
-      reader.cancel().catch(() => undefined);
-      break;
-    }
-    chunks.push(value);
-    total += value.length;
-  }
-  const buf = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    buf.set(c, off);
-    off += c.length;
-  }
-  return { body: new TextDecoder("utf-8", { fatal: false }).decode(buf), bytes: total, truncated };
-}
-
-function renderBody(
+function renderForOutput(
   body: string,
-  contentType: string,
-  format: "markdown" | "text" | "raw",
+  serviceFormat: "markdown" | "html" | "text" | "json",
+  hint?: "markdown" | "text" | "raw",
 ): string {
-  if (format === "raw") return body;
-  if (format === "markdown" && contentType.includes("text/html")) {
-    const td = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
-    return td.turndown(body);
-  }
-  if (contentType.includes("application/json")) {
-    try {
-      return JSON.stringify(JSON.parse(body), null, 2);
-    } catch {
-      return body;
-    }
+  if (hint === "raw") return body;
+  if (hint === "text" && serviceFormat === "html") {
+    return body
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
   return body;
+}
+
+async function materializeCredential(
+  slug: string,
+  state: StateProvider | undefined,
+  secrets: SecretsProvider | undefined,
+  cfg: WebFetchConfig | undefined,
+): Promise<ProviderCredential> {
+  let apiKey = cfg?.apiKey;
+  let options: Record<string, unknown> | undefined;
+  if (state) {
+    const row = await state.getProviderCredential(slug, "default").catch(() => null);
+    if (row) {
+      if (row.apiKeySecret && secrets) {
+        const v = await secrets.get(row.apiKeySecret);
+        if (v) apiKey = v;
+      }
+      if (row.optionsJson) {
+        try {
+          options = JSON.parse(row.optionsJson) as Record<string, unknown>;
+        } catch {
+          // ignore malformed
+        }
+      }
+    }
+  }
+  return { apiKey, options };
 }

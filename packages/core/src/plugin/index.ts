@@ -28,6 +28,12 @@ export type {
   EnvironmentServiceCapabilities,
   EnvironmentTrustTier,
   PackageManagerKind,
+  WebSearchService,
+  WebSearchResult,
+  WebSearchOptions,
+  WebFetchService,
+  WebFetchResult,
+  WebFetchOptions,
 } from "./types.ts";
 export { STANDARD_ROLES } from "./types.ts";
 export { PluginRegistry, type RegisteredPlugin } from "./registry.ts";
@@ -47,3 +53,12 @@ export {
   type RoleResolverOptions,
   type LegacyResolver,
 } from "./role-resolver.ts";
+export {
+  resolveEnvironment,
+  mergeConfigs,
+  EnvironmentNotFoundError,
+  EnvironmentServiceNotRegisteredError,
+  NoEnvironmentResolvedError,
+  type ResolvedEnvironment,
+  type ResolveEnvironmentOptions,
+} from "./env-resolver.ts";

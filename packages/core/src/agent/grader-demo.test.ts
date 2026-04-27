@@ -6,6 +6,7 @@ import { runOnce } from "./loop.ts";
 import { SandboxProcessProvider } from "../../../../packages/providers/sandbox-process/src/provider.ts";
 
 const sandbox = new SandboxProcessProvider();
+const testEnv = { provider: sandbox, config: { type: "local" as const } };
 
 const SATISFIED = `\`\`\`json
 {
@@ -63,7 +64,7 @@ describe("grader-demo blueprint", () => {
     const r = await runOnce({
       blueprint: { ...bp, model: "faux/test-grader-demo" },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "We added live run streaming to the dashboard.",
     });
 

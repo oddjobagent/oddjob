@@ -94,6 +94,8 @@ export const get =
 
 interface EnginePatchBody {
   builtinTools?: BuiltinToolsConfig;
+  /** Engine-level default environment id. Persisted to engine_settings. */
+  defaultEnvironmentId?: string | null;
 }
 
 export const update =
@@ -108,6 +110,15 @@ export const update =
         await rt.persistEngine(merged);
       } catch (err) {
         return badRequest(`persisted engine failed: ${(err as Error).message}`);
+      }
+    }
+    if ("defaultEnvironmentId" in body) {
+      if (body.defaultEnvironmentId === null || body.defaultEnvironmentId === "") {
+        await rt.state.deleteEngineSetting("default_environment_id");
+      } else if (typeof body.defaultEnvironmentId === "string") {
+        const env = await rt.state.getEnvironment(body.defaultEnvironmentId);
+        if (!env) return badRequest(`environment '${body.defaultEnvironmentId}' not found`);
+        await rt.state.setEngineSetting("default_environment_id", body.defaultEnvironmentId);
       }
     }
     return json({

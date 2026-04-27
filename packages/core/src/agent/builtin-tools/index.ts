@@ -22,17 +22,33 @@ export interface BuiltinToolsConfig {
 }
 
 export interface WebSearchConfig {
-  provider: "brave" | "tavily" | "searxng";
+  /**
+   * Web-search plugin id to dispatch through. Matches WebSearchService.id
+   * (e.g. "brave", "tavily", "searxng", "exa", "serpapi"). When omitted, the
+   * builtin tool falls back to the legacy embedded provider via `provider`.
+   */
+  plugin?: string;
+  /** @deprecated. Use `plugin` instead. */
+  provider?: "brave" | "tavily" | "searxng";
   apiKey?: string;
   baseUrl?: string;
   maxResults?: number;
 }
 
 export interface WebFetchConfig {
+  /**
+   * Web-fetch plugin id to dispatch through. Matches WebFetchService.id
+   * (e.g. "raw", "browserbase", "firecrawl", "scrapingbee"). Defaults to
+   * "raw" when the plugin registry has it registered.
+   */
+  plugin?: string;
+  apiKey?: string;
   maxBodyMb?: number;
   privateIpsAllowed?: boolean;
   allowlist?: string[];
   blocklist?: string[];
+  /** Whether to render JS (browser-based fetchers honor this). */
+  renderJs?: boolean;
 }
 
 export interface BuildBuiltinToolsOptions {
@@ -41,6 +57,23 @@ export interface BuildBuiltinToolsOptions {
   blueprintDir: string;
   engine?: EngineConfig;
   onLog?: (entry: LogEntry) => void;
+  /**
+   * Optional plugin registry — passed by the agent loop. When set, web_search
+   * and web_fetch dispatch through registered WebSearchService /
+   * WebFetchService plugins instead of the legacy embedded providers.
+   */
+  plugins?: import("../../plugin/registry.ts").PluginRegistry;
+  /**
+   * Optional secrets provider — used by web_search/web_fetch dispatchers to
+   * resolve `provider_credentials` rows for the configured plugin. Test seam
+   * left undefined.
+   */
+  secrets?: import("../../providers/secrets.ts").SecretsProvider;
+  /**
+   * Optional state provider — used by web_search/web_fetch dispatchers to
+   * look up the current `provider_credentials` row for the configured plugin.
+   */
+  state?: import("../../providers/state.ts").StateProvider;
 }
 
 export const BUILTIN_TOOL_NAMES = [
@@ -81,12 +114,18 @@ export function buildSingleBuiltinTool(
     return createWebFetchTool({
       config: builtinCfg?.webFetch,
       onLog: opts.onLog,
+      plugins: opts.plugins,
+      secrets: opts.secrets,
+      state: opts.state,
     }) as AgentTool<TSchema>;
   }
   if (name === "web_search") {
     return createWebSearchTool({
       config: builtinCfg?.webSearch,
       onLog: opts.onLog,
+      plugins: opts.plugins,
+      secrets: opts.secrets,
+      state: opts.state,
     }) as AgentTool<TSchema>;
   }
   if (name === "javascript_repl") {

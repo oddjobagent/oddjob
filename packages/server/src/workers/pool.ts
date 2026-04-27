@@ -6,7 +6,7 @@ import type {
   ResolvedRoleModel,
   RoleAssignment,
 } from "@oddjob/core";
-import { createEngineLLM, runOnce } from "@oddjob/core";
+import { createEngineLLM, resolveEnvironment, runOnce } from "@oddjob/core";
 
 import type { Runtime } from "../runtime.ts";
 import { renderTemplate, type TemplateContext } from "./template.ts";
@@ -264,10 +264,31 @@ export class WorkerPool {
           };
         });
 
+      // Resolve the effective Environment via the cascade (deployment-inline
+      // > deployment.environmentId > engine default > hard default). The
+      // worker pool owns this so runOnce stays a pure executor.
+      const engineDefaultId =
+        (await this.rt.state.getEngineSetting<string>("default_environment_id")) ?? undefined;
+      const resolvedEnv = await resolveEnvironment({
+        deployment: dep,
+        getEnvironment: (id) => this.rt.state.getEnvironment(id),
+        engineDefaultId,
+        hardDefaultId: "default",
+        registry: this.rt.plugins,
+        getCredential: (slug, name) => this.rt.state.getProviderCredential(slug, name),
+        getSecret: async (name) => (await this.rt.secrets.get(name)) ?? undefined,
+        fallbackServiceId: "process",
+      });
+      await this.rt.log.log(runId, {
+        timestamp: Date.now(),
+        level: "info",
+        message: `environment resolved: service=${resolvedEnv.service.id} (tier=${resolvedEnv.service.trustTier}) source=${resolvedEnv.source}`,
+      });
+
       const result = await runOnce({
         blueprint: bp,
         llm: { model: resolved.model, apiKey: resolved.apiKey },
-        sandbox: this.rt.sandbox,
+        environment: { provider: resolvedEnv.provider, config: resolvedEnv.config },
         log: this.rt.log,
         mcp: this.rt.mcp,
         secrets: this.rt.secrets,
@@ -275,6 +296,7 @@ export class WorkerPool {
         engine: this.rt.engine,
         engineLlm,
         plugins: this.rt.plugins,
+        state: this.rt.state,
         input: mergedInput,
         runId,
         deploymentId: dep.id,

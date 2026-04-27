@@ -40,10 +40,19 @@ export interface ResolvedLLM {
   apiKey?: string;
 }
 
+export interface ResolvedEnvironmentForRun {
+  provider: EnvironmentProvider;
+  config: import("../types/environment.ts").EnvironmentConfig;
+}
+
 export interface RunOnceOptions {
   blueprint: Blueprint;
   llm: ResolvedLLM;
-  sandbox: EnvironmentProvider;
+  /**
+   * Resolved environment for this Run. The worker pool runs the cascade
+   * resolver and passes the result here.
+   */
+  environment: ResolvedEnvironmentForRun;
   log?: LogProvider;
   input?: unknown;
   runId?: RunId;
@@ -77,10 +86,16 @@ export interface RunOnceOptions {
   /**
    * Optional plugin registry. When supplied, tool names in `blueprint.tools`
    * that are NOT built-ins are looked up in the registry and built via
-   * `service.build({ environment, blueprintDir, engine, onLog })`. Lets a
-   * vibe-coded plugin contribute extra tools without touching core.
+   * `service.build({ environment, blueprintDir, engine, onLog })`. Also lets
+   * the web_search / web_fetch dispatchers consult WebSearchService /
+   * WebFetchService plugins.
    */
   plugins?: PluginRegistry;
+  /**
+   * Optional state provider — used by web_search / web_fetch dispatchers to
+   * resolve `provider_credentials` rows for the configured plugin.
+   */
+  state?: import("../providers/state.ts").StateProvider;
   /**
    * Optional confirmation gate. Fired before any tool whose name appears in
    * `blueprint.toolPolicies` with `confirm: true`. The harness pauses the
@@ -125,20 +140,21 @@ export interface GraderOverride {
 }
 
 export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
-  const { blueprint, llm, sandbox, log, input, limits, signal, systemPromptExtra } = opts;
+  const { blueprint, llm, environment, log, input, limits, signal, systemPromptExtra } = opts;
   const runId = opts.runId ?? randomUUID();
   const deploymentId = opts.deploymentId ?? `_local:${blueprint.id}`;
   const triggeredBy: Run["triggeredBy"] = opts.triggeredBy ?? "manual";
   const startedAt = Date.now();
 
   const blueprintDir = isAbsolute(blueprint.path) ? dirname(blueprint.path) : process.cwd();
-  // Pass blueprintDir as workdir so the session's filesystem operations
-  // resolve relative paths against the blueprint root. Process backend uses
-  // this as its tempdir replacement; container/remote backends will mount or
-  // upload it. Phase 15b reworks this when the resolved Environment lands.
-  const session: EnvironmentSession = await sandbox.spawn({
-    workdir: blueprintDir,
+  // Spawn an environment session for this Run. The provider receives the
+  // resolved EnvironmentConfig + per-spawn ergonomics (workdir, timeout,
+  // abort). Egress proxy injection (15c) reads from `environment.config`.
+  const session: EnvironmentSession = await environment.provider.spawn({
+    config: environment.config,
+    workdir: environment.config.workingDir ?? blueprintDir,
     timeoutMs: limits?.durationMs,
+    signal,
   });
 
   const events: AgentEvent[] = [];
@@ -175,6 +191,9 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       blueprintDir,
       engine: opts.engine,
       onLog: append,
+      plugins: opts.plugins,
+      secrets: opts.secrets,
+      state: opts.state,
     });
     // Plugin-supplied tools: any name in the allowlist that isn't a builtin
     // and IS registered in the plugin registry.

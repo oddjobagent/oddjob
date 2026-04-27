@@ -381,13 +381,15 @@ export class StateSqliteProvider implements StateProvider {
       modelOverride: input.modelOverride,
       modelRoleOverrides: input.modelRoleOverrides,
       defaultInput: input.defaultInput,
+      environmentId: input.environmentId,
+      environmentInline: input.environmentInline,
       createdAt: now,
       updatedAt: now,
     };
     this.db
       .query(
-        `INSERT INTO deployments (id, name, blueprint_id, blueprint_tag, triggers_json, channels_json, limits_json, status, model_override, default_input_json, model_role_overrides_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO deployments (id, name, blueprint_id, blueprint_tag, triggers_json, channels_json, limits_json, status, model_override, default_input_json, model_role_overrides_json, environment_id, environment_inline_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         dep.id,
@@ -401,6 +403,8 @@ export class StateSqliteProvider implements StateProvider {
         dep.modelOverride ?? null,
         dep.defaultInput !== undefined ? JSON.stringify(dep.defaultInput) : null,
         dep.modelRoleOverrides ? JSON.stringify(dep.modelRoleOverrides) : null,
+        dep.environmentId ?? null,
+        dep.environmentInline ? JSON.stringify(dep.environmentInline) : null,
         now,
         now,
       );
@@ -441,7 +445,8 @@ export class StateSqliteProvider implements StateProvider {
         `UPDATE deployments
             SET name = ?, blueprint_id = ?, blueprint_tag = ?, triggers_json = ?, channels_json = ?,
                 limits_json = ?, status = ?, model_override = ?, default_input_json = ?,
-                model_role_overrides_json = ?, updated_at = ?
+                model_role_overrides_json = ?, environment_id = ?, environment_inline_json = ?,
+                updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -455,6 +460,8 @@ export class StateSqliteProvider implements StateProvider {
         next.modelOverride ?? null,
         next.defaultInput !== undefined ? JSON.stringify(next.defaultInput) : null,
         next.modelRoleOverrides ? JSON.stringify(next.modelRoleOverrides) : null,
+        next.environmentId ?? null,
+        next.environmentInline ? JSON.stringify(next.environmentInline) : null,
         next.updatedAt,
         id,
       );
@@ -852,6 +859,33 @@ export class StateSqliteProvider implements StateProvider {
     this.db.query("DELETE FROM model_catalog WHERE provider_slug = ?").run(providerSlug);
   }
 
+  async getEngineSetting<T = unknown>(key: string): Promise<T | null> {
+    const row = this.db
+      .query<{ value_json: string }, [string]>(
+        "SELECT value_json FROM engine_settings WHERE key = ?",
+      )
+      .get(key);
+    if (!row) return null;
+    try {
+      return JSON.parse(row.value_json) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  async setEngineSetting(key: string, value: unknown): Promise<void> {
+    this.db
+      .query(
+        `INSERT INTO engine_settings (key, value_json, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+      )
+      .run(key, JSON.stringify(value), Date.now());
+  }
+
+  async deleteEngineSetting(key: string): Promise<void> {
+    this.db.query("DELETE FROM engine_settings WHERE key = ?").run(key);
+  }
+
   async updateRun(id: string, patch: Partial<Run>): Promise<void> {
     const current = await this.getRun(id);
     if (!current) throw new Error(`Run not found: ${id}`);
@@ -894,6 +928,8 @@ interface DeploymentRow {
   model_override: string | null;
   default_input_json: string | null;
   model_role_overrides_json: string | null;
+  environment_id: string | null;
+  environment_inline_json: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -1028,6 +1064,10 @@ function rowToDeployment(row: DeploymentRow): Deployment {
       ? (JSON.parse(row.model_role_overrides_json) as Deployment["modelRoleOverrides"])
       : undefined,
     defaultInput: row.default_input_json ? JSON.parse(row.default_input_json) : undefined,
+    environmentId: row.environment_id ?? undefined,
+    environmentInline: row.environment_inline_json
+      ? (JSON.parse(row.environment_inline_json) as Deployment["environmentInline"])
+      : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

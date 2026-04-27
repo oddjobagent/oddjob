@@ -60,3 +60,17 @@ export const api: OddjobApi = {
   roles: proxy("roles"),
   config: proxy("config"),
 };
+
+/**
+ * Raw fetch helper for routes the typed OddjobApi client doesn't cover yet.
+ * Uses the configured base URL + bearer token automatically.
+ */
+export async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
+  const cfg = await loadConfig();
+  const baseUrl = serverUrl(cfg);
+  const headers = new Headers(init?.headers);
+  if (cfg.server.bearer_token && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${cfg.server.bearer_token}`);
+  }
+  return fetch(new URL(path, baseUrl), { ...init, headers });
+}

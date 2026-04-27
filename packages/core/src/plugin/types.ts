@@ -118,7 +118,9 @@ export type PluginService =
   | ToolService
   | McpBundleService
   | SkillPackService
-  | EnvironmentService;
+  | EnvironmentService
+  | WebSearchService
+  | WebFetchService;
 
 /** Context passed to listModels / refreshCatalog. */
 export interface ModelListContext {
@@ -276,6 +278,81 @@ export interface SkillPackEntry {
 export interface SkillPackService {
   kind: "skill-pack";
   skills: ReadonlyArray<SkillPackEntry>;
+}
+
+// Web search ---------------------------------------------------------------
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  /** Optional extra metadata (publishedAt, score, source) — provider-specific. */
+  meta?: Record<string, unknown>;
+}
+
+export interface WebSearchOptions {
+  maxResults?: number;
+  signal?: AbortSignal;
+  /** Test seam — production code passes through to global fetch. */
+  fetchImpl?: typeof fetch;
+}
+
+export interface WebSearchService {
+  kind: "web-search";
+  /** Stable id; matches manifest.slug for single-service plugins. */
+  id: string;
+  displayName: string;
+  /** Free-text describing required credentials. UI hint. */
+  authHint?: string;
+  /**
+   * Run a search and return ranked results. Implementations should NOT throw
+   * for "no results" — return `[]`. Throw for transport / auth errors.
+   */
+  search(
+    query: string,
+    credential: ProviderCredential,
+    opts?: WebSearchOptions,
+  ): Promise<readonly WebSearchResult[]>;
+}
+
+// Web fetch ----------------------------------------------------------------
+
+export interface WebFetchOptions {
+  /** Cap on response body size in bytes. Provider should truncate + flag. */
+  maxBytes?: number;
+  /** Whether to render JS (browser-based fetchers only). */
+  renderJs?: boolean;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}
+
+export interface WebFetchResult {
+  /** URL after redirects. */
+  finalUrl: string;
+  status: number;
+  /** Response content as text (markdown if the provider does HTML→md). */
+  body: string;
+  /** Format the body is in. */
+  format: "markdown" | "html" | "text" | "json";
+  truncated: boolean;
+  /** Optional extra metadata (title, screenshot URL, ...) — provider-specific. */
+  meta?: Record<string, unknown>;
+}
+
+export interface WebFetchService {
+  kind: "web-fetch";
+  id: string;
+  displayName: string;
+  authHint?: string;
+  /**
+   * Fetch a URL. Implementations should respect SSRF guard policy at the
+   * call site (the dispatcher tool enforces it before reaching here).
+   */
+  fetch(
+    url: string,
+    credential: ProviderCredential,
+    opts?: WebFetchOptions,
+  ): Promise<WebFetchResult>;
 }
 
 // The plugin object itself ---------------------------------------------------

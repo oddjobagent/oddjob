@@ -11,6 +11,7 @@ import { loadBlueprint } from "../blueprint/index.ts";
 
 let dir: string;
 const sandbox = new SandboxProcessProvider();
+const testEnv = { provider: sandbox, config: { type: "local" as const } };
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "oddjob-grader-"));
@@ -78,7 +79,7 @@ describe("runOnce + [outcomes.grader]", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "say hi",
     });
 
@@ -121,7 +122,7 @@ describe("runOnce + [outcomes.grader]", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "say hi",
     });
 
@@ -162,7 +163,7 @@ describe("runOnce + [outcomes.grader]", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "say hi",
     });
 
@@ -206,7 +207,7 @@ describe("runOnce + [outcomes.grader]", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "say hi",
     });
 
@@ -245,7 +246,7 @@ describe("runOnce + [outcomes.grader]", () => {
         },
       },
       llm: { model: reg.getModel() },
-      sandbox,
+      environment: testEnv,
       input: "say hi",
     });
 

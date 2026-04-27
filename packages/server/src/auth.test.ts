@@ -8,7 +8,6 @@ import { PluginRegistry, RoleResolver } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
-import { SandboxProcessProvider } from "@oddjob/sandbox-process";
 import { SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import { StateSqliteProvider } from "@oddjob/state-sqlite";
 
@@ -38,7 +37,6 @@ async function makeRuntime(host: string, port: number, bearerToken?: string): Pr
     queue,
     secrets,
     log,
-    sandbox: new SandboxProcessProvider(),
     llm,
     plugins,
     roleResolver,

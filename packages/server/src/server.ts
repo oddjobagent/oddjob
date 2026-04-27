@@ -301,6 +301,7 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("POST", "/api/v1/auth/connectors/initiate", Auth.initiate(rt)),
     r("DELETE", "/api/v1/auth/connectors/:connectorId", Auth.revoke(rt)),
 
+    r("GET", "/api/v1/environments/providers", Environments.providers(rt)),
     r("GET", "/api/v1/environments", Environments.list(rt)),
     r("POST", "/api/v1/environments", Environments.upsert(rt)),
     r("GET", "/api/v1/environments/:id", Environments.get(rt)),

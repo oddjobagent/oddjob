@@ -35,9 +35,12 @@
         "@oddjob/plugin-llama-local": "workspace:*",
         "@oddjob/plugin-openai": "workspace:*",
         "@oddjob/plugin-openrouter": "workspace:*",
+        "@oddjob/plugin-web-fetch-core": "workspace:*",
+        "@oddjob/plugin-web-search-core": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
         "@oddjob/sandbox-process": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
         "@oddjob/secrets-sqlite": "workspace:*",
         "@oddjob/server": "workspace:*",
         "@oddjob/state-sqlite": "workspace:*",
@@ -241,6 +244,7 @@
         "@oddjob/queue-sqlite": "workspace:*",
         "@oddjob/sandbox-process": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
         "@oddjob/secrets-sqlite": "workspace:*",
         "@oddjob/state-sqlite": "workspace:*",
         "croner": "^10.0.1",
@@ -298,6 +302,26 @@
       "version": "0.0.0",
       "dependencies": {
         "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/web-fetch-core": {
+      "name": "@oddjob/plugin-web-fetch-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+        "turndown": "^7.2.0",
+      },
+      "devDependencies": {
+        "@types/turndown": "^5.0.5",
+      },
+    },
+    "plugins/web-search-core": {
+      "name": "@oddjob/plugin-web-search-core",
+      "version": "0.0.0",
+      "dependencies": {
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
       },
@@ -475,6 +499,10 @@
     "@oddjob/plugin-openai": ["@oddjob/plugin-openai@workspace:plugins/openai"],
 
     "@oddjob/plugin-openrouter": ["@oddjob/plugin-openrouter@workspace:plugins/openrouter"],
+
+    "@oddjob/plugin-web-fetch-core": ["@oddjob/plugin-web-fetch-core@workspace:plugins/web-fetch-core"],
+
+    "@oddjob/plugin-web-search-core": ["@oddjob/plugin-web-search-core@workspace:plugins/web-search-core"],
 
     "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:packages/providers/queue-memory"],
 

@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@mariozechner/pi-ai";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { PluginRegistry, RoleResolver } from "@oddjob/core";
+import { PluginRegistry, RoleResolver, registerBundled } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
 import { SandboxProcessProvider } from "@oddjob/sandbox-process";
 import { SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import { StateSqliteProvider } from "@oddjob/state-sqlite";
+import { definePlugin } from "@oddjob/sdk";
 
 import { startServer } from "./server.ts";
 import type { Runtime } from "./runtime.ts";
@@ -38,6 +39,33 @@ beforeAll(async () => {
   // Wire the registered faux model so the worker pool's resolveModel can find it.
   llm.registerModelOverride("faux/echo", fauxReg.getModel());
   const plugins = new PluginRegistry();
+  // Inline env-process plugin so the cascade resolver finds the "process" service.
+  registerBundled(
+    plugins,
+    definePlugin({ slug: "env-process", version: "0.0.0" }, (b) =>
+      b.environment({
+        id: "process",
+        displayName: "Process",
+        trustTier: "trusted",
+        capabilities: {
+          snapshot: false,
+          fork: false,
+          pauseResume: false,
+          exposePort: false,
+          egressAllowlist: false,
+          packageManagers: [],
+        },
+        available: async () => ({ ok: true }),
+        create: () => new SandboxProcessProvider(),
+      }),
+    ),
+  );
+  // Hard-default Environment row pointing at "process".
+  await state.upsertEnvironment({
+    id: "default",
+    name: "Default",
+    config: { type: "local", provider: { service: "process" } },
+  });
   const roleResolver = new RoleResolver({
     registry: plugins,
     secrets,
@@ -50,7 +78,6 @@ beforeAll(async () => {
     queue,
     secrets,
     log,
-    sandbox: new SandboxProcessProvider(),
     llm,
     plugins,
     roleResolver,

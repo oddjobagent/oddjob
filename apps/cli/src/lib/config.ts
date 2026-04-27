@@ -22,6 +22,9 @@ export interface ServerConfig {
 
 export interface BuiltinToolsFileConfig {
   web_search?: {
+    /** Web-search plugin slug to dispatch through (preferred). */
+    plugin?: string;
+    /** @deprecated. Legacy alias for `plugin` (brave/tavily/searxng only). */
     provider?: "brave" | "tavily" | "searxng";
     api_key?: string;
     api_key_secret?: string;
@@ -29,10 +32,16 @@ export interface BuiltinToolsFileConfig {
     max_results?: number;
   };
   web_fetch?: {
+    /** Web-fetch plugin slug to dispatch through (default: "raw"). */
+    plugin?: string;
+    api_key?: string;
+    api_key_secret?: string;
     max_body_mb?: number;
     private_ips_allowed?: boolean;
     allowlist?: string[];
     blocklist?: string[];
+    /** Whether to ask the backend to render JavaScript (browserbase/firecrawl). */
+    render_js?: boolean;
   };
 }
 

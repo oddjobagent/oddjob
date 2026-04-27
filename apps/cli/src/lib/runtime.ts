@@ -6,6 +6,7 @@ import type {
   ChannelProvider,
   EngineConfig,
   EngineModelRoleRecord,
+  EnvironmentProvider,
   LegacyResolver,
   ProviderCredentialRecord,
   ResolvedRoleModel,
@@ -13,6 +14,7 @@ import type {
 } from "@oddjob/core";
 import { loadLocalPlugins, PluginRegistry, registerBundled, RoleResolver } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
+import { definePlugin } from "@oddjob/sdk";
 
 import openaiPlugin from "@oddjob/plugin-openai";
 import anthropicPlugin from "@oddjob/plugin-anthropic";
@@ -20,6 +22,8 @@ import openrouterPlugin from "@oddjob/plugin-openrouter";
 import llamaLocalPlugin from "@oddjob/plugin-llama-local";
 import channelsCorePlugin from "@oddjob/plugin-channels-core";
 import builtinToolsPlugin from "@oddjob/plugin-builtin-tools";
+import webSearchCorePlugin from "@oddjob/plugin-web-search-core";
+import webFetchCorePlugin from "@oddjob/plugin-web-fetch-core";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
@@ -28,6 +32,34 @@ import { SchedulerCronerProvider } from "@oddjob/scheduler-croner";
 import { loadOrCreateMasterKey, SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import type { Runtime } from "@oddjob/server";
 import { StateSqliteProvider } from "@oddjob/state-sqlite";
+
+// Bundled "process" environment plugin. Wraps SandboxProcessProvider as an
+// EnvironmentService so the cascade resolver can pick it up via id "process".
+// 15d will move this into a real `@oddjob/plugin-env-process` workspace.
+const envProcessPlugin = definePlugin(
+  {
+    slug: "env-process",
+    name: "Process environment",
+    description: "Trusted-local: runs commands in the host shell (tempdir per session). Dev only.",
+    version: "0.0.0",
+  },
+  (b) =>
+    b.environment({
+      id: "process",
+      displayName: "Process (host shell)",
+      trustTier: "trusted",
+      capabilities: {
+        snapshot: false,
+        fork: false,
+        pauseResume: false,
+        exposePort: false,
+        egressAllowlist: false,
+        packageManagers: [],
+      },
+      available: async () => ({ ok: true }),
+      create: (): EnvironmentProvider => new SandboxProcessProvider(),
+    }),
+);
 
 import {
   LOGS_DB,
@@ -53,7 +85,6 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
   const log = new LoggingSqliteProvider({ path: LOGS_DB });
   await Promise.all([state.connect(), queue.connect(), secrets.connect(), log.connect()]);
 
-  const sandbox = new SandboxProcessProvider();
   const llm = new LlmPiProvider({ secrets });
   const mcp = new McpClientProvider();
   const auth = new AuthLocalProvider({ state, secrets, masterKey });
@@ -73,6 +104,9 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     llamaLocalPlugin,
     channelsCorePlugin,
     builtinToolsPlugin,
+    webSearchCorePlugin,
+    webFetchCorePlugin,
+    envProcessPlugin,
   ]) {
     const reg = registerBundled(plugins, p);
     if (disabledSlugs.has(reg.record.slug)) plugins.setEnabled(reg.record.slug, false);
@@ -124,7 +158,6 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     queue,
     secrets,
     log,
-    sandbox,
     llm,
     mcp,
     auth,
@@ -204,12 +237,15 @@ async function buildEngineConfig(
   const bt = cfg.builtin_tools;
   if (!bt) return undefined;
   const out: EngineConfig = { builtinTools: {} };
-  if (bt.web_search?.provider) {
+  if (bt.web_search) {
     const apiKey =
       (bt.web_search.api_key_secret
         ? await secrets.get(bt.web_search.api_key_secret)
         : undefined) ?? bt.web_search.api_key;
+    // `plugin` is the new field; `provider` is kept as a fallback alias for
+    // legacy configs. The dispatcher tool checks plugin first, then provider.
     out.builtinTools!.webSearch = {
+      plugin: bt.web_search.plugin ?? bt.web_search.provider,
       provider: bt.web_search.provider,
       apiKey,
       baseUrl: bt.web_search.base_url,
@@ -218,10 +254,15 @@ async function buildEngineConfig(
   }
   if (bt.web_fetch) {
     out.builtinTools!.webFetch = {
+      plugin: bt.web_fetch.plugin ?? "raw",
+      apiKey: bt.web_fetch.api_key_secret
+        ? ((await secrets.get(bt.web_fetch.api_key_secret)) ?? undefined)
+        : bt.web_fetch.api_key,
       maxBodyMb: bt.web_fetch.max_body_mb,
       privateIpsAllowed: bt.web_fetch.private_ips_allowed,
       allowlist: bt.web_fetch.allowlist,
       blocklist: bt.web_fetch.blocklist,
+      renderJs: bt.web_fetch.render_js,
     };
   }
   return out;

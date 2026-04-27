@@ -1,0 +1,9 @@
+slug = "web-search-core"
+name = "Web Search Providers"
+description = "Bundled web-search providers: Brave, Tavily, SearXNG, Exa, SerpAPI."
+version = "0.1.0"
+author = "Oddjob"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

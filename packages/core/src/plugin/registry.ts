@@ -12,6 +12,8 @@ import type {
   PluginSource,
   SkillPackService,
   ToolService,
+  WebFetchService,
+  WebSearchService,
 } from "./types.ts";
 
 export interface RegisteredPlugin {
@@ -27,6 +29,8 @@ export class PluginRegistry {
   private readonly mcpBundles = new Map<string, McpBundleService>();
   private readonly skillPacks = new Map<string, SkillPackService>();
   private readonly environments = new Map<string, EnvironmentService>();
+  private readonly webSearches = new Map<string, WebSearchService>();
+  private readonly webFetches = new Map<string, WebFetchService>();
 
   register(plugin: Plugin, source: PluginSource, installedAt = Date.now()): RegisteredPlugin {
     const slug = plugin.manifest.slug;
@@ -94,6 +98,12 @@ export class PluginRegistry {
         case "environment":
           this.environments.set(svc.id, svc);
           break;
+        case "web-search":
+          if (!this.webSearches.has(svc.id)) this.webSearches.set(svc.id, svc);
+          break;
+        case "web-fetch":
+          if (!this.webFetches.has(svc.id)) this.webFetches.set(svc.id, svc);
+          break;
       }
     }
     return entry;
@@ -121,6 +131,12 @@ export class PluginRegistry {
           break;
         case "environment":
           if (this.environments.get(svc.id) === svc) this.environments.delete(svc.id);
+          break;
+        case "web-search":
+          if (this.webSearches.get(svc.id) === svc) this.webSearches.delete(svc.id);
+          break;
+        case "web-fetch":
+          if (this.webFetches.get(svc.id) === svc) this.webFetches.delete(svc.id);
           break;
       }
     }
@@ -176,6 +192,24 @@ export class PluginRegistry {
 
   listEnvironments(): EnvironmentService[] {
     return [...this.environments.values()].filter((svc) => this.isEnabled(svc));
+  }
+
+  webSearchFor(id: string): WebSearchService | undefined {
+    const svc = this.webSearches.get(id);
+    return svc && this.isEnabled(svc) ? svc : undefined;
+  }
+
+  listWebSearches(): WebSearchService[] {
+    return [...this.webSearches.values()].filter((svc) => this.isEnabled(svc));
+  }
+
+  webFetchFor(id: string): WebFetchService | undefined {
+    const svc = this.webFetches.get(id);
+    return svc && this.isEnabled(svc) ? svc : undefined;
+  }
+
+  listWebFetches(): WebFetchService[] {
+    return [...this.webFetches.values()].filter((svc) => this.isEnabled(svc));
   }
 
   /** All enabled MCP bundles across plugins, keyed by owning plugin slug. */

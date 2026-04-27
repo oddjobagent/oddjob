@@ -2,7 +2,6 @@ import type {
   AuthProvider,
   ChannelProvider,
   EngineConfig,
-  EnvironmentProvider,
   LogProvider,
   McpProvider,
   PluginRegistry,
@@ -19,7 +18,6 @@ export interface Runtime {
   queue: QueueProvider;
   secrets: SecretsProvider;
   log: LogProvider;
-  sandbox: EnvironmentProvider;
   llm: LlmPiProvider;
   mcp?: McpProvider;
   auth?: AuthProvider;

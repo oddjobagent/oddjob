@@ -48,3 +48,33 @@ export const remove =
     await rt.state.deleteEnvironment(id);
     return new Response(null, { status: 204 });
   };
+
+/**
+ * GET /api/v1/environments/providers — registered EnvironmentService catalog.
+ * Used by the dashboard's environment-create form. Calls each service's
+ * `available()` so the UI can render an availability badge.
+ */
+export const providers =
+  (rt: Runtime): Handler =>
+  async () => {
+    const services = rt.plugins.listEnvironments();
+    const out = await Promise.all(
+      services.map(async (s) => {
+        let availability: { ok: boolean; reason?: string };
+        try {
+          availability = await s.available();
+        } catch (err) {
+          availability = { ok: false, reason: (err as Error).message };
+        }
+        return {
+          id: s.id,
+          displayName: s.displayName,
+          trustTier: s.trustTier,
+          authHint: s.authHint,
+          capabilities: s.capabilities,
+          available: availability,
+        };
+      }),
+    );
+    return json({ providers: out });
+  };

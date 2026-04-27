@@ -86,6 +86,14 @@ export interface StateProvider extends Provider {
   listModelCatalog(providerSlug?: string): Promise<ModelCatalogRecord[]>;
   upsertModelCatalogEntry(entry: ModelCatalogRecord): Promise<void>;
   deleteModelCatalogEntries(providerSlug: string): Promise<void>;
+
+  // Engine-level singleton settings ---------------------------------------
+  /** Read a JSON-decoded engine setting, or null if unset. */
+  getEngineSetting<T = unknown>(key: string): Promise<T | null>;
+  /** Upsert a JSON-encoded engine setting. */
+  setEngineSetting(key: string, value: unknown): Promise<void>;
+  /** Delete an engine setting key. No-op if missing. */
+  deleteEngineSetting(key: string): Promise<void>;
 }
 
 export interface ChannelTemplate {
