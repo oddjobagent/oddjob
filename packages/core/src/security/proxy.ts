@@ -330,42 +330,52 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
           // Mark pending-tunnel and queue any extra client bytes.
           const pendingBytes: Buffer[] = tail.length > 0 ? [tail] : [];
           setState(socket, { kind: "pending-tunnel", pendingBytes });
-          void openTunnel(socket, chost, port, emit, registerHandle, resolveHost, allowPrivateIps, () => {
-            activeTunnels = Math.max(0, activeTunnels - 1);
-          }, (upstream) => {
-            // Check the client is still pending — if it closed during the
-            // upstream connect, drop the tunnel immediately rather than
-            // writing 200 to a dead socket.
-            const cur = states.get(socket);
-            if (!cur || cur.kind === "closed") {
-              try {
-                upstream.end();
-              } catch {
-                /* ignore */
+          void openTunnel(
+            socket,
+            chost,
+            port,
+            emit,
+            registerHandle,
+            resolveHost,
+            allowPrivateIps,
+            () => {
+              activeTunnels = Math.max(0, activeTunnels - 1);
+            },
+            (upstream) => {
+              // Check the client is still pending — if it closed during the
+              // upstream connect, drop the tunnel immediately rather than
+              // writing 200 to a dead socket.
+              const cur = states.get(socket);
+              if (!cur || cur.kind === "closed") {
+                try {
+                  upstream.end();
+                } catch {
+                  /* ignore */
+                }
+                return;
               }
-              return;
-            }
-            // Replay queued bytes, then flip to tunnel mode.
-            const queued = cur.kind === "pending-tunnel" ? cur.pendingBytes : [];
-            setState(socket, { kind: "tunnel", upstream });
-            try {
-              socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-            } catch {
+              // Replay queued bytes, then flip to tunnel mode.
+              const queued = cur.kind === "pending-tunnel" ? cur.pendingBytes : [];
+              setState(socket, { kind: "tunnel", upstream });
               try {
-                upstream.end();
+                socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
               } catch {
-                /* ignore */
+                try {
+                  upstream.end();
+                } catch {
+                  /* ignore */
+                }
+                return;
               }
-              return;
-            }
-            for (const chunk of queued) {
-              try {
-                upstream.write(chunk);
-              } catch {
-                /* upstream gone */
+              for (const chunk of queued) {
+                try {
+                  upstream.write(chunk);
+                } catch {
+                  /* upstream gone */
+                }
               }
-            }
-          });
+            },
+          );
           return;
         }
         // Plain HTTP. Gate on the URL's host (parsed below in handleHttp /
@@ -643,10 +653,7 @@ async function handleHttp(
       const rewritten = await rewriteString(text, ctx.secrets);
       rewrittenBody = Buffer.from(rewritten, "utf8");
     }
-  } else if (
-    body.length > ctx.maxRewritableBytes &&
-    body.includes(Buffer.from("${secret:"))
-  ) {
+  } else if (body.length > ctx.maxRewritableBytes && body.includes(Buffer.from("${secret:"))) {
     ctx.emit({
       timestamp: Date.now(),
       level: "warn",
@@ -689,9 +696,7 @@ async function handleHttp(
     // pathologically large response from an allowed host.
     const respBytesAll = await upstream.bytes();
     const truncated = respBytesAll.byteLength > ctx.maxResponseBytes;
-    const respBytes = truncated
-      ? respBytesAll.subarray(0, ctx.maxResponseBytes)
-      : respBytesAll;
+    const respBytes = truncated ? respBytesAll.subarray(0, ctx.maxResponseBytes) : respBytesAll;
     // Response body scrub: catches the echo-endpoint exfil (agent POSTs a
     // secret to an allowed host that mirrors the request body back).
     if (ctx.blockTokenShapes && respBytes.byteLength > 0) {

@@ -287,8 +287,8 @@ describe("egress proxy — security hardening", () => {
       // structure; instead we observe the proxy's log entry as a signal.
       const logs: { level: string; message: string }[] = [];
       const proxy2 = await startEgressProxy({
-      allowPrivateIps: true,
-      allowedPorts: [],
+        allowPrivateIps: true,
+        allowedPorts: [],
         allowedHosts: ["127.0.0.1"],
         blockTokenShapes: false,
         onLog: (e) => logs.push({ level: e.level, message: e.message }),
@@ -397,6 +397,192 @@ describe("egress proxy — security hardening", () => {
       expect(text).toContain("chunked");
     } finally {
       await proxy.stop();
+    }
+  });
+});
+
+describe("egress proxy — Phase 15c follow-up hardening", () => {
+  test("DNS rebinding: rebound IP rejected (cloud metadata)", async () => {
+    const upstream = startFakeUpstream(() => new Response("hello"));
+    const denials: string[] = [];
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: false,
+      allowedPorts: [],
+      // allowPrivateIps left false — production posture.
+      resolveHost: async () => "169.254.169.254",
+      onLog: (e) => {
+        if (e.level === "error") denials.push(e.message);
+      },
+    });
+    try {
+      const r = await fetch(upstream.url, { proxy: proxy.url });
+      expect(r.status).toBe(403);
+      expect(await r.text()).toContain("resolved ip rejected");
+      expect(denials.some((m) => m.includes("cloud-metadata"))).toBe(true);
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("DNS rebinding: RFC1918 rejected", async () => {
+    const upstream = startFakeUpstream(() => new Response("hello"));
+    const proxy = await startEgressProxy({
+      allowedHosts: ["allowed.example"],
+      blockTokenShapes: false,
+      allowedPorts: [],
+      resolveHost: async () => "10.0.0.5",
+      onLog: () => {},
+    });
+    try {
+      const r = await fetch("http://allowed.example/", { proxy: proxy.url });
+      expect(r.status).toBe(403);
+      expect(await r.text()).toContain("rfc1918-10");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("response body scrub: upstream returning sk- token blocked with 422", async () => {
+    const upstream = startFakeUpstream(
+      () => new Response("here you go: sk-leaked1234567890abcdef1234"),
+    );
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: true,
+      allowedPorts: [],
+      allowPrivateIps: true,
+    });
+    try {
+      const r = await fetch(upstream.url, { proxy: proxy.url });
+      expect(r.status).toBe(422);
+      expect(await r.text()).toContain("response body contains");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("rewrite-then-scrub: ${secret:NAME} resolving to vendor token IS blocked", async () => {
+    const upstream = startFakeUpstream(() => new Response("ok"));
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: true,
+      allowedPorts: [],
+      allowPrivateIps: true,
+      secrets: fakeSecrets({ leaked: "sk-test1234567890abcdef1234" }),
+    });
+    try {
+      const r = await fetch(upstream.url, {
+        method: "POST",
+        proxy: proxy.url,
+        body: 'token = "${secret:leaked}"',
+      });
+      expect(r.status).toBe(422);
+      expect(await r.text()).toContain("token shape");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("URL token scan: sk- in query string rejected", async () => {
+    const upstream = startFakeUpstream(() => new Response("hello"));
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: true,
+      allowedPorts: [],
+      allowPrivateIps: true,
+    });
+    try {
+      const r = await fetch(`${upstream.url}/?token=sk-leaked1234567890abcdef`, {
+        proxy: proxy.url,
+      });
+      expect(r.status).toBe(422);
+      expect(await r.text()).toContain("url contains");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("port allowlist: connect to non-allowed plain-HTTP port rejected", async () => {
+    const upstream = startFakeUpstream(() => new Response("hello"));
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: false,
+      allowedPorts: [80, 443], // upstream's random port not in list
+      allowPrivateIps: true,
+    });
+    try {
+      const r = await fetch(upstream.url, { proxy: proxy.url });
+      expect(r.status).toBe(403);
+      expect(await r.text()).toContain("port");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
+    }
+  });
+
+  test("duplicate Host headers rejected with 400", async () => {
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: false,
+      allowedPorts: [],
+      allowPrivateIps: true,
+    });
+    try {
+      const url = new URL(proxy.url);
+      const auth = `Basic ${Buffer.from(`${url.username}:${url.password}`).toString("base64")}`;
+      const responseChunks: Buffer[] = [];
+      const socket = await Bun.connect({
+        hostname: "127.0.0.1",
+        port: Number(url.port),
+        socket: {
+          data(_s, d) {
+            responseChunks.push(Buffer.from(d));
+          },
+          open(s) {
+            s.write(
+              `GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nHost: evil.example\r\nProxy-Authorization: ${auth}\r\n\r\n`,
+            );
+          },
+          close() {},
+          error() {},
+        },
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      socket.end();
+      const text = Buffer.concat(responseChunks).toString("utf8");
+      expect(text).toContain("400");
+      expect(text.toLowerCase()).toContain("host");
+    } finally {
+      await proxy.stop();
+    }
+  });
+
+  test("log redaction: vendor tokens replaced with [REDACTED] in log lines", async () => {
+    const upstream = startFakeUpstream(() => new Response("ok"));
+    const logs: string[] = [];
+    const proxy = await startEgressProxy({
+      allowedHosts: ["allowed.example"], // upstream is 127.0.0.1 → denied
+      blockTokenShapes: true,
+      allowedPorts: [],
+      allowPrivateIps: true,
+      onLog: (e) => logs.push(e.message),
+    });
+    try {
+      await fetch(`${upstream.url}/?token=sk-leaked1234567890abcdef`, {
+        proxy: proxy.url,
+      });
+      const allLogs = logs.join("\n");
+      expect(allLogs).toContain("[REDACTED]");
+      expect(allLogs).not.toContain("sk-leaked1234567890abcdef");
+    } finally {
+      await proxy.stop();
+      upstream.stop();
     }
   });
 });

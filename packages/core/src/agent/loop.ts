@@ -164,7 +164,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const networking = environment.config.networking;
   let egressProxy: { url: string; caPem: string; stop: () => Promise<void> } | undefined;
   if (networking?.type === "limited") {
-    const engineHosts = engineRequiredHosts(llm);
+    const engineHosts = engineRequiredHosts(llm, blueprint);
     const allowedHosts = Array.from(new Set([...networking.allowedHosts, ...engineHosts]));
     const handle = await startEgressProxy({
       allowedHosts,
@@ -606,11 +606,15 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
 }
 
 /**
- * Hosts the engine MUST be able to reach (LLM provider base URLs). Auto-
- * merged into the env's allowedHosts so a deployment can't accidentally lock
- * the agent out of its own model API.
+ * Hosts the engine MUST be able to reach for THIS run. Auto-merged into the
+ * env's allowedHosts so a deployment can't accidentally lock the agent out
+ * of either its own model API or its declared MCP servers.
+ *
+ * Sources:
+ *   - LLM provider base URL (parsed from `llm.model.baseUrl`)
+ *   - HTTP/SSE MCP connector hostnames declared in `blueprint.connectors`
  */
-function engineRequiredHosts(llm: ResolvedLLM): readonly string[] {
+function engineRequiredHosts(llm: ResolvedLLM, blueprint: Blueprint): readonly string[] {
   const hosts = new Set<string>();
   const baseUrl = (llm.model as { baseUrl?: string }).baseUrl;
   if (baseUrl) {
@@ -618,6 +622,17 @@ function engineRequiredHosts(llm: ResolvedLLM): readonly string[] {
       hosts.add(new URL(baseUrl).hostname);
     } catch {
       /* malformed url, skip */
+    }
+  }
+  // MCP connectors with HTTP/SSE transport carry an upstream URL — the
+  // session needs to reach those for tool calls to succeed.
+  for (const conn of Object.values(blueprint.connectors ?? {})) {
+    if (conn.transport === "http" || conn.transport === "sse") {
+      try {
+        hosts.add(new URL(conn.server).hostname);
+      } catch {
+        /* malformed url, skip */
+      }
     }
   }
   return [...hosts];
