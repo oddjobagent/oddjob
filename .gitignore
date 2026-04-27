@@ -9,6 +9,8 @@ build/
 coverage/
 .bun/
 .oddjob/
+.oddjob-env
+.oddjob-ca.pem
 *.db
 *.db-journal
 *.db-wal

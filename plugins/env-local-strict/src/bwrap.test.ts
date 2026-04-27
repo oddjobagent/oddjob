@@ -63,7 +63,9 @@ describeBwrap("BwrapEnvironmentProvider (Linux)", () => {
   test("writeFile to absolute path outside workdir is rejected (FS policy)", async () => {
     const sb = new BwrapEnvironmentProvider();
     const session = await sb.spawn({});
-    await expect(session.writeFile("/etc/oddjob-pwn", "boom")).rejects.toThrow(/refusing path outside/);
+    await expect(session.writeFile("/etc/oddjob-pwn", "boom")).rejects.toThrow(
+      /refusing path outside/,
+    );
     await session.kill();
   });
 

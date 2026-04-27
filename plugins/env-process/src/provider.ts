@@ -65,7 +65,8 @@ class ProcessSession implements EnvironmentSession {
     this.sessionAbort = config.signal;
     if (this.sessionAbort) {
       const fanout = (): void => {
-        const snap = Array.from(this.sessionAbortHandlers); for (const h of snap) h();
+        const snap = Array.from(this.sessionAbortHandlers);
+        for (const h of snap) h();
       };
       if (this.sessionAbort.aborted) {
         // Defer so callers can attach handlers first.

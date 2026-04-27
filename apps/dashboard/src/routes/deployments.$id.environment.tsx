@@ -356,15 +356,13 @@ function mergeInline(
     next.networking = { type: "limited", allowedHosts: hosts };
   } else if (existing.networking?.type === "limited") {
     // Form cleared — drop the networking override; resolver inherits base.
-    const { networking: _drop, ...rest } = next;
-    Object.assign(next, rest);
     delete (next as { networking?: unknown }).networking;
   }
 
   const cpuNum = form.cpu ? Number(form.cpu) : null;
   const memNum = form.memMb ? Number(form.memMb) : null;
   const resources: { cpu?: number; memMb?: number; diskMb?: number } = {
-    ...(existing.resources ?? {}),
+    ...existing.resources,
   };
   if (cpuNum != null && Number.isFinite(cpuNum)) resources.cpu = cpuNum;
   else delete resources.cpu;

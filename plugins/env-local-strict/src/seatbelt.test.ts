@@ -102,8 +102,12 @@ describeMac("SeatbeltEnvironmentProvider (macOS)", () => {
   test("writeFile to absolute path outside workdir is rejected (FS policy)", async () => {
     const sb = new SeatbeltEnvironmentProvider();
     const session = await sb.spawn({});
-    await expect(session.writeFile("/etc/oddjob-pwn", "boom")).rejects.toThrow(/refusing path outside/);
-    await expect(session.writeFile("../escape.txt", "boom")).rejects.toThrow(/refusing path outside/);
+    await expect(session.writeFile("/etc/oddjob-pwn", "boom")).rejects.toThrow(
+      /refusing path outside/,
+    );
+    await expect(session.writeFile("../escape.txt", "boom")).rejects.toThrow(
+      /refusing path outside/,
+    );
     await session.kill();
   });
 
@@ -231,7 +235,9 @@ describeMac("SeatbeltEnvironmentProvider (macOS)", () => {
     // under the profile if they are on PATH (allowlisted /opt/homebrew etc.).
     // We do NOT assert success — only that the sandbox does not block the
     // runtime from finding + loading them.
-    const r2 = await session.exec("command -v bun >/dev/null && bun -e \"console.log(1)\" || echo bun-absent");
+    const r2 = await session.exec(
+      'command -v bun >/dev/null && bun -e "console.log(1)" || echo bun-absent',
+    );
     expect(r2.stdout).toMatch(/^1$|^bun-absent$/m);
     await session.kill();
   });

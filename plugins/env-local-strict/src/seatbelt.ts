@@ -1,11 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type {
-  EnvironmentProvider,
-  EnvironmentRunConfig,
-  EnvironmentSession,
-} from "@oddjob/core";
+import type { EnvironmentProvider, EnvironmentRunConfig, EnvironmentSession } from "@oddjob/core";
 
 import {
   newWrapperContext,
@@ -83,7 +79,7 @@ export function buildSeatbeltProfile(
     ...userSubpathAllows(),
     `(allow file-write* (subpath ${wd}))`,
     `(allow file-write* (subpath ${md}))`,
-    "(allow file-write-data (literal \"/dev/null\"))",
+    '(allow file-write-data (literal "/dev/null"))',
     "(allow sysctl-read)",
     "(allow mach-lookup)",
     "(allow ipc-posix-shm)",

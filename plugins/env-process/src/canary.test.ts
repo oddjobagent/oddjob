@@ -112,7 +112,9 @@ describe("ProcessEnvironmentProvider", () => {
     const session = await sb.spawn({
       egressProxy: { url: "http://oddjob:t0k@127.0.0.1:8888", caPem: "" },
     });
-    const r = await session.exec("echo HTTPS_PROXY=$HTTPS_PROXY; echo CA_PATH=[$NODE_EXTRA_CA_CERTS]");
+    const r = await session.exec(
+      "echo HTTPS_PROXY=$HTTPS_PROXY; echo CA_PATH=[$NODE_EXTRA_CA_CERTS]",
+    );
     expect(r.stdout).toContain("HTTPS_PROXY=http://oddjob:t0k@127.0.0.1:8888");
     expect(r.stdout).toContain("CA_PATH=[]");
     await session.kill();

@@ -62,7 +62,8 @@ export class WrappedSession implements EnvironmentSession {
     this.sessionAbort = ctx.config.signal;
     if (this.sessionAbort) {
       const fanout = (): void => {
-        const snap = Array.from(this.sessionAbortHandlers); for (const h of snap) h();
+        const snap = Array.from(this.sessionAbortHandlers);
+        for (const h of snap) h();
       };
       if (this.sessionAbort.aborted) {
         queueMicrotask(fanout);

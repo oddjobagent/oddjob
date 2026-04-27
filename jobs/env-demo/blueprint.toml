@@ -1,0 +1,52 @@
+name = "env-demo"
+version = "0.1.0"
+description = "Phase 15 cross-cutting E2E: exercise environment isolation + egress allowlist + bash + python in one run."
+author = "demo"
+tags = ["demo", "phase-15", "security"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-haiku-4-5"
+
+prompt = """
+You are the Phase 15 environment integration test. In one Run, prove that:
+
+1. The shell environment does NOT contain `OPENROUTER_API_KEY` (host secret should not leak into the sandbox).
+2. `curl https://example.com/` succeeds (allowlisted host via the egress proxy).
+3. `python3 -c 'print(2 + 2)'` returns 4 (interpreter available inside the env).
+
+Run each check, then output a single JSON object on the final line with keys:
+- `secret_isolated`: true if printenv did not contain OPENROUTER_API_KEY, else false.
+- `allowed_egress_ok`: true if curl returned status 200, else false.
+- `python_ok`: true if python printed "4", else false.
+- `summary`: one sentence describing the run.
+
+Do not call additional tools beyond what's needed for these three checks.
+"""
+
+tools = ["bash"]
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"
+
+[outcomes]
+success = "All three checks passed."
+warning = "One check failed; investigate."
+error_tools = []
+warning_tools = []
+max_retries = 0
+
+[output_schema]
+type = "object"
+required = ["secret_isolated", "allowed_egress_ok", "python_ok", "summary"]
+
+[output_schema.properties.secret_isolated]
+type = "boolean"
+
+[output_schema.properties.allowed_egress_ok]
+type = "boolean"
+
+[output_schema.properties.python_ok]
+type = "boolean"
+
+[output_schema.properties.summary]
+type = "string"

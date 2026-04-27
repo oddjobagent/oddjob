@@ -64,9 +64,7 @@ export async function validateStrictWorkdir(workdir: string): Promise<void> {
   }
   for (const forbidden of FORBIDDEN_ROOTS) {
     if (real === forbidden) {
-      throw new Error(
-        `env-local-strict: workdir ${real} is a forbidden system root`,
-      );
+      throw new Error(`env-local-strict: workdir ${real} is a forbidden system root`);
     }
   }
 }
@@ -113,11 +111,7 @@ export async function resolveInsideStrict(root: string, path: string): Promise<s
   const realRoot = await realpath(root);
   const realAncestor = await realpathOfClosestAncestor(abs);
   const realRel = relative(realRoot, realAncestor);
-  if (
-    realRel.startsWith("..") ||
-    isAbsolute(realRel) ||
-    realRel.split(sep).includes("..")
-  ) {
+  if (realRel.startsWith("..") || isAbsolute(realRel) || realRel.split(sep).includes("..")) {
     throw new Error(
       `env-local-strict: refusing symlink-escape path: ${path} (lex ${abs}; real ${realAncestor}; root ${realRoot})`,
     );

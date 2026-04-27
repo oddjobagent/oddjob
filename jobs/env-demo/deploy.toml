@@ -1,0 +1,13 @@
+blueprint = "./blueprint.toml"
+environment = "env-demo"
+
+[[trigger]]
+type = "manual"
+
+[[channel]]
+type = "console"
+
+[limits]
+duration = "2m"
+tool_calls = 10
+budget = 0.10

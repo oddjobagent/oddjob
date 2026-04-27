@@ -1,0 +1,19 @@
+id = "env-demo"
+name = "Phase 15 cross-cutting E2E"
+description = """
+Used by jobs/env-demo. Exercises egress allowlist + secret-rewrite + bash
++ python under whichever provider is the engine default. Push with:
+
+  oddjob environment push environments/env-demo.toml
+
+then `oddjob run env-demo --follow`.
+"""
+
+[config]
+type = "local"
+
+[config.networking]
+type = "limited"
+allowed_hosts = ["example.com"]
+allow_mcp_servers = true
+allow_package_managers = false

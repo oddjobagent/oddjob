@@ -1,8 +1,4 @@
-import type {
-  EnvironmentProvider,
-  EnvironmentRunConfig,
-  EnvironmentSession,
-} from "@oddjob/core";
+import type { EnvironmentProvider, EnvironmentRunConfig, EnvironmentSession } from "@oddjob/core";
 
 /**
  * Windows AppContainer wrapper. v1 punts to WSL2 (planned: `wsl bwrap ...`)

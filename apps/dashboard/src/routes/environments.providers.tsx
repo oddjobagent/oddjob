@@ -4,11 +4,7 @@ import { CheckCircle2, XCircle } from "lucide-react";
 
 import type { EnvironmentProviderDescriptor } from "@oddjob/api-client";
 
-import {
-  useEnvironmentProviders,
-  useProvider,
-  useProviderMutations,
-} from "../api/queries.ts";
+import { useEnvironmentProviders, useProvider, useProviderMutations } from "../api/queries.ts";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";

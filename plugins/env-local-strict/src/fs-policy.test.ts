@@ -55,8 +55,12 @@ describe("resolveInsideStrict", () => {
 
   test("rejects relative path that escapes via ..", async () => {
     const root = await mkdtemp(join(tmpdir(), "oddjob-rinside-"));
-    await expect(resolveInsideStrict(root, "../escape.txt")).rejects.toThrow(/refusing path outside/);
-    await expect(resolveInsideStrict(root, "a/../../escape.txt")).rejects.toThrow(/refusing path outside/);
+    await expect(resolveInsideStrict(root, "../escape.txt")).rejects.toThrow(
+      /refusing path outside/,
+    );
+    await expect(resolveInsideStrict(root, "a/../../escape.txt")).rejects.toThrow(
+      /refusing path outside/,
+    );
   });
 
   test("accepts absolute path that resolves inside root", async () => {
@@ -92,7 +96,9 @@ describe("resolveInsideStrict", () => {
   test("rejects writeFile target inside a symlinked subdir", async () => {
     const root = await mkdtemp(join(tmpdir(), "oddjob-symlink-"));
     await symlink("/tmp", join(root, "tmplink"));
-    await expect(resolveInsideStrict(root, "tmplink/newfile.txt")).rejects.toThrow(/symlink-escape/);
+    await expect(resolveInsideStrict(root, "tmplink/newfile.txt")).rejects.toThrow(
+      /symlink-escape/,
+    );
   });
 
   test("accepts a workdir that is itself a symlink to another tmpdir", async () => {
