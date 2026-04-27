@@ -3,7 +3,14 @@
 
 import type { ProviderCredential, WebSearchOptions, WebSearchResult } from "@oddjob/sdk";
 
+import { hostFromBaseUrl } from "./host-from-baseurl.ts";
+
 const DEFAULT_BASE_URL = "https://serpapi.com/search";
+
+export function serpapiResolveHost(cred: ProviderCredential): string | undefined {
+  const opt = typeof cred.options?.baseUrl === "string" ? cred.options.baseUrl : undefined;
+  return hostFromBaseUrl(opt, DEFAULT_BASE_URL);
+}
 
 interface SerpApiResponse {
   organic_results?: Array<{

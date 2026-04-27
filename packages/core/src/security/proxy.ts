@@ -42,6 +42,11 @@ import { isIP } from "node:net";
 
 import type { LogEntry, LogProvider } from "../providers/logging.ts";
 import type { SecretsProvider } from "../providers/secrets.ts";
+import { makeHostMatcher } from "./host-match.ts";
+import { redactString } from "./redact.ts";
+
+// Re-exported for backwards compatibility — callers used to import from proxy.ts.
+export { redactString, deepRedact } from "./redact.ts";
 
 export interface EgressProxyOptions {
   /** Hosts allowed for egress. Unrestricted when set to `"*"`. */
@@ -77,6 +82,23 @@ export interface EgressProxyOptions {
    * this. Default false (production).
    */
   allowPrivateIps?: boolean;
+  /**
+   * Address to bind the listening socket on. Defaults to `127.0.0.1`.
+   *
+   * Container tiers (env-docker on Linux) need the proxy reachable from the
+   * docker bridge: 127.0.0.1 inside the container is the container itself,
+   * and `host.docker.internal` resolves to the bridge gateway IP (typically
+   * 172.17.0.1 on Linux Docker engine), so a proxy bound only on loopback
+   * accepts no connections from the container. The provider supplies this
+   * value via its optional `proxyBindAddress()` hook; the runtime forwards
+   * it here.
+   *
+   * The returned `url` always uses the configured bindAddress as its
+   * hostname. Per-Run Proxy-Auth still gates every request, so binding on a
+   * non-loopback IP does not weaken authentication; it only widens the
+   * accept set.
+   */
+  bindAddress?: string;
 }
 
 export interface EgressProxyHandle {
@@ -129,6 +151,7 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
     maxConcurrentTunnels = 16,
     resolveHost = defaultResolveHost,
     allowPrivateIps = false,
+    bindAddress = "127.0.0.1",
   } = opts;
 
   const isAllowed = makeAllowlist(allowedHosts);
@@ -175,7 +198,7 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
   };
 
   const server = Bun.listen<undefined>({
-    hostname: "127.0.0.1",
+    hostname: bindAddress,
     port: 0,
     socket: {
       open(socket) {
@@ -457,13 +480,13 @@ export async function startEgressProxy(opts: EgressProxyOptions): Promise<Egress
   emit({
     timestamp: Date.now(),
     level: "info",
-    message: `egress proxy listening on 127.0.0.1:${port} (allowlist: ${
+    message: `egress proxy listening on ${bindAddress}:${port} (allowlist: ${
       allowedHosts === "*" ? "*" : (allowedHosts as readonly string[]).join(",")
     })`,
   });
 
   return {
-    url: `http://oddjob:${token}@127.0.0.1:${port}`,
+    url: `http://oddjob:${token}@${bindAddress}:${port}`,
     caPem: "",
     async stop() {
       for (const cleanup of openHandles.values()) cleanup();
@@ -878,18 +901,10 @@ function scanTokenShapes(body: string): string | undefined {
 }
 
 function makeAllowlist(allowed: readonly string[] | "*"): (host: string) => boolean {
-  if (allowed === "*") return () => true;
-  const exact = new Set(allowed);
-  const wildcards = (allowed as readonly string[])
-    .filter((h) => h.startsWith("*."))
-    .map((h) => h.slice(2));
-  return (host: string) => {
-    if (exact.has(host)) return true;
-    for (const suffix of wildcards) {
-      if (host.endsWith(`.${suffix}`) || host === suffix) return true;
-    }
-    return false;
-  };
+  // Hostnames are case-insensitive per RFC 1035; delegate to the shared
+  // matcher so the proxy's allowlist behaves the same as the in-process
+  // env-egress gate used by web_fetch / web_search.
+  return makeHostMatcher(allowed);
 }
 
 function makePortAllowlist(allowed: readonly number[]): (port: number) => boolean {
@@ -943,22 +958,6 @@ export function isPrivateOrSensitiveIP(ip: string): string | undefined {
     return undefined;
   }
   return undefined;
-}
-
-const REDACT_PATTERNS: readonly RegExp[] = [
-  /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
-  /\bsk-[A-Za-z0-9_-]{20,}\b/g,
-  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
-  /\b(?:xoxb|xoxp|xapp|xwfp)-[A-Za-z0-9-]{20,}\b/g,
-  /\bdtn_[a-f0-9]{40,}\b/g,
-];
-
-/** Replace any token-shape match with `[REDACTED]`. Used in log lines. */
-export function redactString(s: string): string {
-  let out = s;
-  for (const re of REDACT_PATTERNS) out = out.replace(re, "[REDACTED]");
-  return out;
 }
 
 function writeResponse(

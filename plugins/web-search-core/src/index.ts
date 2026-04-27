@@ -5,11 +5,11 @@
 
 import { definePlugin } from "@oddjob/sdk";
 
-import { braveSearch } from "./brave.ts";
-import { exaSearch } from "./exa.ts";
-import { searxngSearch } from "./searxng.ts";
-import { serpapiSearch } from "./serpapi.ts";
-import { tavilySearch } from "./tavily.ts";
+import { braveResolveHost, braveSearch } from "./brave.ts";
+import { exaResolveHost, exaSearch } from "./exa.ts";
+import { searxngResolveHost, searxngSearch } from "./searxng.ts";
+import { serpapiResolveHost, serpapiSearch } from "./serpapi.ts";
+import { tavilyResolveHost, tavilySearch } from "./tavily.ts";
 
 export default definePlugin(
   {
@@ -25,30 +25,35 @@ export default definePlugin(
       displayName: "Brave Search",
       authHint: "BRAVE_API_KEY (free tier: 2k queries/month for grandfathered users).",
       search: braveSearch,
+      resolveHost: braveResolveHost,
     });
     b.webSearch({
       id: "tavily",
       displayName: "Tavily",
       authHint: "TAVILY_API_KEY (free tier: 1k/month).",
       search: tavilySearch,
+      resolveHost: tavilyResolveHost,
     });
     b.webSearch({
       id: "searxng",
       displayName: "SearXNG",
       authHint: "Self-hosted base URL via options.baseUrl. No API key required.",
       search: searxngSearch,
+      resolveHost: searxngResolveHost,
     });
     b.webSearch({
       id: "exa",
       displayName: "Exa",
       authHint: "EXA_API_KEY (neural search, per-doc text + highlights).",
       search: exaSearch,
+      resolveHost: exaResolveHost,
     });
     b.webSearch({
       id: "serpapi",
       displayName: "SerpAPI",
       authHint: "SERPAPI_API_KEY (Google/Bing/Baidu/etc. via options.engine).",
       search: serpapiSearch,
+      resolveHost: serpapiResolveHost,
     });
   },
 );

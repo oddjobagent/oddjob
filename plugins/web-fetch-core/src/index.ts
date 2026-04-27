@@ -22,24 +22,33 @@ export default definePlugin(
       displayName: "Raw (Bun-native)",
       authHint: "No API key. Bun's fetch with manual redirect + HTML→markdown.",
       fetch: rawFetch,
+      // Raw follows redirects in-process and re-runs the dispatcher's
+      // validateUrl callback for every Location target.
+      supportsRedirectValidation: true,
     });
     b.webFetch({
       id: "browserbase",
       displayName: "Browserbase",
       authHint: "BROWSERBASE_API_KEY. Managed Chromium with proxy + captcha solving.",
       fetch: browserbaseFetch,
+      // Managed scraper follows redirects server-side; we cannot enforce a
+      // per-hop gate. Dispatcher refuses this backend in limited-networking
+      // envs and post-validates the final URL otherwise.
+      supportsRedirectValidation: false,
     });
     b.webFetch({
       id: "firecrawl",
       displayName: "Firecrawl",
       authHint: "FIRECRAWL_API_KEY. JS-rendered scrape with clean markdown extraction.",
       fetch: firecrawlFetch,
+      supportsRedirectValidation: false,
     });
     b.webFetch({
       id: "scrapingbee",
       displayName: "ScrapingBee",
       authHint: "SCRAPINGBEE_API_KEY. Proxy + JS render via GET.",
       fetch: scrapingbeeFetch,
+      supportsRedirectValidation: false,
     });
   },
 );

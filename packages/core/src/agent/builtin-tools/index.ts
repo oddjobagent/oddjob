@@ -74,6 +74,20 @@ export interface BuildBuiltinToolsOptions {
    * look up the current `provider_credentials` row for the configured plugin.
    */
   state?: import("../../providers/state.ts").StateProvider;
+  /**
+   * Hosts the surrounding environment permits egress to. Set when the env's
+   * networking is `"limited"`; left undefined for unrestricted envs. When
+   * defined, web_fetch + web_search refuse to dispatch to hosts outside the
+   * union of `envAllowedHosts ∪ engineRequiredHosts`. This mirrors the egress
+   * proxy gate so the tools can't bypass it by running in the agent process.
+   */
+  envAllowedHosts?: readonly string[];
+  /**
+   * Hosts the engine itself must reach (LLM provider base URL + declared MCP
+   * server hostnames). Always permitted alongside `envAllowedHosts`. Empty
+   * array is fine — only `envAllowedHosts === undefined` disables the gate.
+   */
+  engineRequiredHosts?: readonly string[];
 }
 
 export const BUILTIN_TOOL_NAMES = [
@@ -117,6 +131,8 @@ export function buildSingleBuiltinTool(
       plugins: opts.plugins,
       secrets: opts.secrets,
       state: opts.state,
+      envAllowedHosts: opts.envAllowedHosts,
+      engineRequiredHosts: opts.engineRequiredHosts,
     }) as AgentTool<TSchema>;
   }
   if (name === "web_search") {
@@ -126,6 +142,8 @@ export function buildSingleBuiltinTool(
       plugins: opts.plugins,
       secrets: opts.secrets,
       state: opts.state,
+      envAllowedHosts: opts.envAllowedHosts,
+      engineRequiredHosts: opts.engineRequiredHosts,
     }) as AgentTool<TSchema>;
   }
   if (name === "javascript_repl") {

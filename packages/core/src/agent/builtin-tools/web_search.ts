@@ -13,6 +13,7 @@ import type { StateProvider } from "../../providers/state.ts";
 import type { PluginRegistry } from "../../plugin/registry.ts";
 import type { ProviderCredential, WebSearchResult } from "../../plugin/types.ts";
 import type { WebSearchConfig } from "./index.ts";
+import { checkEnvAllowlist } from "./env-egress.ts";
 
 const schema = Type.Object({
   query: Type.String({ description: "Search query." }),
@@ -32,6 +33,14 @@ export interface WebSearchToolOptions {
   plugins?: PluginRegistry;
   secrets?: SecretsProvider;
   state?: StateProvider;
+  /**
+   * Hosts the surrounding env permits egress to. When defined (env networking
+   * is `"limited"`), web_search refuses to dispatch to a provider whose base
+   * URL host isn't in `envAllowedHosts ∪ engineRequiredHosts`. Undefined
+   * disables the gate.
+   */
+  envAllowedHosts?: readonly string[];
+  engineRequiredHosts?: readonly string[];
 }
 
 export function createWebSearchTool(opts: WebSearchToolOptions = {}): AgentTool<typeof schema> {
@@ -61,6 +70,34 @@ export function createWebSearchTool(opts: WebSearchToolOptions = {}): AgentTool<
         return errorResult(`web-search plugin '${slug}' not registered or disabled`, slug);
       }
       const credential = await materializeCredential(slug, opts.state, opts.secrets, cfg);
+
+      // Env-egress gate. Only runs when the surrounding env declares
+      // `networking.type === "limited"` (signalled by `envAllowedHosts !==
+      // undefined`). Asking the SERVICE to resolve the host means the gate
+      // sees the EXACT hostname the provider's `search()` will hit, instead
+      // of trusting `credential.baseUrl` (which providers may override
+      // internally with a per-plugin default).
+      if (opts.envAllowedHosts !== undefined) {
+        const providerHost = svc.resolveHost(credential);
+        if (!providerHost) {
+          return errorResult(
+            `cannot determine egress host for plugin '${slug}' — set baseUrl on the credential`,
+            slug,
+          );
+        }
+        const envGate = checkEnvAllowlist(
+          providerHost,
+          opts.envAllowedHosts,
+          opts.engineRequiredHosts,
+        );
+        if (!envGate.allowed) {
+          return errorResult(
+            `provider host '${providerHost}' for plugin '${slug}' not in env egress allowlist (${envGate.allowedSummary})`,
+            slug,
+          );
+        }
+      }
+
       const start = Date.now();
       try {
         const results = await svc.search(params.query, credential, {
@@ -96,6 +133,7 @@ function formatResults(results: readonly WebSearchResult[]): string {
   if (results.length === 0) return "No results.";
   return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
 }
+
 
 /**
  * Look up the credential row for `<slug>:default` in `provider_credentials`,

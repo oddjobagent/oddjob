@@ -7,3 +7,4 @@ export * from "./agent/index.ts";
 export * from "./skills/index.ts";
 export * from "./plugin/index.ts";
 export * from "./engine/index.ts";
+export { redactString, deepRedact, redactStringified } from "./security/redact.ts";

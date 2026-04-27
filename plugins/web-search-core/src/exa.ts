@@ -3,7 +3,14 @@
 
 import type { ProviderCredential, WebSearchOptions, WebSearchResult } from "@oddjob/sdk";
 
+import { hostFromBaseUrl } from "./host-from-baseurl.ts";
+
 const DEFAULT_BASE_URL = "https://api.exa.ai/search";
+
+export function exaResolveHost(cred: ProviderCredential): string | undefined {
+  const opt = typeof cred.options?.baseUrl === "string" ? cred.options.baseUrl : undefined;
+  return hostFromBaseUrl(opt, DEFAULT_BASE_URL);
+}
 
 interface ExaResponse {
   results?: Array<{

@@ -313,6 +313,17 @@ export interface WebSearchService {
     credential: ProviderCredential,
     opts?: WebSearchOptions,
   ): Promise<readonly WebSearchResult[]>;
+  /**
+   * Return the EXACT hostname the provider will contact for the given
+   * credential. The web_search dispatcher calls this BEFORE `search()` and
+   * gates against the env's egress allowlist using the returned host. Must
+   * mirror whatever fallback logic `search()` uses internally (default URL
+   * when `credential.options.baseUrl` is absent, etc.).
+   *
+   * Return `undefined` when the host cannot be determined (e.g. self-hosted
+   * provider with no baseUrl configured) — the dispatcher fails closed.
+   */
+  resolveHost(credential: ProviderCredential): string | undefined;
 }
 
 // Web fetch ----------------------------------------------------------------
@@ -324,6 +335,16 @@ export interface WebFetchOptions {
   renderJs?: boolean;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  /**
+   * Per-hop URL validator. The dispatcher injects this so every redirect
+   * Location target is re-checked against the SSRF + env-egress gates BEFORE
+   * the fetcher follows it. Implementations MUST `await validateUrl(target)`
+   * for the initial URL AND every redirect; the validator throws when the
+   * target is rejected (callers should let the error propagate). Optional
+   * for backwards compat — when undefined, the fetcher skips per-hop checks
+   * and trusts the dispatcher's pre-flight validation only.
+   */
+  validateUrl?: (url: string) => Promise<void>;
 }
 
 export interface WebFetchResult {
@@ -344,6 +365,18 @@ export interface WebFetchService {
   id: string;
   displayName: string;
   authHint?: string;
+  /**
+   * Whether this backend honours `WebFetchOptions.validateUrl` on every
+   * redirect hop. `true` only for backends that follow redirects in-process
+   * (raw). Managed/SaaS scrapers (browserbase, firecrawl, scrapingbee, etc.)
+   * delegate redirect-following to their upstream service and CANNOT enforce
+   * the per-hop gate — they should set this to `false`. The `web_fetch`
+   * dispatcher refuses to use a backend with `supportsRedirectValidation:
+   * false` when the surrounding env declares `networking.type === "limited"`,
+   * because allowing it would re-open the redirect-bypass class. Defaults
+   * to `false` for safety when omitted.
+   */
+  supportsRedirectValidation?: boolean;
   /**
    * Fetch a URL. Implementations should respect SSRF guard policy at the
    * call site (the dispatcher tool enforces it before reaching here).

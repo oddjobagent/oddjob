@@ -90,4 +90,64 @@ describe("rawFetch", () => {
     expect(r.format).toBe("json");
     expect(r.body).toContain("\n  ");
   });
+
+  test("re-runs validateUrl on every redirect target (closes redirect bypass)", async () => {
+    // The fetcher MUST call validateUrl for the Location target before
+    // following the redirect. Without this, an allowed origin could redirect
+    // the agent at a private IP / disallowed host.
+    const seen: string[] = [];
+    const fetchImpl = mockFetch({
+      "https://1.1.1.1/start": () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://169.254.169.254/latest" },
+        }),
+      "https://169.254.169.254/latest": () => new Response("metadata"),
+    });
+    let validatorErr: unknown;
+    try {
+      await rawFetch(
+        "https://1.1.1.1/start",
+        {},
+        {
+          fetchImpl,
+          validateUrl: async (url) => {
+            seen.push(url);
+            if (url.includes("169.254")) throw new Error("egress: refused redirect target");
+          },
+        },
+      );
+    } catch (err) {
+      validatorErr = err;
+    }
+    expect(validatorErr).toBeDefined();
+    expect(String((validatorErr as Error).message)).toContain("refused redirect target");
+    // Validator was invoked with the redirect target (NOT just the initial URL).
+    expect(seen).toContain("https://169.254.169.254/latest");
+  });
+
+  test("validateUrl that resolves lets the redirect proceed", async () => {
+    let validatorCalls = 0;
+    const fetchImpl = mockFetch({
+      "https://1.1.1.1/a": () =>
+        new Response(null, { status: 302, headers: { location: "https://2.2.2.2/b" } }),
+      "https://2.2.2.2/b": () =>
+        new Response("ok", { status: 200, headers: { "content-type": "text/plain" } }),
+    });
+    const r = await rawFetch(
+      "https://1.1.1.1/a",
+      {},
+      {
+        fetchImpl,
+        validateUrl: async () => {
+          validatorCalls++;
+        },
+      },
+    );
+    expect(r.status).toBe(200);
+    expect(r.body).toContain("ok");
+    // validator only fires for the redirect, not the initial URL (the
+    // dispatcher already validated that pre-flight).
+    expect(validatorCalls).toBe(1);
+  });
 });

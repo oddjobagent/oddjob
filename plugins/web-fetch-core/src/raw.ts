@@ -2,9 +2,11 @@
 // caps, and HTML→markdown via turndown. Same posture as the original
 // builtin web_fetch implementation but lifted into a plugin.
 //
-// SSRF guarding is the dispatcher's responsibility — by the time we get here
-// the URL has already been validated against allowlist/blocklist/private-IP
-// policy.
+// SSRF + env-egress guarding is the dispatcher's responsibility for the
+// INITIAL URL. For redirects, the dispatcher passes a per-hop `validateUrl`
+// callback in opts — we MUST call it on every Location target before
+// following, otherwise an allowed origin can 302 us at a private IP /
+// disallowed host.
 
 import TurndownService from "turndown";
 
@@ -67,7 +69,13 @@ export async function rawFetch(
       if (redirects >= MAX_REDIRECTS) {
         throw new Error(`too many redirects (>${MAX_REDIRECTS})`);
       }
-      target = new URL(resp.headers.get("location")!, target).toString();
+      const next = new URL(resp.headers.get("location")!, target).toString();
+      // Re-run the dispatcher's SSRF + env-egress gate on the redirect
+      // target. Throws if the next hop violates either policy.
+      if (opts?.validateUrl) {
+        await opts.validateUrl(next);
+      }
+      target = next;
       redirects++;
       continue;
     }

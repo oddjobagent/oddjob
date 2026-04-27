@@ -1,5 +1,14 @@
 import type { ProviderCredential, WebSearchOptions, WebSearchResult } from "@oddjob/sdk";
 
+import { hostFromBaseUrl } from "./host-from-baseurl.ts";
+
+export function searxngResolveHost(cred: ProviderCredential): string | undefined {
+  const opt = typeof cred.options?.baseUrl === "string" ? cred.options.baseUrl : undefined;
+  // No default — searxng is always self-hosted; the dispatcher fails closed
+  // when both the credential.baseUrl and options.baseUrl are absent.
+  return hostFromBaseUrl(opt, cred.baseUrl);
+}
+
 interface SearxngResponse {
   results?: Array<{ title?: string; url?: string; content?: string }>;
 }

@@ -1,6 +1,12 @@
 import { Database } from "bun:sqlite";
 
-import type { LogEntry, LogProvider, LogQuery } from "@oddjob/core";
+import {
+  redactString,
+  redactStringified,
+  type LogEntry,
+  type LogProvider,
+  type LogQuery,
+} from "@oddjob/core";
 
 import { runMigrations } from "./migrate.ts";
 
@@ -38,17 +44,20 @@ export class LoggingSqliteProvider implements LogProvider {
   }
 
   async log(runId: string, entry: LogEntry): Promise<void> {
+    // Defense-in-depth at the storage boundary. `redactStringified` runs
+    // JSON.stringify FIRST, then scrubs the resulting string — so a meta
+    // value with a custom `toJSON()` returning a token-bearing shape can't
+    // smuggle the token past `deepRedact`. This is the canonical scrub for
+    // anything destined for `meta_json`. The message column is scrubbed too
+    // because tool dispatchers may forget to pre-redact (proxy log lines
+    // already do).
+    const safeMessageJson = entry.meta != null ? redactStringified(entry.meta) : null;
+    const safeMessage = redactString(entry.message);
     this.db
       .query(
         `INSERT INTO run_logs (run_id, level, message, meta_json, timestamp) VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(
-        runId,
-        entry.level,
-        entry.message,
-        entry.meta ? JSON.stringify(entry.meta) : null,
-        entry.timestamp,
-      );
+      .run(runId, entry.level, safeMessage, safeMessageJson, entry.timestamp);
   }
 
   async getLogs(runId: string, options?: LogQuery): Promise<LogEntry[]> {
