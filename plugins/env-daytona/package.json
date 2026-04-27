@@ -1,0 +1,22 @@
+{
+  "name": "@oddjob/plugin-env-daytona",
+  "version": "0.1.0",
+  "description": "Oddjob plugin: Daytona remote-VM environment (Firecracker-backed sandboxes with snapshot/fork/preview-URL caps).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@daytonaio/sdk": "latest",
+    "@oddjob/core": "workspace:*",
+    "@oddjob/sdk": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}

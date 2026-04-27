@@ -28,6 +28,8 @@
     "@oddjob/plugin-anthropic": "workspace:*",
     "@oddjob/plugin-builtin-tools": "workspace:*",
     "@oddjob/plugin-channels-core": "workspace:*",
+    "@oddjob/plugin-env-daytona": "workspace:*",
+    "@oddjob/plugin-env-docker": "workspace:*",
     "@oddjob/plugin-env-local-strict": "workspace:*",
     "@oddjob/plugin-env-process": "workspace:*",
     "@oddjob/plugin-llama-local": "workspace:*",

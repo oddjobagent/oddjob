@@ -1,0 +1,9 @@
+slug = "env-daytona"
+name = "Daytona environment"
+description = "Remote-VM environment backed by Daytona's Firecracker sandboxes. Capabilities: snapshot, fork, pause/resume, preview URLs. Auth via DAYTONA_API_KEY credential."
+version = "0.1.0"
+author = "Oddjob"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

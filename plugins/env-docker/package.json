@@ -1,0 +1,20 @@
+{
+  "name": "@oddjob/plugin-env-docker",
+  "version": "0.1.0",
+  "description": "Oddjob plugin: Docker container environment (shells out to the docker CLI; one container per Run).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@oddjob/core": "workspace:*",
+    "@oddjob/sdk": "workspace:*"
+  }
+}

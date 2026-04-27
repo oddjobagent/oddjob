@@ -24,6 +24,8 @@ import webSearchCorePlugin from "@oddjob/plugin-web-search-core";
 import webFetchCorePlugin from "@oddjob/plugin-web-fetch-core";
 import envProcessPlugin from "@oddjob/plugin-env-process";
 import envLocalStrictPlugin from "@oddjob/plugin-env-local-strict";
+import envDockerPlugin from "@oddjob/plugin-env-docker";
+import envDaytonaPlugin from "@oddjob/plugin-env-daytona";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
@@ -79,6 +81,8 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     webFetchCorePlugin,
     envProcessPlugin,
     envLocalStrictPlugin,
+    envDockerPlugin,
+    envDaytonaPlugin,
   ]) {
     const reg = registerBundled(plugins, p);
     if (disabledSlugs.has(reg.record.slug)) plugins.setEnabled(reg.record.slug, false);
