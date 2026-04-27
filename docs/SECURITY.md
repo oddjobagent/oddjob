@@ -120,6 +120,30 @@ significantly raise the cost of exfiltration when the agent is compromised
 public IP), use an allowed port, and (for plain HTTP) avoid token-shape
 patterns in the URL/body/response. This is the right v1 posture.
 
+## Implementation note: seatbelt deny-list (don't "fix" this)
+
+The macOS seatbelt profile uses **broad `(allow file-read*)` + targeted
+denies** for exfil-prone roots (`/tmp`, `/Users`, `/opt` (except
+`/opt/homebrew`), `/Library/Keychains`, `/private/var/db/sudo`,
+`/private/etc/ssh`, `/Volumes`, `/Network`), then re-allows workdir +
+meta + runtime cache subpaths.
+
+A future reviewer might propose tightening this to a positive
+read-allowlist. **Don't.** Empirically (Phase 15 round 4), enumerating
+the dyld / locale / dynamic `/Users/<host>/<bun-runtime>` paths a `sh`
+startup needs leads to silent SIGABRTs before stderr can be captured —
+sandbox-exec deny-default is brittle enough that any miss is fatal and
+debug-hostile. The deny-list closes the named exfil roots while keeping
+the runtime working. The residual gap (operator-stored secrets in
+unusual paths like `/srv/secrets/*`) is an explicit v1 limitation; hard
+isolation against this class lives at the `docker` (network + mount
+namespace) or `daytona` (VM) tier.
+
+Don't migrate to a positive-allowlist without first getting a clean
+test pass for the matrix `bash echo`, `bun -e 'console.log(1)'`,
+`python3 -c 'print(1)'`, `git --version`, `curl --version` under the
+new profile across macOS 14, 15, and 26.
+
 ## Recommendations for blueprint authors
 
 - **Always declare `[networking]` in your environment.** The default
