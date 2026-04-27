@@ -586,3 +586,50 @@ describe("egress proxy — Phase 15c follow-up hardening", () => {
     }
   });
 });
+
+describe("egress proxy — production-posture inverse", () => {
+  test("default allowPrivateIps=false: CONNECT to 127.0.0.1 rejected with loopback reason", async () => {
+    // No allowPrivateIps override + no allowedPorts override → defaults
+    // (allowPrivateIps=false, allowedPorts=[80,443]). 127.0.0.1 is in the
+    // host allowlist but the IP-pin should reject it as loopback.
+    const denials: string[] = [];
+    const proxy = await startEgressProxy({
+      allowedHosts: ["127.0.0.1"],
+      blockTokenShapes: false,
+      onLog: (e) => {
+        if (e.level === "error") denials.push(e.message);
+      },
+    });
+    try {
+      const url = new URL(proxy.url);
+      const auth = `Basic ${Buffer.from(`${url.username}:${url.password}`).toString("base64")}`;
+      const responseChunks: Buffer[] = [];
+      const socket = await Bun.connect({
+        hostname: "127.0.0.1",
+        port: Number(url.port),
+        socket: {
+          data(_s, d) {
+            responseChunks.push(Buffer.from(d));
+          },
+          open(s) {
+            // CONNECT to 127.0.0.1:443 — host allowlisted, port allowlisted,
+            // but the resolved IP is loopback so the production posture rejects.
+            s.write(
+              `CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\nProxy-Authorization: ${auth}\r\n\r\n`,
+            );
+          },
+          close() {},
+          error() {},
+        },
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      socket.end();
+      const text = Buffer.concat(responseChunks).toString("utf8");
+      expect(text).toContain("403");
+      expect(text).toContain("loopback");
+      expect(denials.some((m) => m.includes("loopback"))).toBe(true);
+    } finally {
+      await proxy.stop();
+    }
+  });
+});
