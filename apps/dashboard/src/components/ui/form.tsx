@@ -40,12 +40,8 @@ export function Fieldset({
   className?: string;
 }): React.JSX.Element {
   return (
-    <fieldset
-      className={cn("rounded-lg border p-4 space-y-4", className)}
-    >
-      {legend && (
-        <legend className="px-1 text-sm font-semibold text-foreground">{legend}</legend>
-      )}
+    <fieldset className={cn("rounded-lg border p-4 space-y-4", className)}>
+      {legend && <legend className="px-1 text-sm font-semibold text-foreground">{legend}</legend>}
       {children}
     </fieldset>
   );

@@ -168,6 +168,16 @@ export function validateBlueprint(
     }
   }
 
+  // Either `model` (legacy) or `requires.roles` must declare what model the
+  // blueprint expects. A blueprint with neither is unusable at dispatch.
+  if (!blueprint.model && !blueprint.requires?.roles?.length) {
+    issues.push({
+      path: "model",
+      message:
+        'blueprint must declare a model — either set `[requires] roles = ["default"]` and assign engine roles, or use the legacy top-level `model = "..."`',
+    });
+  }
+
   if (issues.length > 0) {
     throw new BlueprintValidationError(issues);
   }

@@ -2,13 +2,13 @@
 
 Backend packages. Each has its own `package.json`, `tsconfig.json`, `src/`. All depend on `@oddjob/core` for types and provider interfaces.
 
-| Package | Purpose | Notes |
-|---|---|---|
-| `core` | Types (Blueprint, Deployment, Run, …), provider interfaces, blueprint TOML parser, agent loop wrapper around pi-mono, skills loader | Browser-safe (no Bun built-ins reachable from types) |
-| `api-client` | Browser-safe typed HTTP client with `createApi({baseUrl, bearerToken})` | Used by both CLI and dashboard. **Pure fetch** — no Bun, no fs. |
-| `server` | `Bun.serve` HTTP API + worker pool + webhook ingress + optional dashboard mount | Owns the dashboard mount point — see `dashboard-mount.ts` |
-| `sdk` | Stub re-export for future plugin authors | |
-| `providers/*` | 16 pluggable providers (state, queue, secrets, logs, scheduler, sandbox, channels, MCP, llm-pi, ...) | Each implements an interface from `core/src/providers/`. Tests live next to the impl. |
+| Package       | Purpose                                                                                                                             | Notes                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `core`        | Types (Blueprint, Deployment, Run, …), provider interfaces, blueprint TOML parser, agent loop wrapper around pi-mono, skills loader | Browser-safe (no Bun built-ins reachable from types)                                  |
+| `api-client`  | Browser-safe typed HTTP client with `createApi({baseUrl, bearerToken})`                                                             | Used by both CLI and dashboard. **Pure fetch** — no Bun, no fs.                       |
+| `server`      | `Bun.serve` HTTP API + worker pool + webhook ingress + optional dashboard mount                                                     | Owns the dashboard mount point — see `dashboard-mount.ts`                             |
+| `sdk`         | Stub re-export for future plugin authors                                                                                            |                                                                                       |
+| `providers/*` | 16 pluggable providers (state, queue, secrets, logs, scheduler, sandbox, channels, MCP, llm-pi, ...)                                | Each implements an interface from `core/src/providers/`. Tests live next to the impl. |
 
 ## Cross-cutting rules
 

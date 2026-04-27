@@ -1,6 +1,6 @@
 export type * from "./base.ts";
 export type * from "./llm.ts";
-export type * from "./sandbox.ts";
+export type * from "./environment.ts";
 export type * from "./state.ts";
 export { BlueprintVersionExistsError, BlueprintTagNotFoundError } from "./state.ts";
 export type * from "./queue.ts";

@@ -55,9 +55,8 @@ describe("composeOutputSchemaWithChannels", () => {
       { name: "console", type: "console" },
     ]);
     const channelsProps = (
-      (result!.schema as { properties: { channels: { properties: Record<string, unknown> } } })
-        .properties.channels.properties
-    );
+      result!.schema as { properties: { channels: { properties: Record<string, unknown> } } }
+    ).properties.channels.properties;
     expect(channelsProps.console).toEqual({ type: "object" });
   });
 });

@@ -63,9 +63,7 @@ export class ChannelEmailProvider implements ChannelProvider {
       await this.sendViaResend(cfg, message);
       return;
     }
-    throw new Error(
-      "channel-email: configure smtp_url_secret_ref or resend_api_key_secret_ref",
-    );
+    throw new Error("channel-email: configure smtp_url_secret_ref or resend_api_key_secret_ref");
   }
 
   private async sendViaSmtp(cfg: EmailChannelConfig, message: ChannelMessage): Promise<void> {

@@ -12,9 +12,7 @@ const status = defineCommand({
     }
     for (const t of tokens) {
       const exp = t.expiresAt ? new Date(t.expiresAt).toISOString() : "—";
-      process.stdout.write(
-        `${t.connectorId.padEnd(40)} ${t.status.padEnd(15)} expires=${exp}\n`,
-      );
+      process.stdout.write(`${t.connectorId.padEnd(40)} ${t.status.padEnd(15)} expires=${exp}\n`);
     }
   },
 });

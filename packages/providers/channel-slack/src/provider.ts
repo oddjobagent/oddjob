@@ -18,8 +18,7 @@ export class ChannelSlackProvider implements ChannelProvider {
     properties: {
       target: {
         type: "string",
-        description:
-          "Channel id or webhook URL. Overrides deploy-time `target`. Use cautiously.",
+        description: "Channel id or webhook URL. Overrides deploy-time `target`. Use cautiously.",
       },
       text: {
         type: "string",
@@ -28,7 +27,8 @@ export class ChannelSlackProvider implements ChannelProvider {
       blocks: {
         type: "array",
         items: { type: "object" },
-        description: "Slack Block Kit blocks. When set, `text` is the fallback for unformatted clients.",
+        description:
+          "Slack Block Kit blocks. When set, `text` is the fallback for unformatted clients.",
       },
     },
   } as const;

@@ -31,7 +31,11 @@ describe("loadBlueprint sidecar resolution", () => {
       );
       await writeFile(
         join(dir, "out.schema.json"),
-        JSON.stringify({ type: "object", required: ["foo"], properties: { foo: { type: "string" } } }),
+        JSON.stringify({
+          type: "object",
+          required: ["foo"],
+          properties: { foo: { type: "string" } },
+        }),
       );
       const b = await loadBlueprint(dir, { validate: true, checkFs: false });
       expect(b.outputSchema?.type).toBe("json-schema");

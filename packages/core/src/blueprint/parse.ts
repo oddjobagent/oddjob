@@ -75,10 +75,30 @@ function normalizeBlueprint(
         errorTools: raw.outcomes.error_tools,
         maxRetries: raw.outcomes.max_retries,
         retryBackoffMs: raw.outcomes.retry_backoff_ms,
+        grader: raw.outcomes.grader
+          ? {
+              rubricText: raw.outcomes.grader.rubric_text,
+              rubricFile: raw.outcomes.grader.rubric_file,
+              model: raw.outcomes.grader.model,
+              maxIterations: raw.outcomes.grader.max_iterations,
+              onVerdict: raw.outcomes.grader.on_verdict,
+            }
+          : undefined,
       }
     : undefined;
 
   const id = `${raw.author}/${raw.name}` as BlueprintId;
+
+  const toolNames: string[] = [];
+  const toolPolicies: Record<string, { confirm?: boolean }> = {};
+  for (const entry of raw.tools) {
+    if (typeof entry === "string") {
+      toolNames.push(entry);
+    } else {
+      toolNames.push(entry.name);
+      if (entry.confirm) toolPolicies[entry.name] = { confirm: true };
+    }
+  }
 
   return {
     id,
@@ -92,7 +112,9 @@ function normalizeBlueprint(
     license: raw.license,
     model: raw.model,
     prompt: raw.prompt,
-    tools: raw.tools,
+    requires: raw.requires?.roles?.length ? { roles: raw.requires.roles } : undefined,
+    tools: toolNames,
+    toolPolicies: Object.keys(toolPolicies).length > 0 ? toolPolicies : undefined,
     skills: raw.skills,
     connectors,
     scripts: raw.scripts,

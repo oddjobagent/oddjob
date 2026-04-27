@@ -86,7 +86,5 @@ function errorResult(message: string, provider: string): AgentToolResult<SearchD
 
 function formatResults(results: SearchResult[]): string {
   if (results.length === 0) return "No results.";
-  return results
-    .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-    .join("\n\n");
+  return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
 }

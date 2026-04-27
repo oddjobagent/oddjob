@@ -29,6 +29,12 @@
         "@oddjob/llm-pi": "workspace:*",
         "@oddjob/logging-sqlite": "workspace:*",
         "@oddjob/mcp-client": "workspace:*",
+        "@oddjob/plugin-anthropic": "workspace:*",
+        "@oddjob/plugin-builtin-tools": "workspace:*",
+        "@oddjob/plugin-channels-core": "workspace:*",
+        "@oddjob/plugin-llama-local": "workspace:*",
+        "@oddjob/plugin-openai": "workspace:*",
+        "@oddjob/plugin-openrouter": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
         "@oddjob/sandbox-process": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
@@ -37,6 +43,7 @@
         "@oddjob/state-sqlite": "workspace:*",
         "citty": "^0.1.6",
         "smol-toml": "^1.6.1",
+        "zod": "^4.3.6",
       },
     },
     "apps/dashboard": {
@@ -239,6 +246,62 @@
         "croner": "^10.0.1",
       },
     },
+    "plugins/anthropic": {
+      "name": "@oddjob/plugin-anthropic",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/builtin-tools": {
+      "name": "@oddjob/plugin-builtin-tools",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/channels-core": {
+      "name": "@oddjob/plugin-channels-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/channel-console": "workspace:*",
+        "@oddjob/channel-email": "workspace:*",
+        "@oddjob/channel-slack": "workspace:*",
+        "@oddjob/channel-webhook": "workspace:*",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/llama-local": {
+      "name": "@oddjob/plugin-llama-local",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/openai": {
+      "name": "@oddjob/plugin-openai",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/openrouter": {
+      "name": "@oddjob/plugin-openrouter",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -400,6 +463,18 @@
     "@oddjob/logging-sqlite": ["@oddjob/logging-sqlite@workspace:packages/providers/logging-sqlite"],
 
     "@oddjob/mcp-client": ["@oddjob/mcp-client@workspace:packages/providers/mcp-client"],
+
+    "@oddjob/plugin-anthropic": ["@oddjob/plugin-anthropic@workspace:plugins/anthropic"],
+
+    "@oddjob/plugin-builtin-tools": ["@oddjob/plugin-builtin-tools@workspace:plugins/builtin-tools"],
+
+    "@oddjob/plugin-channels-core": ["@oddjob/plugin-channels-core@workspace:plugins/channels-core"],
+
+    "@oddjob/plugin-llama-local": ["@oddjob/plugin-llama-local@workspace:plugins/llama-local"],
+
+    "@oddjob/plugin-openai": ["@oddjob/plugin-openai@workspace:plugins/openai"],
+
+    "@oddjob/plugin-openrouter": ["@oddjob/plugin-openrouter@workspace:plugins/openrouter"],
 
     "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:packages/providers/queue-memory"],
 

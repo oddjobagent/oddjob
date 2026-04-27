@@ -134,11 +134,11 @@ export function StatusBadge({ status }: { status: string }): React.JSX.Element {
     status === "active"
       ? "bg-emerald-500/15 text-emerald-600"
       : status === "paused"
-      ? "bg-amber-500/15 text-amber-700"
-      : status === "archived"
-      ? "bg-muted text-muted-foreground"
-      : status === "disabled"
-      ? "bg-destructive/10 text-destructive"
-      : "bg-muted";
+        ? "bg-amber-500/15 text-amber-700"
+        : status === "archived"
+          ? "bg-muted text-muted-foreground"
+          : status === "disabled"
+            ? "bg-destructive/10 text-destructive"
+            : "bg-muted";
   return <Badge className={cls}>{status}</Badge>;
 }

@@ -1,16 +1,16 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import type {
+  EnvironmentProvider,
+  EnvironmentRunConfig,
+  EnvironmentSession,
   ExecOptions,
   ExecResult,
-  SandboxConfig,
-  SandboxProvider,
-  SandboxSession,
 } from "@oddjob/core";
 
-export class SandboxProcessProvider implements SandboxProvider {
+export class SandboxProcessProvider implements EnvironmentProvider {
   readonly name = "sandbox-process";
 
   async connect(): Promise<void> {}
@@ -19,7 +19,7 @@ export class SandboxProcessProvider implements SandboxProvider {
     return true;
   }
 
-  async spawn(config: SandboxConfig): Promise<SandboxSession> {
+  async spawn(config: EnvironmentRunConfig): Promise<EnvironmentSession> {
     const root = config.workdir ?? (await mkdtemp(join(tmpdir(), "oddjob-sb-")));
     return new ProcessSession(root, config);
   }
@@ -30,13 +30,13 @@ interface ActiveProc {
   awaitExit: Promise<void>;
 }
 
-class ProcessSession implements SandboxSession {
+class ProcessSession implements EnvironmentSession {
   private active = new Set<ActiveProc>();
   private destroyed = false;
 
   constructor(
     private readonly root: string,
-    private readonly config: SandboxConfig,
+    private readonly config: EnvironmentRunConfig,
   ) {}
 
   async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
@@ -87,11 +87,15 @@ class ProcessSession implements SandboxSession {
   }
 
   async writeFile(path: string, content: string | Uint8Array): Promise<void> {
-    await writeFile(join(this.root, path), content);
+    await writeFile(this.resolveInside(path), content);
   }
 
   async readFile(path: string): Promise<string> {
-    return await readFile(join(this.root, path), "utf8");
+    return await readFile(this.resolveInside(path), "utf8");
+  }
+
+  private resolveInside(path: string): string {
+    return isAbsolute(path) ? path : join(this.root, path);
   }
 
   async kill(): Promise<void> {

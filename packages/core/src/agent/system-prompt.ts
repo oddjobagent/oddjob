@@ -93,10 +93,18 @@ function describeOutcomes(blueprint: Blueprint): string | undefined {
     );
   }
   if (o.errorTools.length > 0) {
-    lines.push(`- Tools whose failure means error: ${o.errorTools.map((t) => `\`${t}\``).join(", ")}`);
+    lines.push(
+      `- Tools whose failure means error: ${o.errorTools.map((t) => `\`${t}\``).join(", ")}`,
+    );
   }
   if (o.maxRetries > 0) {
     lines.push(`- Retries: up to ${o.maxRetries} on warning verdict (harness handles).`);
+  }
+  if (o.grader) {
+    lines.push(
+      `- An independent grader will score your output against a rubric. If you fall short on any criterion, you'll receive feedback and a chance to revise (up to ${o.grader.maxIterations} iterations).`,
+      `- Treat the artifact (your final assistant message + any structured_output JSON) as the ONLY thing the grader will see — make it self-contained.`,
+    );
   }
   lines.push("");
   lines.push(

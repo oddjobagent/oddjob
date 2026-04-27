@@ -1,0 +1,73 @@
+// Bundled OpenAI model catalog. Pricing in USD per 1M tokens.
+// Refresh schedule: roughly track openai.com/pricing on each minor release.
+
+import type { ModelInfo } from "@oddjob/sdk";
+
+export const OPENAI_MODELS: readonly ModelInfo[] = [
+  {
+    id: "gpt-5",
+    displayName: "GPT-5",
+    contextWindow: 400_000,
+    maxOutput: 128_000,
+    inputCostPerMillion: 1.25,
+    outputCostPerMillion: 10,
+    cachedInputCostPerMillion: 0.125,
+    supports: { tools: true, streaming: true, vision: true, reasoning: true },
+    family: "gpt-5",
+  },
+  {
+    id: "gpt-5-mini",
+    displayName: "GPT-5 Mini",
+    contextWindow: 400_000,
+    maxOutput: 128_000,
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 2,
+    cachedInputCostPerMillion: 0.025,
+    supports: { tools: true, streaming: true, vision: true, reasoning: true },
+    family: "gpt-5",
+  },
+  {
+    id: "gpt-4o",
+    displayName: "GPT-4o",
+    contextWindow: 128_000,
+    maxOutput: 16_384,
+    inputCostPerMillion: 2.5,
+    outputCostPerMillion: 10,
+    cachedInputCostPerMillion: 1.25,
+    supports: { tools: true, streaming: true, vision: true, reasoning: false },
+    family: "gpt-4",
+  },
+  {
+    id: "gpt-4o-mini",
+    displayName: "GPT-4o Mini",
+    contextWindow: 128_000,
+    maxOutput: 16_384,
+    inputCostPerMillion: 0.15,
+    outputCostPerMillion: 0.6,
+    cachedInputCostPerMillion: 0.075,
+    supports: { tools: true, streaming: true, vision: true, reasoning: false },
+    family: "gpt-4",
+  },
+  {
+    id: "o1",
+    displayName: "o1",
+    contextWindow: 200_000,
+    maxOutput: 100_000,
+    inputCostPerMillion: 15,
+    outputCostPerMillion: 60,
+    cachedInputCostPerMillion: 7.5,
+    supports: { tools: true, streaming: false, vision: true, reasoning: true },
+    family: "o1",
+  },
+  {
+    id: "o3-mini",
+    displayName: "o3 Mini",
+    contextWindow: 200_000,
+    maxOutput: 100_000,
+    inputCostPerMillion: 1.1,
+    outputCostPerMillion: 4.4,
+    cachedInputCostPerMillion: 0.55,
+    supports: { tools: true, streaming: true, vision: false, reasoning: true },
+    family: "o3",
+  },
+] as const;

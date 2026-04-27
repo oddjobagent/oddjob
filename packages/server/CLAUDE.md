@@ -43,6 +43,7 @@ The list of SPA paths is hard-coded — when adding new dashboard routes, append
 ## Webhook routing (Phase 11+12 fix)
 
 `/webhooks/<ns>/<name>` matches by:
+
 1. explicit `trigger.path` (with leading `/` stripped) > 2. deployment name > 3. `blueprintId == "<ns>/<name>"`
 
 That ordering means custom deployment names + custom paths both work; the spec's default URL still resolves.

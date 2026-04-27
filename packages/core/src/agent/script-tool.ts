@@ -8,11 +8,11 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
 import type { Blueprint } from "../types/blueprint.ts";
 import type { LogEntry } from "../providers/logging.ts";
-import type { SandboxSession } from "../providers/sandbox.ts";
+import type { EnvironmentSession } from "../providers/environment.ts";
 
 export interface ScriptToolOptions {
   blueprint: Blueprint;
-  sandbox: SandboxSession;
+  environment: EnvironmentSession;
   blueprintDir: string;
   onLog?: (entry: LogEntry) => void;
 }
@@ -85,7 +85,7 @@ function makeScriptTool(
       }
       const stdinJson = JSON.stringify((params ?? {}) as FreeFormParams);
       const cmd = `bun run ${quoteShell(scriptAbsPath)}`;
-      const r = await opts.sandbox.exec(cmd, { stdin: stdinJson, signal });
+      const r = await opts.environment.exec(cmd, { stdin: stdinJson, signal });
       opts.onLog?.({
         timestamp: Date.now(),
         level: r.exitCode === 0 ? "info" : "error",

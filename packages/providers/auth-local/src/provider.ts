@@ -121,20 +121,15 @@ export class AuthLocalProvider implements AuthProvider {
       throw new Error(`refresh failed: ${resp.status} ${await resp.text()}`);
     }
     const tokenJson = (await resp.json()) as TokenResponse;
-    const updated = await this.persistToken(
-      rec.connectorId,
-      rec.deploymentId,
-      rec.connectorName,
-      {
-        tokenUrl: rec.tokenUrl,
-        clientId: rec.clientId,
-        clientSecret: clientSecret ?? undefined,
-        scopes: rec.scopes,
-        tokenJson,
-        // Keep existing refresh token if a new one isn't issued.
-        existingRefreshToken: refreshToken,
-      },
-    );
+    const updated = await this.persistToken(rec.connectorId, rec.deploymentId, rec.connectorName, {
+      tokenUrl: rec.tokenUrl,
+      clientId: rec.clientId,
+      clientSecret: clientSecret ?? undefined,
+      scopes: rec.scopes,
+      tokenJson,
+      // Keep existing refresh token if a new one isn't issued.
+      existingRefreshToken: refreshToken,
+    });
     return this.openToken(updated.accessTokenEncrypted, connectorId);
   }
 
@@ -218,18 +213,13 @@ export class AuthLocalProvider implements AuthProvider {
             if (!resp.ok) throw new Error(`token exchange failed: ${resp.status}`);
             const tokenJson = (await resp.json()) as TokenResponse;
             const [deploymentId, connectorName] = splitConnectorId(connectorId);
-            const record = await this.persistToken(
-              connectorId,
-              deploymentId,
-              connectorName,
-              {
-                tokenUrl: auth.tokenUrl!,
-                clientId,
-                clientSecret: clientSecret ?? undefined,
-                tokenJson,
-                scopes: auth.scopes?.join(" "),
-              },
-            );
+            const record = await this.persistToken(connectorId, deploymentId, connectorName, {
+              tokenUrl: auth.tokenUrl!,
+              clientId,
+              clientSecret: clientSecret ?? undefined,
+              tokenJson,
+              scopes: auth.scopes?.join(" "),
+            });
             res
               .writeHead(200, { "content-type": "text/html" })
               .end("<h2>Oddjob: connector authorized.</h2><p>You can close this tab.</p>");
@@ -275,7 +265,10 @@ export class AuthLocalProvider implements AuthProvider {
   }
 
   /** Wait for an in-flight initiateFlow to land. Useful for CLI commands. */
-  async awaitCompletion(connectorId: string, timeoutMs = 5 * 60_000): Promise<ConnectorTokenRecord> {
+  async awaitCompletion(
+    connectorId: string,
+    timeoutMs = 5 * 60_000,
+  ): Promise<ConnectorTokenRecord> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       if (!this.pending.has(connectorId)) {
@@ -332,8 +325,8 @@ export class AuthLocalProvider implements AuthProvider {
       refreshTokenEncrypted: t.refresh_token
         ? this.sealToken(t.refresh_token, connectorId)
         : args.existingRefreshToken
-        ? this.sealToken(args.existingRefreshToken, connectorId)
-        : undefined,
+          ? this.sealToken(args.existingRefreshToken, connectorId)
+          : undefined,
       expiresAt,
       tokenUrl: args.tokenUrl,
       clientId: args.clientId,

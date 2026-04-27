@@ -86,9 +86,7 @@ export function ChannelRow({
               <FieldInput
                 kind={f.kind}
                 value={(value as unknown as Record<string, unknown>)[f.name]}
-                onChange={(next) =>
-                  onChange({ ...value, [f.name]: next } as ChannelConfig)
-                }
+                onChange={(next) => onChange({ ...value, [f.name]: next } as ChannelConfig)}
               />
             </Field>
           ))}

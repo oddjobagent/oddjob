@@ -40,7 +40,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }): Reac
       {children}
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
         {items.map((t) => {
-          const Icon = t.kind === "success" ? CheckCircle2 : t.kind === "error" ? AlertCircle : Info;
+          const Icon =
+            t.kind === "success" ? CheckCircle2 : t.kind === "error" ? AlertCircle : Info;
           return (
             <div
               key={t.id}
@@ -59,7 +60,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }): Reac
                 )}
               />
               <div className="flex-1 break-words">{t.message}</div>
-              <button onClick={() => dismiss(t.id)} aria-label="Dismiss" className="shrink-0 opacity-60 hover:opacity-100">
+              <button
+                onClick={() => dismiss(t.id)}
+                aria-label="Dismiss"
+                className="shrink-0 opacity-60 hover:opacity-100"
+              >
                 <X className="size-3.5" />
               </button>
             </div>

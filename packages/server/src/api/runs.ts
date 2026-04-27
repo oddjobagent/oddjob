@@ -1,6 +1,6 @@
 import type { Runtime } from "../runtime.ts";
 import type { WorkerPool } from "../workers/pool.ts";
-import { type Handler, json, notFound } from "../middleware/index.ts";
+import { type Handler, badRequest, json, notFound, readJson } from "../middleware/index.ts";
 
 export const list =
   (rt: Runtime): Handler =>
@@ -30,7 +30,6 @@ export const logs =
     const entries = await rt.log.getLogs(id, { since, limit });
     return json({ entries });
   };
-
 
 function streamLogs(rt: Runtime, runId: string, sinceParam: number, req: Request): Response {
   const encoder = new TextEncoder();
@@ -64,19 +63,12 @@ function streamLogs(rt: Runtime, runId: string, sinceParam: number, req: Request
           .catch((): import("@oddjob/core").LogEntry[] => []);
         if (closed) break;
         for (const entry of fresh) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(entry)}\n\n`),
-          );
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(entry)}\n\n`));
           if (entry.timestamp >= since) since = entry.timestamp + 1;
         }
         // Stop streaming once the run is in a terminal state and we've drained.
         const run = await rt.state.getRun(runId).catch(() => null);
-        if (
-          run &&
-          run.status !== "running" &&
-          run.status !== "queued" &&
-          fresh.length === 0
-        ) {
+        if (run && run.status !== "running" && run.status !== "queued" && fresh.length === 0) {
           controller.enqueue(encoder.encode("event: end\ndata: {}\n\n"));
           close();
           break;
@@ -89,7 +81,7 @@ function streamLogs(rt: Runtime, runId: string, sinceParam: number, req: Request
     headers: {
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-store",
-      "connection": "keep-alive",
+      connection: "keep-alive",
     },
   });
 }
@@ -105,4 +97,40 @@ export const cancel =
     }
     const result = await workers.cancelRun(id);
     return json({ runId: id, result });
+  };
+
+interface ConfirmBody {
+  tool_use_id?: string;
+  toolUseId?: string;
+  result?: "allow" | "deny";
+  deny_message?: string;
+  denyMessage?: string;
+}
+
+export const listConfirmations =
+  (_rt: Runtime, workers: WorkerPool): Handler =>
+  async (_req, ctx) => {
+    const id = ctx.params.id ?? "";
+    return json({ pending: workers.pendingConfirmationsFor(id) });
+  };
+
+export const confirm =
+  (rt: Runtime, workers: WorkerPool): Handler =>
+  async (req, ctx) => {
+    const id = ctx.params.id ?? "";
+    const body = await readJson<ConfirmBody>(req);
+    if (!body) return badRequest("body required");
+    const toolUseId = body.tool_use_id ?? body.toolUseId;
+    if (!toolUseId) return badRequest("tool_use_id required");
+    if (body.result !== "allow" && body.result !== "deny") {
+      return badRequest('result must be "allow" or "deny"');
+    }
+    const run = await rt.state.getRun(id);
+    if (!run) return notFound("run not found");
+    const outcome = workers.confirmTool(id, toolUseId, {
+      allow: body.result === "allow",
+      denyMessage: body.deny_message ?? body.denyMessage,
+    });
+    if (!outcome.ok) return badRequest(outcome.reason ?? "no pending confirmation");
+    return json({ runId: id, toolUseId, result: body.result });
   };

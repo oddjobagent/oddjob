@@ -1,9 +1,14 @@
 import * as Auth from "./api/auth.ts";
 import * as Blueprints from "./api/blueprints.ts";
 import * as Channels from "./api/channels.ts";
+import * as Config from "./api/config.ts";
 import * as Cron from "./api/cron.ts";
 import * as Deployments from "./api/deployments.ts";
 import * as Engine from "./api/engine.ts";
+import * as Environments from "./api/environments.ts";
+import * as Plugins from "./api/plugins.ts";
+import * as Providers from "./api/providers.ts";
+import * as Roles from "./api/roles.ts";
 import * as Runs from "./api/runs.ts";
 import * as Secrets from "./api/secrets.ts";
 import * as Health from "./api/health.ts";
@@ -184,7 +189,7 @@ function corsHeaders(req: Request, rt: Runtime): Record<string, string> {
   const allowOrigin = origin;
   return {
     "access-control-allow-origin": allowOrigin,
-    "vary": "origin",
+    vary: "origin",
     "access-control-allow-credentials": rt.bearerToken ? "true" : "false",
     "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-allow-headers":
@@ -228,6 +233,10 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("POST", "/api/v1/blueprints", Blueprints.push(rt)),
     r("GET", "/api/v1/blueprints/:namespace/:name", Blueprints.get(rt)),
     r("DELETE", "/api/v1/blueprints/:namespace/:name", Blueprints.remove(rt)),
+    r("GET", "/api/v1/blueprints/:namespace/:name/versions", Blueprints.listVersions(rt)),
+    r("GET", "/api/v1/blueprints/:namespace/:name/tags", Blueprints.listTags(rt)),
+    r("PUT", "/api/v1/blueprints/:namespace/:name/tags/:tag", Blueprints.setTag(rt)),
+    r("DELETE", "/api/v1/blueprints/:namespace/:name/tags/:tag", Blueprints.removeTag(rt)),
 
     r("GET", "/api/v1/deployments", Deployments.list(rt)),
     r("POST", "/api/v1/deployments", Deployments.create(rt)),
@@ -245,6 +254,8 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("GET", "/api/v1/runs/:id", Runs.get(rt)),
     r("GET", "/api/v1/runs/:id/logs", Runs.logs(rt)),
     r("POST", "/api/v1/runs/:id/cancel", Runs.cancel(rt, workers)),
+    r("GET", "/api/v1/runs/:id/confirmations", Runs.listConfirmations(rt, workers)),
+    r("POST", "/api/v1/runs/:id/confirm", Runs.confirm(rt, workers)),
 
     r("GET", "/api/v1/secrets", Secrets.list(rt)),
     r("PUT", "/api/v1/secrets/:name", Secrets.set(rt)),
@@ -254,6 +265,27 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("PATCH", "/api/v1/engine", Engine.update(rt)),
     r("GET", "/api/v1/engine/tools", Engine.tools()),
     r("GET", "/api/v1/models", Engine.models(rt)),
+
+    r("GET", "/api/v1/plugins", Plugins.list(rt)),
+    r("GET", "/api/v1/plugins/:slug", Plugins.get(rt)),
+    r("PATCH", "/api/v1/plugins/:slug", Plugins.setEnabled(rt)),
+
+    r("GET", "/api/v1/providers", Providers.list(rt)),
+    r("GET", "/api/v1/providers/:slug", Providers.get(rt)),
+    r("POST", "/api/v1/providers/:slug/refresh", Providers.refresh(rt)),
+    r("PUT", "/api/v1/providers/:slug/credentials", Providers.upsertCredential(rt)),
+    r(
+      "DELETE",
+      "/api/v1/providers/:slug/credentials/:credentialName",
+      Providers.deleteCredential(rt),
+    ),
+
+    r("GET", "/api/v1/roles", Roles.list(rt)),
+    r("PUT", "/api/v1/roles/:role", Roles.set(rt)),
+    r("DELETE", "/api/v1/roles/:role", Roles.remove(rt)),
+
+    r("GET", "/api/v1/config", Config.get(rt)),
+    r("POST", "/api/v1/config/reload", Config.reload(rt)),
 
     r("GET", "/api/v1/channels/types", Channels.types()),
     r("POST", "/api/v1/channels/test", Channels.test(rt)),
@@ -268,6 +300,11 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("GET", "/api/v1/auth/connectors/:connectorId", Auth.status(rt)),
     r("POST", "/api/v1/auth/connectors/initiate", Auth.initiate(rt)),
     r("DELETE", "/api/v1/auth/connectors/:connectorId", Auth.revoke(rt)),
+
+    r("GET", "/api/v1/environments", Environments.list(rt)),
+    r("POST", "/api/v1/environments", Environments.upsert(rt)),
+    r("GET", "/api/v1/environments/:id", Environments.get(rt)),
+    r("DELETE", "/api/v1/environments/:id", Environments.remove(rt)),
 
     r("POST", "/webhooks/:namespace/:name", webhook(rt)),
   ];

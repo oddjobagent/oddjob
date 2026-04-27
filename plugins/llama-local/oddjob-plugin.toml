@@ -1,0 +1,10 @@
+slug = "llama-local"
+name = "Local Llama (OpenAI-compatible)"
+description = "Talk to a local Ollama / LM Studio / llama.cpp server via the OpenAI API."
+version = "0.1.0"
+author = "Oddjob"
+homepage = "https://ollama.com/"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

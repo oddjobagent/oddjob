@@ -12,7 +12,8 @@ import { api } from "../lib/api.ts";
 export default defineCommand({
   meta: {
     name: "pull",
-    description: "Clone a blueprint from GitHub or a git URL and (optionally) push it to the server.",
+    description:
+      "Clone a blueprint from GitHub or a git URL and (optionally) push it to the server.",
   },
   args: {
     source: {

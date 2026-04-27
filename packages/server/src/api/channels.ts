@@ -37,8 +37,19 @@ const TYPES: TypeDescriptor[] = [
     label: "Slack",
     description: "Post run output to a Slack channel via incoming webhook or bot token.",
     fields: [
-      { name: "target", label: "Channel or user", kind: "string", required: true, helper: "#alerts or @user" },
-      { name: "webhookUrlSecretRef", label: "Webhook URL secret", kind: "secretRef", required: false },
+      {
+        name: "target",
+        label: "Channel or user",
+        kind: "string",
+        required: true,
+        helper: "#alerts or @user",
+      },
+      {
+        name: "webhookUrlSecretRef",
+        label: "Webhook URL secret",
+        kind: "secretRef",
+        required: false,
+      },
       { name: "botTokenSecretRef", label: "Bot token secret", kind: "secretRef", required: false },
     ],
   },
@@ -47,10 +58,27 @@ const TYPES: TypeDescriptor[] = [
     label: "Email",
     description: "Send run output via Resend (SMTP coming later).",
     fields: [
-      { name: "to", label: "Recipient(s)", kind: "string", required: true, helper: "comma-separated; supports {{input.email}}" },
+      {
+        name: "to",
+        label: "Recipient(s)",
+        kind: "string",
+        required: true,
+        helper: "comma-separated; supports {{input.email}}",
+      },
       { name: "from", label: "From", kind: "string", required: false },
-      { name: "subject", label: "Subject", kind: "string", required: false, helper: "supports {{...}} templates" },
-      { name: "resendApiKeySecretRef", label: "Resend API key secret", kind: "secretRef", required: false },
+      {
+        name: "subject",
+        label: "Subject",
+        kind: "string",
+        required: false,
+        helper: "supports {{...}} templates",
+      },
+      {
+        name: "resendApiKeySecretRef",
+        label: "Resend API key secret",
+        kind: "secretRef",
+        required: false,
+      },
     ],
   },
   {
@@ -58,7 +86,13 @@ const TYPES: TypeDescriptor[] = [
     label: "Webhook",
     description: "POST run output as JSON to a URL. Optional HMAC-SHA256 signature.",
     fields: [
-      { name: "url", label: "URL", kind: "string", required: true, helper: "supports {{input.callback}}" },
+      {
+        name: "url",
+        label: "URL",
+        kind: "string",
+        required: true,
+        helper: "supports {{input.callback}}",
+      },
       { name: "hmacSecretRef", label: "HMAC secret name", kind: "secretRef", required: false },
       { name: "headers", label: "Extra headers", kind: "headers", required: false },
     ],

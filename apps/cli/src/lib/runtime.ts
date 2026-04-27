@@ -1,12 +1,25 @@
 import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
 import { AuthLocalProvider } from "@oddjob/auth-local";
-import { ChannelConsoleProvider } from "@oddjob/channel-console";
-import { ChannelEmailProvider } from "@oddjob/channel-email";
-import { ChannelSlackProvider } from "@oddjob/channel-slack";
-import { ChannelWebhookProvider } from "@oddjob/channel-webhook";
-import type { ChannelProvider, EngineConfig } from "@oddjob/core";
+import type {
+  ChannelProvider,
+  EngineConfig,
+  EngineModelRoleRecord,
+  LegacyResolver,
+  ProviderCredentialRecord,
+  ResolvedRoleModel,
+  SecretsProvider,
+} from "@oddjob/core";
+import { loadLocalPlugins, PluginRegistry, registerBundled, RoleResolver } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
+
+import openaiPlugin from "@oddjob/plugin-openai";
+import anthropicPlugin from "@oddjob/plugin-anthropic";
+import openrouterPlugin from "@oddjob/plugin-openrouter";
+import llamaLocalPlugin from "@oddjob/plugin-llama-local";
+import channelsCorePlugin from "@oddjob/plugin-channels-core";
+import builtinToolsPlugin from "@oddjob/plugin-builtin-tools";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
@@ -26,6 +39,8 @@ import {
   loadConfig,
   saveConfig,
 } from "./config.ts";
+import { reconcileConfigToDb } from "./config-reconcile.ts";
+import { persistConfigFromDb } from "./config-serialize.ts";
 
 export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
   await mkdir(`${ODDJOB_HOME}/state`, { recursive: true });
@@ -45,14 +60,64 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
   const scheduler = new SchedulerCronerProvider();
   await scheduler.connect();
 
-  const channels: Record<string, ChannelProvider> = {
-    console: new ChannelConsoleProvider(),
-    slack: new ChannelSlackProvider({ secrets }),
-    email: new ChannelEmailProvider({ secrets }),
-    webhook: new ChannelWebhookProvider({ secrets }),
-  };
-
   const engine = await buildEngineConfig(cfg, secrets);
+
+  // Plugin registry: bundled providers + channels compiled into the binary,
+  // plus any local plugins under ~/.oddjob/plugins/.
+  const plugins = new PluginRegistry();
+  const disabledSlugs = new Set<string>(cfg.plugins?.disabled ?? []);
+  for (const p of [
+    openaiPlugin,
+    anthropicPlugin,
+    openrouterPlugin,
+    llamaLocalPlugin,
+    channelsCorePlugin,
+    builtinToolsPlugin,
+  ]) {
+    const reg = registerBundled(plugins, p);
+    if (disabledSlugs.has(reg.record.slug)) plugins.setEnabled(reg.record.slug, false);
+    await state.upsertPlugin(reg.record);
+  }
+  // Cached channel providers — channelFor instantiates lazily then caches.
+  // The registry already filters disabled plugins out of channelFor lookups.
+  const channelCache = new Map<string, ChannelProvider>();
+  const channelFor = (type: string): ChannelProvider | undefined =>
+    resolveChannel(plugins, type, secrets, channelCache);
+  const localResults = await loadLocalPlugins(plugins, {
+    root: join(ODDJOB_HOME, "plugins"),
+    disabled: disabledSlugs,
+    onError: (slug, err) => {
+      console.warn(`[oddjob] failed to load plugin '${slug}': ${err.message}`);
+    },
+  });
+  for (const r of localResults) {
+    if (r.ok && r.record) {
+      if (disabledSlugs.has(r.record.slug)) plugins.setEnabled(r.record.slug, false);
+      await state.upsertPlugin(r.record);
+    }
+  }
+
+  // TOML is the source of truth for [providers.*.*] and [roles.*]. Reconcile
+  // upserts those rows with source='config' and deletes config-sourced rows
+  // that no longer appear in the TOML. Dashboard-sourced rows are untouched.
+  await reconcileConfigToDb(state, cfg);
+
+  // Snapshot engine roles + provider credentials. Refreshed via reloadRoles().
+  let engineRoleSnapshot = await loadEngineRoles(state);
+  let credentialSnapshot = await loadProviderCredentials(state);
+  const legacyResolver: LegacyResolver = {
+    async resolve(modelString, secretRef): Promise<ResolvedRoleModel> {
+      const resolved = await llm.resolveModel(modelString, secretRef);
+      return { model: resolved.model, apiKey: resolved.apiKey };
+    },
+  };
+  const roleResolver = new RoleResolver({
+    registry: plugins,
+    secrets,
+    engineRoles: () => engineRoleSnapshot,
+    credentials: () => credentialSnapshot,
+    legacy: legacyResolver,
+  });
 
   const runtime: Runtime = {
     state,
@@ -64,9 +129,24 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     mcp,
     auth,
     scheduler,
-    channelFor: (type) => channels[type],
+    channelFor,
     bearerToken: cfg.server.bearer_token,
     engine,
+    plugins,
+    roleResolver,
+    reloadRoles: async () => {
+      engineRoleSnapshot = await loadEngineRoles(state);
+      credentialSnapshot = await loadProviderCredentials(state);
+    },
+    persistConfig: async () => {
+      await persistConfigFromDb(state);
+    },
+    reloadConfig: async () => {
+      const fresh = await loadConfig();
+      await reconcileConfigToDb(state, fresh);
+      engineRoleSnapshot = await loadEngineRoles(state);
+      credentialSnapshot = await loadProviderCredentials(state);
+    },
     persistEngine: async (next) => {
       const fresh = await loadConfig();
       const bt = next?.builtinTools;
@@ -113,8 +193,9 @@ async function buildEngineConfig(
   const out: EngineConfig = { builtinTools: {} };
   if (bt.web_search?.provider) {
     const apiKey =
-      (bt.web_search.api_key_secret ? await secrets.get(bt.web_search.api_key_secret) : undefined) ??
-      bt.web_search.api_key;
+      (bt.web_search.api_key_secret
+        ? await secrets.get(bt.web_search.api_key_secret)
+        : undefined) ?? bt.web_search.api_key;
     out.builtinTools!.webSearch = {
       provider: bt.web_search.provider,
       apiKey,
@@ -129,6 +210,44 @@ async function buildEngineConfig(
       allowlist: bt.web_fetch.allowlist,
       blocklist: bt.web_fetch.blocklist,
     };
+  }
+  return out;
+}
+
+function resolveChannel(
+  registry: PluginRegistry,
+  type: string,
+  secrets: SecretsProvider,
+  cache: Map<string, ChannelProvider>,
+): ChannelProvider | undefined {
+  const cached = cache.get(type);
+  if (cached) return cached;
+  const svc = registry.channelFor(type);
+  if (!svc) return undefined;
+  const built = svc.create({ secrets });
+  cache.set(type, built);
+  return built;
+}
+
+async function loadEngineRoles(
+  state: StateSqliteProvider,
+): Promise<ReadonlyMap<string, EngineModelRoleRecord>> {
+  const rows = await state.listEngineModelRoles();
+  return new Map(rows.map((r) => [r.role, r]));
+}
+
+async function loadProviderCredentials(
+  state: StateSqliteProvider,
+): Promise<ReadonlyMap<string, ReadonlyMap<string, ProviderCredentialRecord>>> {
+  const rows = await state.listProviderCredentials();
+  const out = new Map<string, Map<string, ProviderCredentialRecord>>();
+  for (const r of rows) {
+    let inner = out.get(r.providerSlug);
+    if (!inner) {
+      inner = new Map();
+      out.set(r.providerSlug, inner);
+    }
+    inner.set(r.credentialName, r);
   }
   return out;
 }

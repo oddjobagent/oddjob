@@ -71,7 +71,9 @@ function EnginePage(): React.JSX.Element {
           <Stat label="Port" value={String(engine.data?.restartRequired.port ?? "—")} />
           <Stat
             label="Bearer token"
-            value={engine.data?.restartRequired.bearerTokenRequired ? "required" : "open (loopback)"}
+            value={
+              engine.data?.restartRequired.bearerTokenRequired ? "required" : "open (loopback)"
+            }
           />
         </CardContent>
       </Card>

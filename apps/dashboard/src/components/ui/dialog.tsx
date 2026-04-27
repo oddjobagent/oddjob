@@ -73,11 +73,7 @@ export function DialogTitle({ children }: { children: React.ReactNode }): React.
   return <h2 className="text-lg font-semibold">{children}</h2>;
 }
 
-export function DialogDescription({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
+export function DialogDescription({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 

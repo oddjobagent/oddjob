@@ -38,7 +38,9 @@ export function JsonSchemaForm({
   const type = normalizeType(schema.type);
 
   if (type === "object") {
-    return <ObjectField schema={schema} value={value as Record<string, unknown>} onChange={onChange} />;
+    return (
+      <ObjectField schema={schema} value={value as Record<string, unknown>} onChange={onChange} />
+    );
   }
   return <FallbackJsonEditor value={value} onChange={onChange} />;
 }
@@ -64,7 +66,9 @@ function ObjectField({
   };
 
   if (Object.keys(props).length === 0) {
-    return <FallbackJsonEditor value={v} onChange={(x) => onChange(x as Record<string, unknown>)} />;
+    return (
+      <FallbackJsonEditor value={v} onChange={(x) => onChange(x as Record<string, unknown>)} />
+    );
   }
 
   return (
@@ -148,7 +152,11 @@ function PropertyField({
   if (type === "array") {
     return (
       <Field label={label} required={required} helper={schema.description}>
-        <ArrayField schema={schema} value={(value as unknown[] | undefined) ?? []} onChange={onChange} />
+        <ArrayField
+          schema={schema}
+          value={(value as unknown[] | undefined) ?? []}
+          onChange={onChange}
+        />
       </Field>
     );
   }

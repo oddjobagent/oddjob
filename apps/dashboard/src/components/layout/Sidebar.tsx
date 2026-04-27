@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
+  Blocks,
   Box,
+  Cpu,
   FileCog,
   Inbox,
   Key,
@@ -15,6 +17,8 @@ const NAV = [
   { to: "/runs", label: "Runs", icon: Activity },
   { to: "/deployments", label: "Deployments", icon: ServerCog },
   { to: "/blueprints", label: "Blueprints", icon: Box },
+  { to: "/plugins", label: "Plugins", icon: Blocks },
+  { to: "/providers", label: "Providers", icon: Cpu },
   { to: "/channels", label: "Channels", icon: Inbox },
   { to: "/engine", label: "Engine", icon: Settings2 },
   { to: "/secrets", label: "Secrets", icon: Key },

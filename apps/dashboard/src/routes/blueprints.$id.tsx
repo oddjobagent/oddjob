@@ -1,7 +1,25 @@
+import { useState } from "react";
 import { createRoute, Link } from "@tanstack/react-router";
 
+import { Badge } from "../components/ui/badge.tsx";
+import { Button } from "../components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
-import { useBlueprint } from "../api/queries.ts";
+import { Input } from "../components/ui/input.tsx";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table.tsx";
+import {
+  useBlueprint,
+  useBlueprintTags,
+  useBlueprintVersions,
+  useRemoveBlueprintTag,
+  useSetBlueprintTag,
+} from "../api/queries.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -15,9 +33,22 @@ function BlueprintDetail(): React.JSX.Element {
   const { namespace, name } = Route.useParams();
   const id = `${namespace}/${name}`;
   const { data, isLoading } = useBlueprint(id);
+  const versionsQ = useBlueprintVersions(id);
+  const tagsQ = useBlueprintTags(id);
+  const setTag = useSetBlueprintTag(id);
+  const removeTag = useRemoveBlueprintTag(id);
+  const [newTag, setNewTag] = useState("");
+  const [newTagVersion, setNewTagVersion] = useState("");
 
   if (isLoading) return <div className="text-muted-foreground">Loading…</div>;
   if (!data) return <div className="text-muted-foreground">Blueprint not found.</div>;
+
+  const tagsByVersion = new Map<string, string[]>();
+  for (const t of tagsQ.data?.tags ?? []) {
+    const arr = tagsByVersion.get(t.version) ?? [];
+    arr.push(t.tag);
+    tagsByVersion.set(t.version, arr);
+  }
 
   return (
     <div className="space-y-6">
@@ -112,6 +143,94 @@ function BlueprintDetail(): React.JSX.Element {
           <pre className="bg-muted/30 rounded p-3 text-xs overflow-auto whitespace-pre-wrap break-words">
             {data.prompt}
           </pre>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Versions &amp; tags</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Version</TableHead>
+                <TableHead>Tags</TableHead>
+                <TableHead>Hash</TableHead>
+                <TableHead>Pushed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(versionsQ.data?.versions ?? []).map((v) => (
+                <TableRow key={v.version}>
+                  <TableCell className="font-mono">{v.version}</TableCell>
+                  <TableCell className="space-x-1">
+                    {(tagsByVersion.get(v.version) ?? []).map((t) => (
+                      <Badge
+                        key={t}
+                        className={
+                          t === "latest"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-secondary-foreground"
+                        }
+                      >
+                        {t}
+                        {t !== "latest" && (
+                          <button
+                            type="button"
+                            className="ml-1 text-xs opacity-70 hover:opacity-100"
+                            onClick={() => removeTag.mutate(t)}
+                            aria-label={`remove ${t}`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </Badge>
+                    ))}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{v.contentHash.slice(0, 12)}</TableCell>
+                  <TableCell className="text-xs">{new Date(v.createdAt).toISOString()}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <form
+            className="flex gap-2 items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!newTag || !newTagVersion) return;
+              setTag.mutate(
+                { tag: newTag, version: newTagVersion },
+                {
+                  onSuccess: () => {
+                    setNewTag("");
+                    setNewTagVersion("");
+                  },
+                },
+              );
+            }}
+          >
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground">Tag</label>
+              <Input
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="stable"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground">Version</label>
+              <Input
+                value={newTagVersion}
+                onChange={(e) => setNewTagVersion(e.target.value)}
+                placeholder="0.1.0"
+              />
+            </div>
+            <Button type="submit" disabled={setTag.isPending}>
+              Pin tag
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

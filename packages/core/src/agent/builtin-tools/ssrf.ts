@@ -11,12 +11,7 @@ const PRIVATE_V4_CIDRS: ReadonlyArray<readonly [number, number]> = [
   cidr("0.0.0.0", 8),
 ];
 
-const BLOCKED_HOSTNAMES = new Set([
-  "localhost",
-  "ip6-localhost",
-  "ip6-loopback",
-  "broadcasthost",
-]);
+const BLOCKED_HOSTNAMES = new Set(["localhost", "ip6-localhost", "ip6-loopback", "broadcasthost"]);
 
 export interface SsrfGuardOptions {
   privateIpsAllowed?: boolean;
@@ -89,7 +84,9 @@ function cidr(network: string, bits: number): [number, number] {
 
 function v4ToInt(ip: string): number {
   const parts = ip.split(".").map((n) => Number.parseInt(n, 10));
-  return ((parts[0]! << 24) >>> 0) + ((parts[1]! << 16) >>> 0) + ((parts[2]! << 8) >>> 0) + parts[3]!;
+  return (
+    ((parts[0]! << 24) >>> 0) + ((parts[1]! << 16) >>> 0) + ((parts[2]! << 8) >>> 0) + parts[3]!
+  );
 }
 
 function isPrivateV4(ip: string): boolean {

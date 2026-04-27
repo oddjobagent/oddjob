@@ -27,6 +27,12 @@ const main = defineCommand({
     logs: () => import("./commands/logs.ts").then((m) => m.default),
     output: () => import("./commands/output.ts").then((m) => m.default),
     inspect: () => import("./commands/inspect.ts").then((m) => m.default),
+    tag: () => import("./commands/tag.ts").then((m) => m.default),
+    environment: () => import("./commands/environment.ts").then((m) => m.default),
+    plugin: () => import("./commands/plugin.ts").then((m) => m.default),
+    providers: () => import("./commands/providers.ts").then((m) => m.default),
+    roles: () => import("./commands/roles.ts").then((m) => m.default),
+    config: () => import("./commands/config.ts").then((m) => m.default),
   },
 });
 

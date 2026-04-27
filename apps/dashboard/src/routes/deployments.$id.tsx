@@ -52,7 +52,9 @@ function DeploymentDetail(): React.JSX.Element {
 
   const hasCron = (dep.data?.triggers ?? []).some((t) => t.type === "cron");
   const nextRun = useDeploymentNextRun(id, hasCron && dep.data?.status === "active");
-  const blueprint = useBlueprint(dep.data?.blueprintId);
+  const blueprint = useBlueprint(dep.data?.blueprintId, {
+    tag: dep.data?.blueprintTag,
+  });
 
   const [archiveDialog, setArchiveDialog] = React.useState(false);
 
@@ -73,16 +75,14 @@ function DeploymentDetail(): React.JSX.Element {
     }
   };
 
-  const wrap =
-    (label: string, fn: () => Promise<unknown>) =>
-    async () => {
-      try {
-        await fn();
-        toast.push("success", label);
-      } catch (e) {
-        toast.push("error", (e as Error).message);
-      }
-    };
+  const wrap = (label: string, fn: () => Promise<unknown>) => async () => {
+    try {
+      await fn();
+      toast.push("success", label);
+    } catch (e) {
+      toast.push("error", (e as Error).message);
+    }
+  };
 
   const onCancelRun = async (runId: string) => {
     try {
@@ -102,9 +102,22 @@ function DeploymentDetail(): React.JSX.Element {
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight mt-1">{d.name}</h1>
           <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
-            <span>{d.blueprintId}</span>
+            <Link
+              to="/blueprints/$namespace/$name"
+              params={{
+                namespace: d.blueprintId.split("/")[0]!,
+                name: d.blueprintId.split("/")[1]!,
+              }}
+              className="font-mono hover:underline"
+            >
+              {d.blueprintId}
+              {d.blueprintTag && d.blueprintTag !== "latest" ? `:${d.blueprintTag}` : ""}
+            </Link>
             <span>·</span>
             <StatusBadge status={d.status} />
+            {blueprint.data && (
+              <span className="text-xs">resolves → v{blueprint.data.version}</span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -194,8 +207,8 @@ function DeploymentDetail(): React.JSX.Element {
               {hasCron && nextRun.data?.nextRun
                 ? new Date(nextRun.data.nextRun).toLocaleString()
                 : hasCron && d.status !== "active"
-                ? "(paused)"
-                : "—"}
+                  ? "(paused)"
+                  : "—"}
             </div>
           </CardContent>
         </Card>
@@ -245,7 +258,9 @@ function DeploymentDetail(): React.JSX.Element {
                 {d.channels.map((c, i) => (
                   <li key={i} className="font-mono">
                     <span className="font-medium">{c.type}</span>
-                    {c.type === "slack" && <span className="text-muted-foreground"> {c.target}</span>}
+                    {c.type === "slack" && (
+                      <span className="text-muted-foreground"> {c.target}</span>
+                    )}
                     {c.type === "email" && (
                       <span className="text-muted-foreground"> {String(c.to)}</span>
                     )}

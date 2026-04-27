@@ -4,7 +4,10 @@ import type {
   ChannelConfig,
   Deployment,
   EngineConfig,
+  Environment,
+  EnvironmentInput,
   LogEntry,
+  ModelInfo,
   Run,
   RunFilter,
 } from "@oddjob/core";
@@ -57,9 +60,33 @@ export interface OddjobApi {
 
   blueprints: {
     list: () => Promise<{ blueprints: Blueprint[] }>;
-    get: (id: string) => Promise<Blueprint>;
-    push: (input: { toml?: string; path?: string; blueprint?: Blueprint }) => Promise<Blueprint>;
+    get: (id: string, ref?: { tag?: string; version?: string }) => Promise<Blueprint>;
+    push: (input: {
+      toml?: string;
+      path?: string;
+      blueprint?: Blueprint;
+      promoteTags?: string[];
+      force?: boolean;
+    }) => Promise<Blueprint>;
     remove: (id: string) => Promise<void>;
+    listVersions: (id: string) => Promise<{
+      versions: Array<{
+        blueprintId: string;
+        version: string;
+        description: string;
+        contentHash: string;
+        createdAt: number;
+      }>;
+    }>;
+    listTags: (id: string) => Promise<{
+      tags: Array<{ blueprintId: string; tag: string; version: string; updatedAt: number }>;
+    }>;
+    setTag: (
+      id: string,
+      tag: string,
+      version: string,
+    ) => Promise<{ id: string; tag: string; version: string }>;
+    removeTag: (id: string, tag: string) => Promise<void>;
   };
 
   deployments: {
@@ -92,7 +119,12 @@ export interface OddjobApi {
   engine: {
     get: () => Promise<{
       engine?: EngineConfig;
-      restartRequired: { host: string; port: number; bearerTokenRequired: boolean; maxWorkers: number };
+      restartRequired: {
+        host: string;
+        port: number;
+        bearerTokenRequired: boolean;
+        maxWorkers: number;
+      };
     }>;
     update: (patch: { builtinTools?: BuiltinToolsConfig }) => Promise<{
       engine?: EngineConfig;
@@ -106,12 +138,16 @@ export interface OddjobApi {
     list: () => Promise<{ models: ModelOption[] }>;
   };
 
+  environments: {
+    list: () => Promise<{ environments: Environment[] }>;
+    get: (id: string) => Promise<Environment>;
+    upsert: (input: { toml?: string; environment?: EnvironmentInput }) => Promise<Environment>;
+    remove: (id: string) => Promise<void>;
+  };
+
   channels: {
     types: () => Promise<{ types: ChannelTypeDescriptor[] }>;
-    test: (
-      config: ChannelConfig,
-      message?: string,
-    ) => Promise<{ ok: boolean; sentAt?: string }>;
+    test: (config: ChannelConfig, message?: string) => Promise<{ ok: boolean; sentAt?: string }>;
     listTemplates: () => Promise<{
       templates: Array<{
         name: string;
@@ -159,9 +195,7 @@ export interface OddjobApi {
         updatedAt: number;
       }>;
     }>;
-    status: (
-      connectorId: string,
-    ) => Promise<{ connectorId: string; status: string }>;
+    status: (connectorId: string) => Promise<{ connectorId: string; status: string }>;
     initiate: (
       deploymentId: string,
       connectorName: string,
@@ -173,6 +207,131 @@ export interface OddjobApi {
     }>;
     revoke: (connectorId: string) => Promise<void>;
   };
+
+  plugins: {
+    list: () => Promise<{ plugins: PluginSummary[] }>;
+    get: (slug: string) => Promise<PluginDetail>;
+    setEnabled: (slug: string, enabled: boolean) => Promise<{ slug: string; enabled: boolean }>;
+  };
+
+  providers: {
+    list: () => Promise<{ providers: ProviderSummary[] }>;
+    get: (slug: string) => Promise<ProviderDetail>;
+    refresh: (slug: string) => Promise<{ slug: string; count: number; fetchedAt: number }>;
+    upsertCredential: (
+      slug: string,
+      input: CredentialUpsert,
+    ) => Promise<{ slug: string; credentialName: string; ok: true }>;
+    deleteCredential: (
+      slug: string,
+      credentialName: string,
+    ) => Promise<{ slug: string; credentialName: string; ok: true }>;
+  };
+
+  roles: {
+    list: () => Promise<{ roles: RoleAssignmentSummary[] }>;
+    set: (role: string, input: RoleSetInput) => Promise<{ role: string; ok: true }>;
+    remove: (role: string) => Promise<{ role: string; ok: true }>;
+  };
+
+  config: {
+    get: () => Promise<ResolvedConfig>;
+    reload: () => Promise<{ ok: true }>;
+  };
+}
+
+export interface ResolvedConfig {
+  providers: Array<{
+    providerSlug: string;
+    credentialName: string;
+    apiKeySecret?: string;
+    hasOptions: boolean;
+    source: "config" | "dashboard";
+    updatedAt: number;
+  }>;
+  roles: Array<{
+    role: string;
+    providerSlug: string;
+    modelId: string;
+    credentialName: string;
+    source: "config" | "dashboard";
+    updatedAt: number;
+  }>;
+  plugins: Array<{
+    slug: string;
+    version: string;
+    source: "bundled" | "local" | "npm";
+    enabled: boolean;
+  }>;
+  hooks: { persistConfig: boolean; reloadConfig: boolean };
+}
+
+export interface PluginSummary {
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source: "bundled" | "local" | "npm";
+  enabled: boolean;
+  icon?: string;
+  homepage?: string;
+  author?: string;
+  services: Array<{ kind: string; id?: string; type?: string; name?: string }>;
+}
+
+export interface PluginDetail {
+  slug: string;
+  manifest: { slug: string; name: string; description: string; version: string };
+  record: { source: string; enabled: boolean; installedAt: number };
+  services: unknown[];
+}
+
+export interface ProviderSummary {
+  slug: string;
+  displayName: string;
+  authHint?: string;
+  capabilities: { tools: boolean; streaming: boolean; vision: boolean; reasoning: boolean };
+  models: number;
+  hasRefresh: boolean;
+  hasCredentials: boolean;
+}
+
+export interface ProviderDetail {
+  slug: string;
+  displayName: string;
+  authHint?: string;
+  capabilities: { tools: boolean; streaming: boolean; vision: boolean; reasoning: boolean };
+  models: ModelInfo[];
+  credentials: Array<{
+    credentialName: string;
+    apiKeySecret?: string;
+    hasOptions: boolean;
+    source: "config" | "dashboard";
+    updatedAt: number;
+  }>;
+}
+
+export interface CredentialUpsert {
+  credentialName?: string;
+  apiKey?: string;
+  apiKeySecret?: string;
+  options?: Record<string, unknown>;
+}
+
+export interface RoleAssignmentSummary {
+  role: string;
+  providerSlug: string;
+  modelId: string;
+  credentialName: string;
+  source: "config" | "dashboard";
+  updatedAt: number;
+}
+
+export interface RoleSetInput {
+  providerSlug: string;
+  modelId: string;
+  credentialName?: string;
+  options?: Record<string, unknown>;
 }
 
 export function createApi(opts: TransportOptions): OddjobApi {
@@ -184,9 +343,24 @@ export function createApi(opts: TransportOptions): OddjobApi {
 
     blueprints: {
       list: () => r("GET", "/api/v1/blueprints"),
-      get: (id) => r("GET", `/api/v1/blueprints/${id}`),
-      push: (input) => r("POST", "/api/v1/blueprints", input),
+      get: (id, ref) => {
+        const q = new URLSearchParams();
+        if (ref?.version) q.set("version", ref.version);
+        else if (ref?.tag) q.set("tag", ref.tag);
+        const qs = q.toString();
+        return r("GET", `/api/v1/blueprints/${id}${qs ? `?${qs}` : ""}`);
+      },
+      push: (input) => {
+        const q = new URLSearchParams();
+        if (input.force) q.set("force", "1");
+        const qs = q.toString();
+        return r("POST", `/api/v1/blueprints${qs ? `?${qs}` : ""}`, input);
+      },
       remove: (id) => r("DELETE", `/api/v1/blueprints/${id}`),
+      listVersions: (id) => r("GET", `/api/v1/blueprints/${id}/versions`),
+      listTags: (id) => r("GET", `/api/v1/blueprints/${id}/tags`),
+      setTag: (id, tag, version) => r("PUT", `/api/v1/blueprints/${id}/tags/${tag}`, { version }),
+      removeTag: (id, tag) => r("DELETE", `/api/v1/blueprints/${id}/tags/${tag}`),
     },
 
     deployments: {
@@ -244,6 +418,13 @@ export function createApi(opts: TransportOptions): OddjobApi {
       list: () => r("GET", "/api/v1/models"),
     },
 
+    environments: {
+      list: () => r("GET", "/api/v1/environments"),
+      get: (id) => r("GET", `/api/v1/environments/${id}`),
+      upsert: (input) => r("POST", "/api/v1/environments", input),
+      remove: (id) => r("DELETE", `/api/v1/environments/${id}`),
+    },
+
     channels: {
       types: () => r("GET", "/api/v1/channels/types"),
       test: (config, message) => r("POST", "/api/v1/channels/test", { config, message }),
@@ -263,6 +444,32 @@ export function createApi(opts: TransportOptions): OddjobApi {
       initiate: (deploymentId, connectorName) =>
         r("POST", "/api/v1/auth/connectors/initiate", { deploymentId, connectorName }),
       revoke: (connectorId) => r("DELETE", `/api/v1/auth/connectors/${connectorId}`),
+    },
+
+    plugins: {
+      list: () => r("GET", "/api/v1/plugins"),
+      get: (slug) => r("GET", `/api/v1/plugins/${slug}`),
+      setEnabled: (slug, enabled) => r("PATCH", `/api/v1/plugins/${slug}`, { enabled }),
+    },
+
+    providers: {
+      list: () => r("GET", "/api/v1/providers"),
+      get: (slug) => r("GET", `/api/v1/providers/${slug}`),
+      refresh: (slug) => r("POST", `/api/v1/providers/${slug}/refresh`),
+      upsertCredential: (slug, input) => r("PUT", `/api/v1/providers/${slug}/credentials`, input),
+      deleteCredential: (slug, credentialName) =>
+        r("DELETE", `/api/v1/providers/${slug}/credentials/${credentialName}`),
+    },
+
+    roles: {
+      list: () => r("GET", "/api/v1/roles"),
+      set: (role, input) => r("PUT", `/api/v1/roles/${role}`, input),
+      remove: (role) => r("DELETE", `/api/v1/roles/${role}`),
+    },
+
+    config: {
+      get: () => r("GET", "/api/v1/config"),
+      reload: () => r("POST", "/api/v1/config/reload"),
     },
   };
 }

@@ -86,7 +86,10 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.JSX
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">
-              <Field label="Bearer token" helper="set in ~/.oddjob/config.toml [server] bearer_token">
+              <Field
+                label="Bearer token"
+                helper="set in ~/.oddjob/config.toml [server] bearer_token"
+              >
                 <Input
                   ref={inputRef}
                   type="password"

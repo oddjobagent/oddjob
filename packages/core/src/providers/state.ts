@@ -1,9 +1,12 @@
-import type { Blueprint } from "../types/blueprint.ts";
 import type {
-  Deployment,
-  DeploymentInput,
-  DeploymentListFilter,
-} from "../types/deployment.ts";
+  EngineModelRoleRecord,
+  ModelCatalogRecord,
+  PluginRecord,
+  ProviderCredentialRecord,
+} from "../plugin/types.ts";
+import type { Blueprint } from "../types/blueprint.ts";
+import type { Deployment, DeploymentInput, DeploymentListFilter } from "../types/deployment.ts";
+import type { Environment, EnvironmentInput } from "../types/environment.ts";
 import type { Run } from "../types/run.ts";
 import type { Provider } from "./base.ts";
 
@@ -51,6 +54,38 @@ export interface StateProvider extends Provider {
   getChannelTemplate(name: string): Promise<ChannelTemplate | null>;
   listChannelTemplates(): Promise<ChannelTemplate[]>;
   deleteChannelTemplate(name: string): Promise<void>;
+
+  upsertEnvironment(input: EnvironmentInput): Promise<Environment>;
+  getEnvironment(id: string): Promise<Environment | null>;
+  listEnvironments(): Promise<Environment[]>;
+  deleteEnvironment(id: string): Promise<void>;
+
+  // Plugins ----------------------------------------------------------------
+  listPlugins(): Promise<PluginRecord[]>;
+  getPlugin(slug: string): Promise<PluginRecord | null>;
+  upsertPlugin(record: PluginRecord): Promise<void>;
+  setPluginEnabled(slug: string, enabled: boolean): Promise<void>;
+  deletePlugin(slug: string): Promise<void>;
+
+  // Provider credentials ---------------------------------------------------
+  listProviderCredentials(providerSlug?: string): Promise<ProviderCredentialRecord[]>;
+  getProviderCredential(
+    providerSlug: string,
+    credentialName: string,
+  ): Promise<ProviderCredentialRecord | null>;
+  upsertProviderCredential(record: ProviderCredentialRecord): Promise<void>;
+  deleteProviderCredential(providerSlug: string, credentialName: string): Promise<void>;
+
+  // Engine model role assignments -----------------------------------------
+  listEngineModelRoles(): Promise<EngineModelRoleRecord[]>;
+  getEngineModelRole(role: string): Promise<EngineModelRoleRecord | null>;
+  upsertEngineModelRole(record: EngineModelRoleRecord): Promise<void>;
+  deleteEngineModelRole(role: string): Promise<void>;
+
+  // Model catalog cache ----------------------------------------------------
+  listModelCatalog(providerSlug?: string): Promise<ModelCatalogRecord[]>;
+  upsertModelCatalogEntry(entry: ModelCatalogRecord): Promise<void>;
+  deleteModelCatalogEntries(providerSlug: string): Promise<void>;
 }
 
 export interface ChannelTemplate {
@@ -118,14 +153,20 @@ export interface BlueprintTagRow {
 }
 
 export class BlueprintVersionExistsError extends Error {
-  constructor(public readonly blueprintId: string, public readonly version: string) {
+  constructor(
+    public readonly blueprintId: string,
+    public readonly version: string,
+  ) {
     super(`blueprint ${blueprintId}@${version} already exists (use force to overwrite)`);
     this.name = "BlueprintVersionExistsError";
   }
 }
 
 export class BlueprintTagNotFoundError extends Error {
-  constructor(public readonly blueprintId: string, public readonly tag: string) {
+  constructor(
+    public readonly blueprintId: string,
+    public readonly tag: string,
+  ) {
     super(`blueprint ${blueprintId} has no tag '${tag}'`);
     this.name = "BlueprintTagNotFoundError";
   }

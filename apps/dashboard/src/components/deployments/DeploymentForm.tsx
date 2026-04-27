@@ -1,19 +1,9 @@
 import * as React from "react";
 import { Plus } from "lucide-react";
 
-import type {
-  Blueprint,
-  ChannelConfig,
-  DeploymentInput,
-  Limits,
-  Trigger,
-} from "@oddjob/core";
+import type { Blueprint, ChannelConfig, DeploymentInput, Limits, Trigger } from "@oddjob/core";
 
-import {
-  useBlueprints,
-  useChannelTypes,
-  useModels,
-} from "../../api/queries.ts";
+import { useBlueprints, useChannelTypes, useModels } from "../../api/queries.ts";
 import { Button } from "../ui/button.tsx";
 import { Combobox } from "../ui/combobox.tsx";
 import { Field, Fieldset } from "../ui/form.tsx";
@@ -64,11 +54,7 @@ export function DeploymentForm({ state, onChange, lockIdentity }: Props): React.
   return (
     <div className="space-y-6">
       <Fieldset legend="Identity">
-        <Field
-          label="Blueprint"
-          required
-          helper="Pushed blueprints (oddjob push) appear here."
-        >
+        <Field label="Blueprint" required helper="Pushed blueprints (oddjob push) appear here.">
           <Combobox
             value={state.blueprintId}
             onChange={(v) => set("blueprintId", v)}
@@ -199,7 +185,11 @@ export function DeploymentForm({ state, onChange, lockIdentity }: Props): React.
               }
               onRemove={
                 state.triggers.length > 1
-                  ? () => set("triggers", state.triggers.filter((_, idx) => idx !== i))
+                  ? () =>
+                      set(
+                        "triggers",
+                        state.triggers.filter((_, idx) => idx !== i),
+                      )
                   : undefined
               }
             />
@@ -229,7 +219,10 @@ export function DeploymentForm({ state, onChange, lockIdentity }: Props): React.
                 )
               }
               onRemove={() =>
-                set("channels", state.channels.filter((_, idx) => idx !== i))
+                set(
+                  "channels",
+                  state.channels.filter((_, idx) => idx !== i),
+                )
               }
             />
           ))}

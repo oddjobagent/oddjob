@@ -41,12 +41,8 @@ export function TriggerRow({ value, onChange, onRemove }: TriggerRowProps): Reac
           </Button>
         )}
       </div>
-      {value.type === "cron" && (
-        <CronFields value={value} onChange={(t) => onChange(t)} />
-      )}
-      {value.type === "webhook" && (
-        <WebhookFields value={value} onChange={(t) => onChange(t)} />
-      )}
+      {value.type === "cron" && <CronFields value={value} onChange={(t) => onChange(t)} />}
+      {value.type === "webhook" && <WebhookFields value={value} onChange={(t) => onChange(t)} />}
       {value.type === "manual" && (
         <p className="text-xs text-muted-foreground">Trigger via the dashboard or CLI.</p>
       )}
@@ -94,13 +90,21 @@ function CronFields({
         />
       </Field>
       <div className="sm:col-span-2 flex items-center gap-3">
-        <Button type="button" variant="outline" size="sm" onClick={runPreview} disabled={!value.schedule}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={runPreview}
+          disabled={!value.schedule}
+        >
           {preview.isPending ? "…" : "Preview next 5"}
         </Button>
         {preview.data && (
           <ul className="text-xs text-muted-foreground space-x-2">
             {preview.data.nextRuns.slice(0, 5).map((t) => (
-              <li key={t} className="inline">{new Date(t).toLocaleString()}</li>
+              <li key={t} className="inline">
+                {new Date(t).toLocaleString()}
+              </li>
             ))}
           </ul>
         )}
@@ -138,7 +142,12 @@ function WebhookFields({
             else if (t === "hmac")
               onChange({
                 ...value,
-                auth: { kind: "hmac", algorithm: "sha256", secretRef: "", header: "x-hub-signature-256" },
+                auth: {
+                  kind: "hmac",
+                  algorithm: "sha256",
+                  secretRef: "",
+                  header: "x-hub-signature-256",
+                },
               });
           }}
         >

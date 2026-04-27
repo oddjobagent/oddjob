@@ -1,0 +1,9 @@
+slug = "channels-core"
+name = "Core Channels"
+description = "Console, Slack, Email (Resend), and Webhook channel providers."
+version = "0.1.0"
+author = "Oddjob"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

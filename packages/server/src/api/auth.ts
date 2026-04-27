@@ -1,11 +1,5 @@
 import type { Runtime } from "../runtime.ts";
-import {
-  type Handler,
-  badRequest,
-  json,
-  notFound,
-  readJson,
-} from "../middleware/index.ts";
+import { type Handler, badRequest, json, notFound, readJson } from "../middleware/index.ts";
 
 interface InitiateBody {
   deploymentId: string;

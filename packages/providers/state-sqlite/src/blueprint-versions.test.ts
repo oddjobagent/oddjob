@@ -55,9 +55,7 @@ describe("blueprint versioning + tags", () => {
     expect(versions[0]?.version).toBe("0.1.0");
 
     const tags = await p.listBlueprintTags("demo/tagged");
-    expect(tags).toEqual([
-      expect.objectContaining({ tag: "latest", version: "0.1.0" }),
-    ]);
+    expect(tags).toEqual([expect.objectContaining({ tag: "latest", version: "0.1.0" })]);
 
     const bp = await p.getBlueprint("demo/tagged");
     expect(bp?.version).toBe("0.1.0");
@@ -83,7 +81,10 @@ describe("blueprint versioning + tags", () => {
   });
 
   test("force=true overwrites the existing version row", async () => {
-    await p.upsertBlueprint({ ...baseFixture("0.1.1", "d".repeat(64)), description: "rebuilt" }, { force: true });
+    await p.upsertBlueprint(
+      { ...baseFixture("0.1.1", "d".repeat(64)), description: "rebuilt" },
+      { force: true },
+    );
     const v = await p.getBlueprint("demo/tagged", { version: "0.1.1" });
     expect(v?.description).toBe("rebuilt");
     expect(v?.contentHash).toBe("d".repeat(64));

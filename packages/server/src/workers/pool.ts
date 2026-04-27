@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import type { ChannelConfig, EmailChannelConfig } from "@oddjob/core";
-import { runOnce } from "@oddjob/core";
+import type {
+  ChannelConfig,
+  EmailChannelConfig,
+  ResolvedRoleModel,
+  RoleAssignment,
+} from "@oddjob/core";
+import { createEngineLLM, runOnce } from "@oddjob/core";
 
 import type { Runtime } from "../runtime.ts";
 import { renderTemplate, type TemplateContext } from "./template.ts";
@@ -38,6 +43,20 @@ interface PoolState {
   pollHandle?: ReturnType<typeof setTimeout>;
   heartbeats: Map<string, ReturnType<typeof setInterval>>;
   abortControllers: Map<string, AbortController>;
+  /** Per-run map of pending confirmation requests waiting on user input. */
+  pendingConfirmations: Map<string, Map<string, PendingConfirmation>>;
+}
+
+interface PendingConfirmation {
+  toolName: string;
+  args: unknown;
+  resolve: (resolution: { allow: boolean; denyMessage?: string }) => void;
+  createdAt: number;
+}
+
+export interface ConfirmationOutcome {
+  ok: boolean;
+  reason?: string;
 }
 
 export class WorkerPool {
@@ -52,7 +71,49 @@ export class WorkerPool {
       workerId: `pool-${process.pid}-${randomUUID().slice(0, 8)}`,
       heartbeats: new Map(),
       abortControllers: new Map(),
+      pendingConfirmations: new Map(),
     };
+  }
+
+  /**
+   * List currently-pending tool-confirmation requests for a run.
+   * Used by the dashboard / CLI to render an approval queue.
+   */
+  pendingConfirmationsFor(
+    runId: string,
+  ): Array<{ toolUseId: string; toolName: string; args: unknown; createdAt: number }> {
+    const map = this.state.pendingConfirmations.get(runId);
+    if (!map) return [];
+    return [...map.entries()].map(([toolUseId, p]) => ({
+      toolUseId,
+      toolName: p.toolName,
+      args: p.args,
+      createdAt: p.createdAt,
+    }));
+  }
+
+  /**
+   * Resolve a pending confirmation. Returns ok=false when no such pending entry
+   * exists (already resolved, run finished, etc).
+   */
+  confirmTool(
+    runId: string,
+    toolUseId: string,
+    result: { allow: boolean; denyMessage?: string },
+  ): ConfirmationOutcome {
+    const map = this.state.pendingConfirmations.get(runId);
+    const entry = map?.get(toolUseId);
+    if (!map || !entry) {
+      return { ok: false, reason: "no pending confirmation for that tool_use_id" };
+    }
+    map.delete(toolUseId);
+    entry.resolve(result);
+    if (map.size === 0) {
+      this.state.pendingConfirmations.delete(runId);
+      // Flip status back to running so the dashboard reflects the resumed state.
+      void this.rt.state.updateRun(runId, { status: "running" });
+    }
+    return { ok: true };
   }
 
   async start(): Promise<void> {
@@ -147,12 +208,45 @@ export class WorkerPool {
 
       const dep = await this.rt.state.getDeployment(config.deploymentId);
       if (!dep) throw new Error(`deployment ${config.deploymentId} not found`);
-      const bp = await this.rt.state.getBlueprint(config.blueprintId);
-      if (!bp) throw new Error(`blueprint ${config.blueprintId} not found`);
+      // Resolve the deployment's pinned tag → exact immutable version.
+      // Snapshot both the version label + content hash on the run row so a
+      // tag move mid-flight cannot corrupt the historical record.
+      const tag = dep.blueprintTag ?? "latest";
+      const bp = await this.rt.state.getBlueprint(config.blueprintId, { tag });
+      if (!bp) throw new Error(`blueprint ${config.blueprintId}:${tag} not found`);
+      await this.rt.state.updateRun(runId, {
+        blueprintVersion: bp.version,
+        blueprintHash: bp.contentHash,
+      });
+      await this.rt.log.log(runId, {
+        timestamp: Date.now(),
+        level: "info",
+        message: `resolved ${config.blueprintId}:${tag} -> ${bp.version} (${bp.contentHash.slice(0, 12)})`,
+      });
 
-      const secretRef = bp.secrets.openrouter ?? bp.secrets.api ?? bp.secrets.anthropic;
-      const modelId = dep.modelOverride ?? bp.model;
-      const resolved = await this.rt.llm.resolveModel(modelId, secretRef);
+      // Build per-deployment role overrides. The legacy `dep.modelOverride`
+      // string maps onto the "default" role for backwards compatibility.
+      const overrides = mergeDeploymentOverrides(dep.modelRoleOverrides, dep.modelOverride);
+      const engineLlm = createEngineLLM({
+        resolver: this.rt.roleResolver,
+        blueprint: bp,
+        deploymentOverrides: overrides,
+      });
+      let resolved: ResolvedRoleModel;
+      try {
+        resolved = await engineLlm.forRole("default");
+      } catch (err) {
+        throw new Error(
+          `model role resolution failed for deployment ${dep.id}: ${(err as Error).message}`,
+        );
+      }
+      // Grader override at blueprint level still wins when set; otherwise the
+      // engine's "grader" role (if configured) takes effect inside runOnce.
+      let graderResolved: ResolvedRoleModel | undefined;
+      if (bp.outcomes?.grader?.model) {
+        const secretRef = bp.secrets?.openrouter ?? bp.secrets?.api ?? bp.secrets?.anthropic;
+        graderResolved = await this.rt.llm.resolveModel(bp.outcomes.grader.model, secretRef);
+      }
       const mergedInput = mergeInput(dep.defaultInput, config.input);
 
       // Compose dynamic-channel descriptors from the deployment's channel list.
@@ -179,6 +273,7 @@ export class WorkerPool {
         secrets: this.rt.secrets,
         auth: this.rt.auth,
         engine: this.rt.engine,
+        engineLlm,
         input: mergedInput,
         runId,
         deploymentId: dep.id,
@@ -186,6 +281,24 @@ export class WorkerPool {
         limits: dep.limits,
         signal: abort.signal,
         dynamicChannels: dynamicChannels.length > 0 ? dynamicChannels : undefined,
+        grader: graderResolved
+          ? { llm: { model: graderResolved.model, apiKey: graderResolved.apiKey } }
+          : undefined,
+        onConfirmRequest: async (req) => {
+          await this.rt.state.updateRun(runId, { status: "awaiting_confirmation" });
+          await this.notifyPendingConfirmation(dep, req);
+          return new Promise<{ allow: boolean; denyMessage?: string }>((resolve) => {
+            const map =
+              this.state.pendingConfirmations.get(runId) ?? new Map<string, PendingConfirmation>();
+            map.set(req.toolUseId, {
+              toolName: req.toolName,
+              args: req.args,
+              resolve,
+              createdAt: Date.now(),
+            });
+            this.state.pendingConfirmations.set(runId, map);
+          });
+        },
       });
 
       // If this attempt failed but is retry-eligible, persist as `retrying`
@@ -356,6 +469,51 @@ export class WorkerPool {
     }
     return "unknown";
   }
+
+  private async notifyPendingConfirmation(
+    dep: import("@oddjob/core").Deployment,
+    req: { runId: string; toolUseId: string; toolName: string; args: unknown },
+  ): Promise<void> {
+    await this.rt.log.log(req.runId, {
+      timestamp: Date.now(),
+      level: "warn",
+      message: `awaiting confirmation: tool '${req.toolName}' (toolUseId=${req.toolUseId})`,
+    });
+    // Best-effort notify all configured channels with a short approval prompt.
+    const body = [
+      `**Approval needed** for run \`${req.runId}\``,
+      `deployment: \`${dep.name}\``,
+      `tool: \`${req.toolName}\``,
+      `args: \`\`\`${JSON.stringify(req.args).slice(0, 400)}\`\`\``,
+      "",
+      `Approve: \`POST /api/v1/runs/${req.runId}/confirm\` { tool_use_id: "${req.toolUseId}", result: "allow" }`,
+      `Deny:    \`POST /api/v1/runs/${req.runId}/confirm\` { tool_use_id: "${req.toolUseId}", result: "deny", deny_message: "..." }`,
+    ].join("\n");
+    for (const ch of dep.channels) {
+      const provider = this.rt.channelFor(ch.type);
+      if (!provider) continue;
+      try {
+        await provider.send({
+          body,
+          format: "markdown",
+          meta: {
+            runId: req.runId,
+            deploymentId: dep.id,
+            kind: "approval_request",
+            toolName: req.toolName,
+            toolUseId: req.toolUseId,
+            channelConfig: ch,
+          },
+        });
+      } catch (err) {
+        await this.rt.log.log(req.runId, {
+          timestamp: Date.now(),
+          level: "warn",
+          message: `approval-request channel ${ch.type} delivery failed: ${(err as Error).message}`,
+        });
+      }
+    }
+  }
 }
 
 /**
@@ -423,6 +581,35 @@ function channelLogMeta(ch: import("@oddjob/core").ChannelConfig): Record<string
   return { type: ch.type };
 }
 
+function mergeDeploymentOverrides(
+  modelRoleOverrides: Record<string, import("@oddjob/core").ModelRoleOverride> | undefined,
+  legacyModelOverride: string | undefined,
+): Record<string, RoleAssignment> | undefined {
+  const out: Record<string, RoleAssignment> = {};
+  if (modelRoleOverrides) {
+    for (const [role, ov] of Object.entries(modelRoleOverrides)) {
+      out[role] = {
+        providerSlug: ov.providerSlug,
+        modelId: ov.modelId,
+        credentialName: ov.credentialName ?? "default",
+        options: ov.options,
+      };
+    }
+  }
+  // Legacy: split "openrouter/anthropic/claude-sonnet-4" -> provider+model.
+  if (legacyModelOverride && !out.default) {
+    const parts = legacyModelOverride.split("/");
+    if (parts.length >= 2) {
+      out.default = {
+        providerSlug: parts[0]!,
+        modelId: parts.slice(1).join("/"),
+        credentialName: "default",
+      };
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function mergeInput(defaultInput: unknown, runInput: unknown): unknown {
   if (runInput === undefined || runInput === null) return defaultInput;
   if (defaultInput === undefined || defaultInput === null) return runInput;
@@ -436,4 +623,3 @@ function mergeInput(defaultInput: unknown, runInput: unknown): unknown {
   }
   return runInput;
 }
-

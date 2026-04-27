@@ -1,0 +1,39 @@
+name = "grader-demo"
+version = "0.1.0"
+description = "Writes a one-paragraph release-note blurb. The grader sub-agent enforces the rubric."
+author = "demo"
+tags = ["test", "grader"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+prompt = """
+You write release notes for software products.
+
+The user gives you a feature description. Produce ONE paragraph (no bullet points,
+no headings) suitable for inclusion in a customer-facing changelog. Be concrete,
+mention the user benefit, and avoid marketing fluff.
+
+Return your final paragraph as the assistant message body. Then call
+report_status if applicable.
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"
+
+[outcomes]
+success = "A clear, single-paragraph release note that satisfies every rubric criterion."
+warning = "Output is partially usable but missed at least one rubric criterion."
+error = "Output is unusable (off-topic, contradictory, or empty)."
+warning_tools = []
+error_tools = []
+max_retries = 0
+retry_backoff_ms = 0
+
+[outcomes.grader]
+rubric_file = "rubric.md"
+max_iterations = 3
+on_verdict = "feedback"

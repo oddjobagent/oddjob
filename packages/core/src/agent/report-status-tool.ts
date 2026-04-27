@@ -10,13 +10,10 @@ export interface RunVerdict {
 }
 
 const schema = Type.Object({
-  outcome: Type.Union(
-    [Type.Literal("success"), Type.Literal("warning"), Type.Literal("error")],
-    {
-      description:
-        "success = goal achieved | warning = transient/retryable failure | error = fatal, retry will not help",
-    },
-  ),
+  outcome: Type.Union([Type.Literal("success"), Type.Literal("warning"), Type.Literal("error")], {
+    description:
+      "success = goal achieved | warning = transient/retryable failure | error = fatal, retry will not help",
+  }),
   reason: Type.String({
     description: "One-sentence explanation. For warning/error, identify what failed and where.",
   }),

@@ -29,19 +29,20 @@ Use **relative paths** (`../components/ui/card.tsx`). The `@/` path alias is dec
 ## API client
 
 `src/api/client.ts` constructs `createApi({ baseUrl, bearerToken })` once:
+
 - `baseUrl` defaults to `window.location.origin` (same-origin, the mounted case)
 - `?api=` and `localStorage.ODDJOB_API_BASE` are **only honored** when `localStorage.ODDJOB_ALLOW_API_OVERRIDE === "1"`. This guards against bearer-token exfiltration once we add token bootstrapping.
 - bearer is read from `<meta name="x-oddjob-token">` — **but the server doesn't inject this yet** (loopback no-token is the default supported mode; bearer-required UI auth is a known gap). See STATUS.md.
 
 ## Polling tuning (queries.ts)
 
-| Query | Interval | Why |
-|---|---|---|
-| `useHealth`, `useStatus`, `useBlueprints`, `useDeployments`, `useSecrets` | 5s | Cheap; rarely change |
-| `useDeployment` | 3s | |
-| `useRuns` (list) | 1s if any in-flight, else 3s | Status-aware via `refetchInterval: q => ...` |
-| `useRun` (detail) | 1s if running/queued, else stop | |
-| `useRunLogs` | 1s, **`since` cursor + accumulator** | Avoids re-downloading the full 1000-entry log every tick |
+| Query                                                                     | Interval                             | Why                                                      |
+| ------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------- |
+| `useHealth`, `useStatus`, `useBlueprints`, `useDeployments`, `useSecrets` | 5s                                   | Cheap; rarely change                                     |
+| `useDeployment`                                                           | 3s                                   |                                                          |
+| `useRuns` (list)                                                          | 1s if any in-flight, else 3s         | Status-aware via `refetchInterval: q => ...`             |
+| `useRun` (detail)                                                         | 1s if running/queued, else stop      |                                                          |
+| `useRunLogs`                                                              | 1s, **`since` cursor + accumulator** | Avoids re-downloading the full 1000-entry log every tick |
 
 ## Routes (8 today)
 
@@ -52,6 +53,7 @@ When adding a new route, also add the path string to `SPA_PATHS` in `packages/se
 ## Decoupling guarantees
 
 This package depends ONLY on `@oddjob/api-client` + `@oddjob/core` (types). It must never import:
+
 - `@oddjob/server` or anything under `packages/server/`
 - `bun:sqlite`, `Bun.file`, `Bun.spawn`, or any Bun runtime built-in
 - Any `@oddjob/*-sqlite` provider package

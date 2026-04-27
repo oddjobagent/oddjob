@@ -11,8 +11,14 @@ export interface Blueprint {
   author: string;
   tags: string[];
   license: string;
-  model: string;
+  /**
+   * @deprecated since 0.0.x — engine model roles are the supported path.
+   * Resolves to the "default" role at dispatch when no role assignment exists.
+   */
+  model?: string;
   prompt: string;
+  /** Required engine roles ("default" / "advisor" / "grader" / custom). */
+  requires?: { roles: string[] };
   /**
    * Allowlist of built-in harness tools the blueprint opts into
    * (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`,
@@ -20,6 +26,12 @@ export interface Blueprint {
    * Empty / omitted = no built-ins. Unknown names fail validation.
    */
   tools: string[];
+  /**
+   * Per-tool runtime policy. Keys are tool names from `tools`.
+   * `confirm = true` means the harness will pause before that tool fires
+   * and wait for an explicit allow/deny via `POST /api/v1/runs/:id/confirm`.
+   */
+  toolPolicies?: Record<string, { confirm?: boolean }>;
   skills: string[];
   connectors: Record<string, Connector>;
   scripts: Record<string, string>;
@@ -75,6 +87,55 @@ export interface BlueprintOutcomes {
   maxRetries: number;
   /** Backoff for the first retry (subsequent ones double). */
   retryBackoffMs: number;
+  /** Optional rubric-based grader sub-agent (CMA-style "outcome"). */
+  grader?: BlueprintGrader;
+}
+
+export interface BlueprintGrader {
+  /** Inline rubric body (markdown). Mutually exclusive with rubricFile. */
+  rubricText?: string;
+  /** Path to a markdown rubric file, relative to the blueprint dir. */
+  rubricFile?: string;
+  /** Loaded rubric body (filled by loadBlueprint when rubricFile is set). */
+  rubricLoaded?: string;
+  /** Cheap grader model. Falls back to the blueprint's model when omitted. */
+  model?: string;
+  /** Max grader→agent iteration cycles within a single run. */
+  maxIterations: number;
+  /** What to do when the grader finally gives up (after maxIterations). */
+  onVerdict: "feedback" | "fail-only" | "advisory";
 }
 
 export type BlueprintId = `${string}/${string}`;
+
+/**
+ * Parsed reference to a blueprint, optionally pinned by tag or version.
+ * Source string forms (Docker-style):
+ *   "ns/name"               -> { id, tag: "latest" } (implicit)
+ *   "ns/name:tag"           -> { id, tag }
+ *   "ns/name@version"       -> { id, version }       (explicit version pin)
+ */
+export interface BlueprintRef {
+  id: BlueprintId;
+  tag?: string;
+  version?: string;
+}
+
+const REF_PATTERN = /^([a-z0-9-]+\/[a-z0-9-]+)(?:([:@])([A-Za-z0-9._-]+))?$/;
+
+export function parseBlueprintRef(input: string): BlueprintRef {
+  const m = REF_PATTERN.exec(input.trim());
+  if (!m) throw new Error(`invalid blueprint ref: ${JSON.stringify(input)}`);
+  const id = m[1] as BlueprintId;
+  const sep = m[2];
+  const rest = m[3];
+  if (!sep) return { id };
+  if (sep === ":") return { id, tag: rest };
+  return { id, version: rest };
+}
+
+export function formatBlueprintRef(ref: BlueprintRef): string {
+  if (ref.version) return `${ref.id}@${ref.version}`;
+  if (ref.tag && ref.tag !== "latest") return `${ref.id}:${ref.tag}`;
+  return ref.id;
+}

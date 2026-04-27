@@ -1,0 +1,20 @@
+{
+  "name": "@oddjob/plugin-builtin-tools",
+  "version": "0.0.0",
+  "description": "Oddjob plugin: 12 bundled built-in tools (bash, read, write, edit, grep, find, ls, web_fetch, web_search, python_repl, javascript_repl, datetime)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@oddjob/core": "workspace:*",
+    "@oddjob/sdk": "workspace:*"
+  }
+}

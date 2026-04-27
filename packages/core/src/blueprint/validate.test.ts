@@ -94,9 +94,9 @@ describe("validateBlueprint", () => {
   });
 
   test("rejects unknown built-in tool with did-you-mean", () => {
-    expect(() =>
-      validateBlueprint(fixture({ tools: ["bsh"] }), { checkFs: false }),
-    ).toThrow(/did you mean 'bash'/);
+    expect(() => validateBlueprint(fixture({ tools: ["bsh"] }), { checkFs: false })).toThrow(
+      /did you mean 'bash'/,
+    );
   });
 
   test("rejects unknown built-in tool without near match", () => {
@@ -107,10 +107,9 @@ describe("validateBlueprint", () => {
 
   test("rejects built-in colliding with script of same name", () => {
     expect(() =>
-      validateBlueprint(
-        fixture({ tools: ["bash"], scripts: { bash: "scripts/bash.sh" } }),
-        { checkFs: false },
-      ),
+      validateBlueprint(fixture({ tools: ["bash"], scripts: { bash: "scripts/bash.sh" } }), {
+        checkFs: false,
+      }),
     ).toThrow(/collides/);
   });
 });

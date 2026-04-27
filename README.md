@@ -178,24 +178,24 @@ See `plans/SPEC.md` §4 for the full TOML schema reference.
 
 The harness ships 12 built-in tools. **Opt-in per blueprint** — list them in `tools = [...]`. Empty / omitted = none.
 
-| Tool | What it does |
-|---|---|
-| `bash` | Shell command (subprocess in cwd of blueprint dir) |
-| `read` | Read a file (text + image) with truncation |
-| `write` | Create / overwrite a file |
-| `edit` | Surgical string replacement in a file |
-| `grep` | Pattern search via ripgrep |
-| `find` | Glob respecting `.gitignore` |
-| `ls` | Directory listing |
-| `web_fetch` | HTTPS GET → markdown (HTML auto-converted). SSRF guard on private IPs. 5 MB body cap. |
-| `web_search` | Top-N results via configured provider (brave / tavily / searxng). Engine config, not blueprint. |
-| `javascript_repl` | `bun -e <code>` subprocess. Top-level await supported. 10 s default timeout. |
-| `python_repl` | `python3 -c <code>` subprocess. Requires python3 on PATH. 30 s default timeout. |
-| `datetime` | Current date/time. Optional IANA timezone + format (`iso` / `rfc2822` / `unix` / `human`). |
+| Tool              | What it does                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `bash`            | Shell command (subprocess in cwd of blueprint dir)                                              |
+| `read`            | Read a file (text + image) with truncation                                                      |
+| `write`           | Create / overwrite a file                                                                       |
+| `edit`            | Surgical string replacement in a file                                                           |
+| `grep`            | Pattern search via ripgrep                                                                      |
+| `find`            | Glob respecting `.gitignore`                                                                    |
+| `ls`              | Directory listing                                                                               |
+| `web_fetch`       | HTTPS GET → markdown (HTML auto-converted). SSRF guard on private IPs. 5 MB body cap.           |
+| `web_search`      | Top-N results via configured provider (brave / tavily / searxng). Engine config, not blueprint. |
+| `javascript_repl` | `bun -e <code>` subprocess. Top-level await supported. 10 s default timeout.                    |
+| `python_repl`     | `python3 -c <code>` subprocess. Requires python3 on PATH. 30 s default timeout.                 |
+| `datetime`        | Current date/time. Optional IANA timezone + format (`iso` / `rfc2822` / `unix` / `human`).      |
 
-Read/write/edit/grep/find/ls/bash come from `@mariozechner/pi-coding-agent` — same shape Claude Code uses. The REPLs and web_* are oddjob-specific.
+Read/write/edit/grep/find/ls/bash come from `@mariozechner/pi-coding-agent` — same shape Claude Code uses. The REPLs and web\_\* are oddjob-specific.
 
-**Sandbox posture:** v1 tools run as host processes — *not* a security boundary. Same trust model as `bash`. Cloud sandboxes (E2B / Modal / Daytona / Vercel Sandbox) land in Phase 15 as a pluggable `SandboxProvider`.
+**Sandbox posture:** v1 tools run as host processes — _not_ a security boundary. Same trust model as `bash`. Cloud sandboxes (E2B / Modal / Daytona / Vercel Sandbox) land in Phase 15 as a pluggable `SandboxProvider`.
 
 Example:
 

@@ -90,11 +90,7 @@ function RunDetail(): React.JSX.Element {
       )}
 
       {r.outputValidation && r.outputValidation.source !== "skipped" && (
-        <Card
-          className={
-            r.outputValidation.ok ? "border-emerald-500/40" : "border-destructive/50"
-          }
-        >
+        <Card className={r.outputValidation.ok ? "border-emerald-500/40" : "border-destructive/50"}>
           <CardHeader>
             <CardTitle>
               Output validation: {r.outputValidation.ok ? "passed" : "failed"}

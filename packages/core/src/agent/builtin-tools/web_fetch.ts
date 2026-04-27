@@ -143,7 +143,11 @@ async function readCapped(
   return { body: new TextDecoder("utf-8", { fatal: false }).decode(buf), bytes: total, truncated };
 }
 
-function renderBody(body: string, contentType: string, format: "markdown" | "text" | "raw"): string {
+function renderBody(
+  body: string,
+  contentType: string,
+  format: "markdown" | "text" | "raw",
+): string {
   if (format === "raw") return body;
   if (format === "markdown" && contentType.includes("text/html")) {
     const td = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });

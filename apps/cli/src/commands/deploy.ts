@@ -12,6 +12,11 @@ export default defineCommand({
   args: {
     path: { type: "positional", required: false, default: ".", description: "Blueprint dir" },
     name: { type: "string", description: "Deployment name (defaults to blueprint name)" },
+    tag: {
+      type: "string",
+      default: "latest",
+      description: "Pin deployment to a blueprint tag (default 'latest').",
+    },
   },
   async run({ args }) {
     const bp = await loadBlueprint(args.path, { validate: true, checkFs: true });
@@ -32,8 +37,12 @@ export default defineCommand({
         limits: { warnThresholdPct: 80 },
       };
     }
-    const d = await api.deployments.create(depInput);
+    const d = await api.deployments.create({
+      ...depInput,
+      blueprintTag: args.tag,
+    });
     process.stdout.write(`deployed ${d.name} (${d.id})\n`);
+    process.stdout.write(`blueprint: ${d.blueprintId}:${d.blueprintTag}\n`);
     process.stdout.write(`triggers: ${d.triggers.map((t) => t.type).join(", ")}\n`);
     process.stdout.write(`channels: ${d.channels.map((c) => c.type).join(", ")}\n`);
   },

@@ -29,6 +29,8 @@ const SPA_PATHS: readonly string[] = [
   "/blueprints/:namespace/:name",
   "/channels",
   "/engine",
+  "/plugins",
+  "/providers",
   "/secrets",
 ];
 

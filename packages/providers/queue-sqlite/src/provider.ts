@@ -135,9 +135,7 @@ export class QueueSqliteProvider implements QueueProvider {
   async cancel(runId: string): Promise<boolean> {
     // Only drop if not currently leased — running rows must be aborted via the worker pool's AbortController.
     const result = this.db
-      .query(
-        `DELETE FROM queued_runs WHERE run_id = ? AND status = 'queued' AND worker_id IS NULL`,
-      )
+      .query(`DELETE FROM queued_runs WHERE run_id = ? AND status = 'queued' AND worker_id IS NULL`)
       .run(runId);
     return result.changes > 0;
   }

@@ -185,9 +185,7 @@ function ChannelsPage(): React.JSX.Element {
                           {d.name}
                         </Link>
                       ))}
-                      {u.deployments.length > 3 && (
-                        <span className="text-muted-foreground">…</span>
-                      )}
+                      {u.deployments.length > 3 && <span className="text-muted-foreground">…</span>}
                     </div>
                   </div>
                 </li>
@@ -202,11 +200,7 @@ function ChannelsPage(): React.JSX.Element {
           <DialogHeader>
             <DialogTitle>Test a channel</DialogTitle>
           </DialogHeader>
-          <ChannelRow
-            value={testCfg}
-            onChange={setTestCfg}
-            types={types.data?.types ?? []}
-          />
+          <ChannelRow value={testCfg} onChange={setTestCfg} types={types.data?.types ?? []} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setTestOpen(false)}>
               Cancel
@@ -233,11 +227,7 @@ function ChannelsPage(): React.JSX.Element {
             <Field label="Description">
               <Input value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} />
             </Field>
-            <ChannelRowComp
-              value={tplCfg}
-              onChange={setTplCfg}
-              types={types.data?.types ?? []}
-            />
+            <ChannelRowComp value={tplCfg} onChange={setTplCfg} types={types.data?.types ?? []} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTplDialog(false)}>

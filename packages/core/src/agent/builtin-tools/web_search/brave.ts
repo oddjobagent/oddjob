@@ -17,7 +17,8 @@ export const braveProvider: SearchProvider = {
       },
       signal: opts.signal,
     });
-    if (!resp.ok) throw new Error(`brave search ${resp.status}: ${await resp.text().catch(() => "")}`);
+    if (!resp.ok)
+      throw new Error(`brave search ${resp.status}: ${await resp.text().catch(() => "")}`);
     const data = (await resp.json()) as BraveResponse;
     const out: SearchResult[] = [];
     for (const r of data.web?.results ?? []) {
@@ -43,5 +44,8 @@ interface BraveResponse {
 }
 
 function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

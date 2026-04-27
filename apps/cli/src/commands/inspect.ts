@@ -5,7 +5,11 @@ import { api } from "../lib/api.ts";
 export default defineCommand({
   meta: { name: "inspect", description: "Pretty-print a blueprint or deployment." },
   args: {
-    target: { type: "positional", required: true, description: "<namespace>/<name> or deployment id/name" },
+    target: {
+      type: "positional",
+      required: true,
+      description: "<namespace>/<name> or deployment id/name",
+    },
     json: { type: "boolean", description: "Emit raw JSON" },
   },
   async run({ args }) {
@@ -23,9 +27,7 @@ export default defineCommand({
       process.stdout.write(`  desc:     ${bp.description}\n`);
       process.stdout.write(`  tools:    ${bp.tools.join(", ") || "—"}\n`);
       process.stdout.write(`  skills:   ${bp.skills.join(", ") || "—"}\n`);
-      process.stdout.write(
-        `  connectors: ${Object.keys(bp.connectors).join(", ") || "—"}\n`,
-      );
+      process.stdout.write(`  connectors: ${Object.keys(bp.connectors).join(", ") || "—"}\n`);
       process.stdout.write(`  scripts:    ${Object.keys(bp.scripts).join(", ") || "—"}\n`);
       return;
     }

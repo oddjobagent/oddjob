@@ -11,11 +11,31 @@ interface BuiltinToolDescriptor {
 }
 
 const TOOL_CATALOG: Record<string, Omit<BuiltinToolDescriptor, "name">> = {
-  bash: { description: "Execute shell commands in the run sandbox.", category: "shell", configurable: false },
-  read: { description: "Read a file from the sandbox.", category: "filesystem", configurable: false },
-  write: { description: "Write a file in the sandbox.", category: "filesystem", configurable: false },
-  edit: { description: "Edit an existing file in the sandbox.", category: "filesystem", configurable: false },
-  grep: { description: "Search file contents with regex.", category: "filesystem", configurable: false },
+  bash: {
+    description: "Execute shell commands in the run sandbox.",
+    category: "shell",
+    configurable: false,
+  },
+  read: {
+    description: "Read a file from the sandbox.",
+    category: "filesystem",
+    configurable: false,
+  },
+  write: {
+    description: "Write a file in the sandbox.",
+    category: "filesystem",
+    configurable: false,
+  },
+  edit: {
+    description: "Edit an existing file in the sandbox.",
+    category: "filesystem",
+    configurable: false,
+  },
+  grep: {
+    description: "Search file contents with regex.",
+    category: "filesystem",
+    configurable: false,
+  },
   find: { description: "Find files by glob pattern.", category: "filesystem", configurable: false },
   ls: { description: "List directory contents.", category: "filesystem", configurable: false },
   web_fetch: {
@@ -38,13 +58,21 @@ const TOOL_CATALOG: Record<string, Omit<BuiltinToolDescriptor, "name">> = {
     category: "execution",
     configurable: true,
   },
-  datetime: { description: "Get the current date/time in arbitrary timezones.", category: "utility", configurable: false },
+  datetime: {
+    description: "Get the current date/time in arbitrary timezones.",
+    category: "utility",
+    configurable: false,
+  },
 };
 
 export const tools = (): Handler => () => {
   const list: BuiltinToolDescriptor[] = BUILTIN_TOOL_NAMES.map((name) => ({
     name,
-    ...(TOOL_CATALOG[name] ?? { description: name, category: "utility" as const, configurable: false }),
+    ...(TOOL_CATALOG[name] ?? {
+      description: name,
+      category: "utility" as const,
+      configurable: false,
+    }),
   }));
   return json({ tools: list });
 };
@@ -101,8 +129,16 @@ export const models =
     const candidates: Array<{ id: string; provider: string; requiresSecret: string }> = [
       // Anthropic
       { id: "anthropic/claude-opus-4", provider: "anthropic", requiresSecret: "ANTHROPIC_API_KEY" },
-      { id: "anthropic/claude-sonnet-4", provider: "anthropic", requiresSecret: "ANTHROPIC_API_KEY" },
-      { id: "anthropic/claude-haiku-4-5", provider: "anthropic", requiresSecret: "ANTHROPIC_API_KEY" },
+      {
+        id: "anthropic/claude-sonnet-4",
+        provider: "anthropic",
+        requiresSecret: "ANTHROPIC_API_KEY",
+      },
+      {
+        id: "anthropic/claude-haiku-4-5",
+        provider: "anthropic",
+        requiresSecret: "ANTHROPIC_API_KEY",
+      },
       // OpenAI
       { id: "openai/gpt-4o", provider: "openai", requiresSecret: "OPENAI_API_KEY" },
       { id: "openai/gpt-4o-mini", provider: "openai", requiresSecret: "OPENAI_API_KEY" },
@@ -110,8 +146,16 @@ export const models =
       { id: "google/gemini-2.5-flash", provider: "google", requiresSecret: "GOOGLE_API_KEY" },
       { id: "google/gemini-2.5-pro", provider: "google", requiresSecret: "GOOGLE_API_KEY" },
       // OpenRouter — works with any vendor through one key
-      { id: "openrouter/anthropic/claude-sonnet-4", provider: "openrouter", requiresSecret: "OPENROUTER_API_KEY" },
-      { id: "openrouter/openai/gpt-4o", provider: "openrouter", requiresSecret: "OPENROUTER_API_KEY" },
+      {
+        id: "openrouter/anthropic/claude-sonnet-4",
+        provider: "openrouter",
+        requiresSecret: "OPENROUTER_API_KEY",
+      },
+      {
+        id: "openrouter/openai/gpt-4o",
+        provider: "openrouter",
+        requiresSecret: "OPENROUTER_API_KEY",
+      },
       // Test
       { id: "faux/test", provider: "faux", requiresSecret: "" },
     ];
@@ -127,10 +171,13 @@ function mergeEngine(current: EngineConfig | undefined, patch: EnginePatchBody):
   const cur = current ?? {};
   const builtin: BuiltinToolsConfig = { ...cur.builtinTools };
   if (patch.builtinTools) {
-    if (patch.builtinTools.webSearch !== undefined) builtin.webSearch = patch.builtinTools.webSearch;
+    if (patch.builtinTools.webSearch !== undefined)
+      builtin.webSearch = patch.builtinTools.webSearch;
     if (patch.builtinTools.webFetch !== undefined) builtin.webFetch = patch.builtinTools.webFetch;
-    if (patch.builtinTools.pythonRepl !== undefined) builtin.pythonRepl = patch.builtinTools.pythonRepl;
-    if (patch.builtinTools.javascriptRepl !== undefined) builtin.javascriptRepl = patch.builtinTools.javascriptRepl;
+    if (patch.builtinTools.pythonRepl !== undefined)
+      builtin.pythonRepl = patch.builtinTools.pythonRepl;
+    if (patch.builtinTools.javascriptRepl !== undefined)
+      builtin.javascriptRepl = patch.builtinTools.javascriptRepl;
   }
   return { ...cur, builtinTools: builtin };
 }

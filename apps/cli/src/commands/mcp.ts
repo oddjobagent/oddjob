@@ -11,7 +11,9 @@ const auth = defineCommand({
   async run({ args }) {
     // Resolve deployment by id or name.
     const list = await api.deployments.list({ includeArchived: true });
-    const dep = list.deployments.find((d) => d.id === args.deployment || d.name === args.deployment);
+    const dep = list.deployments.find(
+      (d) => d.id === args.deployment || d.name === args.deployment,
+    );
     if (!dep) throw new Error(`deployment '${args.deployment}' not found`);
 
     const result = await api.auth.initiate(dep.id, args.connector);
@@ -40,9 +42,7 @@ const list = defineCommand({
       return;
     }
     for (const [name, c] of connectors) {
-      process.stdout.write(
-        `${name.padEnd(20)} ${c.transport.padEnd(8)} auth=${c.auth.kind}\n`,
-      );
+      process.stdout.write(`${name.padEnd(20)} ${c.transport.padEnd(8)} auth=${c.auth.kind}\n`);
     }
   },
 });

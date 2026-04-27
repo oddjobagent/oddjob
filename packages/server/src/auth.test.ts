@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { PluginRegistry, RoleResolver } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
@@ -23,13 +24,24 @@ async function makeRuntime(host: string, port: number, bearerToken?: string): Pr
   const secrets = new SecretsSqliteProvider({ path: join(dir, `sec-${port}.db`), masterKey });
   const log = new LoggingSqliteProvider({ path: join(dir, `l-${port}.db`) });
   await Promise.all([state.connect(), queue.connect(), secrets.connect(), log.connect()]);
+  const plugins = new PluginRegistry();
+  const llm = new LlmPiProvider({ secrets });
+  const roleResolver = new RoleResolver({
+    registry: plugins,
+    secrets,
+    engineRoles: () => new Map(),
+    credentials: () => new Map(),
+    legacy: { resolve: (m, s) => llm.resolveModel(m, s) },
+  });
   return {
     state,
     queue,
     secrets,
     log,
     sandbox: new SandboxProcessProvider(),
-    llm: new LlmPiProvider({ secrets }),
+    llm,
+    plugins,
+    roleResolver,
     channelFor: () => undefined,
     bearerToken,
     config: { host, port, maxWorkers: 1, leaseMs: 30_000, heartbeatMs: 5_000, pollMs: 200 },

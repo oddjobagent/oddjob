@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.2",
-    "croner": "^10.0.1",
     "@oddjob/channel-console": "workspace:*",
     "@oddjob/core": "workspace:*",
     "@oddjob/llm-pi": "workspace:*",
@@ -26,6 +25,7 @@
     "@oddjob/sandbox-process": "workspace:*",
     "@oddjob/scheduler-croner": "workspace:*",
     "@oddjob/secrets-sqlite": "workspace:*",
-    "@oddjob/state-sqlite": "workspace:*"
+    "@oddjob/state-sqlite": "workspace:*",
+    "croner": "^10.0.1"
   }
 }

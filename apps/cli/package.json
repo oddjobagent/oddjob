@@ -25,6 +25,12 @@
     "@oddjob/llm-pi": "workspace:*",
     "@oddjob/logging-sqlite": "workspace:*",
     "@oddjob/mcp-client": "workspace:*",
+    "@oddjob/plugin-anthropic": "workspace:*",
+    "@oddjob/plugin-builtin-tools": "workspace:*",
+    "@oddjob/plugin-channels-core": "workspace:*",
+    "@oddjob/plugin-llama-local": "workspace:*",
+    "@oddjob/plugin-openai": "workspace:*",
+    "@oddjob/plugin-openrouter": "workspace:*",
     "@oddjob/queue-sqlite": "workspace:*",
     "@oddjob/sandbox-process": "workspace:*",
     "@oddjob/scheduler-croner": "workspace:*",
@@ -32,6 +38,7 @@
     "@oddjob/server": "workspace:*",
     "@oddjob/state-sqlite": "workspace:*",
     "citty": "^0.1.6",
-    "smol-toml": "^1.6.1"
+    "smol-toml": "^1.6.1",
+    "zod": "^4.3.6"
   }
 }

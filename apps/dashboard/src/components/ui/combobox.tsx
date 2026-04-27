@@ -47,10 +47,7 @@ export function Combobox({
       o.value.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const showCustom =
-    allowCustom &&
-    query.length > 0 &&
-    !options.some((o) => o.value === query);
+  const showCustom = allowCustom && query.length > 0 && !options.some((o) => o.value === query);
 
   return (
     <div ref={ref} className={cn("relative", className)}>

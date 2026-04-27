@@ -11,7 +11,8 @@ export type RunStatus =
   | "failed"
   | "retrying"
   | "timeout"
-  | "cancelled";
+  | "cancelled"
+  | "awaiting_confirmation";
 
 export type TriggeredBy = "cron" | "webhook" | "manual" | "event";
 

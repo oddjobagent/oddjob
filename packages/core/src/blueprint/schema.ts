@@ -91,6 +91,18 @@ const SchemaSourceSchema = z
 export const OutputSchemaSchema = SchemaSourceSchema;
 export const InputSchemaSchema = SchemaSourceSchema;
 
+export const GraderSchema = z
+  .strictObject({
+    rubric_text: z.string().min(1).optional(),
+    rubric_file: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    max_iterations: z.number().int().min(1).max(20).default(3),
+    on_verdict: z.enum(["feedback", "fail-only", "advisory"]).default("feedback"),
+  })
+  .refine((v) => Boolean(v.rubric_text) !== Boolean(v.rubric_file), {
+    message: "outcomes.grader: exactly one of rubric_text or rubric_file is required",
+  });
+
 export const OutcomesSchema = z.strictObject({
   success: z.string().min(1).optional(),
   warning: z.string().min(1).optional(),
@@ -99,6 +111,7 @@ export const OutcomesSchema = z.strictObject({
   error_tools: z.array(z.string()).default([]),
   max_retries: z.number().int().min(0).max(10).default(0),
   retry_backoff_ms: z.number().int().min(0).default(30_000),
+  grader: GraderSchema.optional(),
 });
 
 export const BlueprintRawSchema = z.strictObject({
@@ -110,10 +123,30 @@ export const BlueprintRawSchema = z.strictObject({
   license: z.string().default("MIT"),
   schema_version: z.literal(1).default(1),
 
-  model: z.string().min(1),
+  /**
+   * @deprecated since 0.0.x — set engine model roles instead. Kept as a fallback
+   * for the "default" role; emits a warning when present.
+   */
+  model: z.string().min(1).optional(),
   prompt: z.string().min(1),
+  /** Required engine roles a deployment must have configured. */
+  requires: z
+    .strictObject({
+      roles: z.array(z.string().min(1)).default([]),
+    })
+    .optional(),
 
-  tools: z.array(z.string()).default([]),
+  tools: z
+    .array(
+      z.union([
+        z.string(),
+        z.strictObject({
+          name: z.string().min(1),
+          confirm: z.boolean().default(false),
+        }),
+      ]),
+    )
+    .default([]),
   skills: z.array(z.string()).default([]),
 
   connectors: z.record(z.string().regex(NAME_PATTERN), ConnectorSchema).default({}),

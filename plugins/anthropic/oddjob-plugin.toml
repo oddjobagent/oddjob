@@ -1,0 +1,10 @@
+slug = "anthropic"
+name = "Anthropic"
+description = "Official Anthropic Claude model provider."
+version = "0.1.0"
+author = "Oddjob"
+homepage = "https://www.anthropic.com/"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

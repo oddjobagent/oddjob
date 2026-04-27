@@ -7,7 +7,7 @@ Bun monorepo. 20 packages (`core`, `server`, `sdk`, `api-client`, 16 providers) 
 - **Runtime:** Bun ≥ 1.3 only. `bun:sqlite`, `Bun.serve`, `Bun.spawn` used everywhere.
 - **Language:** TypeScript strict + `noUncheckedIndexedAccess` + `verbatimModuleSyntax` + `allowImportingTsExtensions` (we import `./foo.ts` literally).
 - **Tests:** `bun:test` only. Unit tests live next to the file as `*.test.ts`.
-- **Type check:** `tsgo` (the native preview). Run `bun run typecheck` from root — it chains `tsgo --noEmit` for backend + `bun run --cwd apps/dashboard typecheck` for the dashboard, because the root tsconfig **does not include `apps/**`** (different lib + paths).
+- **Type check:** `tsgo` (the native preview). Run `bun run typecheck` from root — it chains `tsgo --noEmit` for backend + `bun run --cwd apps/dashboard typecheck` for the dashboard, because the root tsconfig **does not include `apps/**`\*\* (different lib + paths).
 - **Lint/format:** `oxlint` + `oxfmt`. ~32 warnings remain by design (no-await-in-loop in sequential migration runners). 0 errors required.
 - **Workspaces:** `packages/*`, `packages/providers/*`, `apps/*`. Workspace deps use `"workspace:*"`.
 
@@ -22,11 +22,13 @@ bun run format            # oxfmt
 ```
 
 Live dev:
+
 ```bash
 taskmux restart server    # reload after code change (server runs under taskmux)
 ```
 
 Build the single binary:
+
 ```bash
 bun build --compile --outfile=./dist/oddjob ./apps/cli/src/index.ts
 ./dist/oddjob serve --port 7777

@@ -4,6 +4,12 @@ import type { SecretsProvider } from "@oddjob/core";
 
 export interface LlmPiOptions {
   secrets?: SecretsProvider;
+  /**
+   * Test-only override: map a `model` string (e.g. `"faux/echo"`) to a fully
+   * configured pi-ai Model. resolveModel checks this map first. Production
+   * callers don't set this.
+   */
+  modelOverrides?: Map<string, Model<Api>>;
 }
 
 export interface ResolvedModel {
@@ -17,9 +23,19 @@ const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 export class LlmPiProvider {
   readonly name = "llm-pi";
   private readonly secrets?: SecretsProvider;
+  private readonly modelOverrides?: Map<string, Model<Api>>;
 
   constructor(options: LlmPiOptions = {}) {
     this.secrets = options.secrets;
+    this.modelOverrides = options.modelOverrides;
+  }
+
+  /** Test helper: register a model under a string id post-construction. */
+  registerModelOverride(modelString: string, model: Model<Api>): void {
+    if (!this.modelOverrides) {
+      throw new Error("modelOverrides map not configured");
+    }
+    this.modelOverrides.set(modelString, model);
   }
 
   async connect(): Promise<void> {}
@@ -37,12 +53,23 @@ export class LlmPiProvider {
    *   "faux/<id>"                         test-only, no key required
    */
   async resolveModel(modelString: string, secretRef?: string): Promise<ResolvedModel> {
+    const override = this.modelOverrides?.get(modelString);
+    if (override) return { model: override };
+
     const parts = modelString.split("/");
     const provider = parts[0];
     if (!provider) throw new Error(`invalid model string: ${modelString}`);
 
     if (provider === "faux") {
       const fauxId = parts.slice(1).join("/") || "faux-default";
+      // Prefer the registered faux model (has the right `api: "faux"`) so
+      // streamSimple routes through the faux provider rather than openai-completions.
+      try {
+        const registered = piGetModel("faux" as Parameters<typeof piGetModel>[0], fauxId as never);
+        if (registered) return { model: registered };
+      } catch {
+        // Not registered (no test setup) - fall back to a stub model.
+      }
       return { model: makeFauxModel(fauxId) };
     }
 

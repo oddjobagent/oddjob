@@ -44,6 +44,26 @@ async function resolveSchemaSidecars(blueprint: Blueprint): Promise<Blueprint> {
     );
     next = { ...next, inputSchema: { type: "json-schema", schema }, inputSchemaFile: undefined };
   }
+  if (next.outcomes?.grader?.rubricFile && !next.outcomes.grader.rubricLoaded) {
+    const tomlDir = dirname(next.path);
+    const ref = next.outcomes.grader.rubricFile;
+    const abs = isAbsolute(ref) ? ref : resolve(tomlDir, ref);
+    try {
+      const rubric = await readFile(abs, "utf8");
+      next = {
+        ...next,
+        outcomes: {
+          ...next.outcomes,
+          grader: { ...next.outcomes.grader, rubricLoaded: rubric },
+        },
+      };
+    } catch (err) {
+      throw new BlueprintParseError(
+        `outcomes.grader.rubric_file '${ref}': ${(err as Error).message}`,
+        err,
+      );
+    }
+  }
   return next;
 }
 

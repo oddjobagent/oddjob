@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { parse as parseToml, stringify } from "smol-toml";
+import { z } from "zod";
 
 export const ODDJOB_HOME = process.env.ODDJOB_HOME ?? join(homedir(), ".oddjob");
 export const CONFIG_PATH = process.env.ODDJOB_CONFIG ?? join(ODDJOB_HOME, "config.toml");
@@ -35,9 +36,34 @@ export interface BuiltinToolsFileConfig {
   };
 }
 
+/** Persisted shape of `[plugins]`. */
+export interface PluginsFileConfig {
+  /** Plugin slugs to disable at boot. Bundled and local both honor this. */
+  disabled?: string[];
+}
+
+/** A single credential entry — `[providers.<slug>.<credentialName>]`. */
+export interface ProviderCredentialFileConfig {
+  api_key_secret?: string;
+  options?: Record<string, unknown>;
+}
+
+/** A single role assignment — `[roles.<role>]`. */
+export interface RoleFileConfig {
+  provider: string;
+  model: string;
+  credential?: string;
+  options?: Record<string, unknown>;
+}
+
 export interface OddjobConfig {
   server: ServerConfig;
   builtin_tools?: BuiltinToolsFileConfig;
+  plugins?: PluginsFileConfig;
+  /** providers.<slug>.<credentialName> */
+  providers?: Record<string, Record<string, ProviderCredentialFileConfig>>;
+  /** roles.<role> */
+  roles?: Record<string, RoleFileConfig>;
 }
 
 export const DEFAULT_CONFIG: OddjobConfig = {
@@ -48,13 +74,78 @@ export const DEFAULT_CONFIG: OddjobConfig = {
   },
 };
 
+// Schemas only validate the new Phase 17 blocks. Server + builtin_tools are
+// passed through as-is for backwards compatibility; they have their own typed
+// consumers downstream.
+const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const CRED_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+const PluginsSchema = z
+  .strictObject({
+    disabled: z.array(z.string().regex(SLUG_PATTERN)).optional(),
+  })
+  .optional();
+
+const ProviderCredentialSchema = z.strictObject({
+  api_key_secret: z.string().min(1).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
+});
+
+const ProvidersSchema = z
+  .record(
+    z.string().regex(SLUG_PATTERN),
+    z.record(z.string().regex(CRED_NAME_PATTERN), ProviderCredentialSchema),
+  )
+  .optional();
+
+const RoleSchema = z.strictObject({
+  provider: z.string().regex(SLUG_PATTERN),
+  model: z.string().min(1),
+  credential: z.string().regex(CRED_NAME_PATTERN).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
+});
+
+const RolesSchema = z.record(z.string().regex(ROLE_PATTERN), RoleSchema).optional();
+
 export async function loadConfig(): Promise<OddjobConfig> {
   if (!existsSync(CONFIG_PATH)) return DEFAULT_CONFIG;
-  const src = await readFile(CONFIG_PATH, "utf8");
-  const parsed = parseToml(src) as Record<string, unknown>;
+  let src: string;
+  try {
+    src = await readFile(CONFIG_PATH, "utf8");
+  } catch (err) {
+    throw new Error(`oddjob: failed to read ${CONFIG_PATH}: ${(err as Error).message}`);
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseToml(src) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `oddjob: ${CONFIG_PATH} is not valid TOML: ${(err as Error).message}\n` +
+        `Fix the file or move it aside and let the server scaffold a fresh one.`,
+    );
+  }
+  const plugins = PluginsSchema.parse(parsed.plugins);
+  let providers: Record<string, Record<string, ProviderCredentialFileConfig>> | undefined;
+  let roles: Record<string, RoleFileConfig> | undefined;
+  try {
+    providers = ProvidersSchema.parse(parsed.providers);
+    roles = RolesSchema.parse(parsed.roles);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const issues = err.issues
+        .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("\n");
+      throw new Error(`oddjob: ${CONFIG_PATH} schema invalid:\n${issues}`);
+    }
+    throw err;
+  }
   return {
     server: { ...DEFAULT_CONFIG.server, ...(parsed.server as object) },
     builtin_tools: parsed.builtin_tools as BuiltinToolsFileConfig | undefined,
+    plugins,
+    providers,
+    roles,
   };
 }
 

@@ -2,5 +2,8 @@ export * from "./types/index.ts";
 export * from "./providers/index.ts";
 export * from "./blueprint/index.ts";
 export * from "./deployment/index.ts";
+export * from "./environment/index.ts";
 export * from "./agent/index.ts";
 export * from "./skills/index.ts";
+export * from "./plugin/index.ts";
+export * from "./engine/index.ts";

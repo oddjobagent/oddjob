@@ -13,6 +13,8 @@ import { Route as blueprintsRoute } from "./routes/blueprints.tsx";
 import { Route as blueprintDetailRoute } from "./routes/blueprints.$id.tsx";
 import { Route as channelsRoute } from "./routes/channels.tsx";
 import { Route as engineRoute } from "./routes/engine.tsx";
+import { Route as pluginsRoute } from "./routes/plugins.tsx";
+import { Route as providersRoute } from "./routes/providers.tsx";
 import { Route as secretsRoute } from "./routes/secrets.tsx";
 
 const routeTree = rootRoute.addChildren([
@@ -28,6 +30,8 @@ const routeTree = rootRoute.addChildren([
   blueprintDetailRoute,
   channelsRoute,
   engineRoute,
+  pluginsRoute,
+  providersRoute,
   secretsRoute,
 ]);
 

@@ -5,8 +5,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 const schema = Type.Object({
   timezone: Type.Optional(
     Type.String({
-      description:
-        "IANA timezone (e.g. 'America/Los_Angeles', 'UTC'). Default: UTC.",
+      description: "IANA timezone (e.g. 'America/Los_Angeles', 'UTC'). Default: UTC.",
     }),
   ),
   format: Type.Optional(
@@ -82,7 +81,10 @@ export function createDatetimeTool(opts: DatetimeToolOptions = {}): AgentTool<ty
       } catch (err) {
         return {
           content: [
-            { type: "text", text: `datetime error: invalid timezone '${tz}' (${(err as Error).message})` },
+            {
+              type: "text",
+              text: `datetime error: invalid timezone '${tz}' (${(err as Error).message})`,
+            },
           ],
           details: { iso, unix, timezone: "UTC" },
         };

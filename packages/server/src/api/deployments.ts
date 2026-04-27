@@ -33,11 +33,47 @@ export const create =
     if (!body || !body.name || !body.blueprintId) {
       return badRequest("body must include name + blueprintId");
     }
-    const bp = await rt.state.getBlueprint(body.blueprintId);
-    if (!bp) return badRequest(`blueprint ${body.blueprintId} not found - push first`);
+    const tag = body.blueprintTag ?? "latest";
+    const bp = await rt.state.getBlueprint(body.blueprintId, { tag });
+    if (!bp) {
+      return badRequest(
+        `blueprint ${body.blueprintId}:${tag} not found - push first or pick a known tag`,
+      );
+    }
     const existing = await rt.state.getDeploymentByName(body.name);
     if (existing) return conflict(`deployment name '${body.name}' already in use`);
-    const dep = await rt.state.createDeployment(body);
+
+    const required = bp.requires?.roles ?? [];
+    if (required.length > 0) {
+      const missing: string[] = [];
+      for (const role of required) {
+        const ok = rt.roleResolver.hasRole(
+          role,
+          body.modelRoleOverrides
+            ? Object.fromEntries(
+                Object.entries(body.modelRoleOverrides).map(([r, o]) => [
+                  r,
+                  {
+                    providerSlug: o.providerSlug,
+                    modelId: o.modelId,
+                    credentialName: o.credentialName ?? "default",
+                    options: o.options,
+                  },
+                ]),
+              )
+            : undefined,
+          bp.model,
+        );
+        if (!ok) missing.push(role);
+      }
+      if (missing.length > 0) {
+        return badRequest(
+          `blueprint ${bp.id} requires roles [${missing.join(", ")}] — assign them via 'oddjob roles set' or modelRoleOverrides`,
+        );
+      }
+    }
+
+    const dep = await rt.state.createDeployment({ ...body, blueprintTag: tag });
     if (rt.scheduler) await registerCronTriggers(rt, dep.id);
     return json(dep, { status: 201 });
   };

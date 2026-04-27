@@ -13,19 +13,21 @@ import type { LogEntry, LogProvider } from "../providers/logging.ts";
 import type { AuthProvider } from "../providers/auth.ts";
 import type { McpProvider } from "../providers/mcp.ts";
 import type { SecretsProvider } from "../providers/secrets.ts";
-import type { SandboxProvider, SandboxSession } from "../providers/sandbox.ts";
+import type { EnvironmentProvider, EnvironmentSession } from "../providers/environment.ts";
 import type { Blueprint } from "../types/blueprint.ts";
 import type { Limits } from "../types/limits.ts";
 import type { Run, RunId } from "../types/run.ts";
 import type { RunOutput } from "../types/output.ts";
 
 import { buildBuiltinTools, type EngineConfig } from "./builtin-tools/index.ts";
+import type { EngineLLM } from "../engine/engine-llm.ts";
 import { validateOutput } from "./output-validate.ts";
 import { buildMcpRuntime } from "./mcp-tool.ts";
 import {
   composeOutputSchemaWithChannels,
   type DynamicChannelDescriptor,
 } from "./output-schema-compose.ts";
+import { buildRevisionPrompt, type GraderEvaluation, runGrader } from "./grader.ts";
 import { createReportStatusTool, type RunVerdict } from "./report-status-tool.ts";
 import { buildSkillTool } from "./skill-tool.ts";
 import { buildScriptTools } from "./script-tool.ts";
@@ -40,7 +42,7 @@ export interface ResolvedLLM {
 export interface RunOnceOptions {
   blueprint: Blueprint;
   llm: ResolvedLLM;
-  sandbox: SandboxProvider;
+  sandbox: EnvironmentProvider;
   log?: LogProvider;
   input?: unknown;
   runId?: RunId;
@@ -60,6 +62,37 @@ export interface RunOnceOptions {
    * `output.structured.channels.<name>` per channel.
    */
   dynamicChannels?: readonly DynamicChannelDescriptor[];
+  /**
+   * Optional grader LLM. Used when `blueprint.outcomes.grader` declares a
+   * different `model` than the agent. When omitted, grader uses `llm`.
+   */
+  grader?: GraderOverride;
+  /**
+   * Optional plugin-system bridge. When supplied, the harness will use it to
+   * resolve roles like "grader" and (in future) "advisor". Falls back to the
+   * legacy `llm`/`grader` paths when omitted.
+   */
+  engineLlm?: EngineLLM;
+  /**
+   * Optional confirmation gate. Fired before any tool whose name appears in
+   * `blueprint.toolPolicies` with `confirm: true`. The harness pauses the
+   * agent loop until this resolves; the resolution carries either an `allow`
+   * verdict (tool fires normally) or `deny` (tool returns an error result).
+   * The worker pool wires this to `POST /api/v1/runs/:id/confirm`.
+   */
+  onConfirmRequest?: (req: ConfirmRequest) => Promise<ConfirmResolution>;
+}
+
+export interface ConfirmRequest {
+  runId: string;
+  toolUseId: string;
+  toolName: string;
+  args: unknown;
+}
+
+export interface ConfirmResolution {
+  allow: boolean;
+  denyMessage?: string;
 }
 
 export interface RunOnceResult {
@@ -70,6 +103,17 @@ export interface RunOnceResult {
   verdict?: RunVerdict;
   /** Whether the run is retry-eligible (verdict.outcome === "warning"). */
   retriable: boolean;
+  /** Per-iteration grader evaluations when [outcomes.grader] is set. */
+  graderEvaluations?: GraderEvaluation[];
+}
+
+/**
+ * Optional override: provide a different ResolvedLLM for the grader. When omitted,
+ * the grader runs on the same model as the agent. The server wires this from
+ * `blueprint.outcomes.grader.model` if present.
+ */
+export interface GraderOverride {
+  llm: ResolvedLLM;
 }
 
 export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
@@ -80,7 +124,12 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const startedAt = Date.now();
 
   const blueprintDir = isAbsolute(blueprint.path) ? dirname(blueprint.path) : process.cwd();
-  const session: SandboxSession = await sandbox.spawn({
+  // Pass blueprintDir as workdir so the session's filesystem operations
+  // resolve relative paths against the blueprint root. Process backend uses
+  // this as its tempdir replacement; container/remote backends will mount or
+  // upload it. Phase 15b reworks this when the resolved Environment lands.
+  const session: EnvironmentSession = await sandbox.spawn({
+    workdir: blueprintDir,
     timeoutMs: limits?.durationMs,
   });
 
@@ -101,7 +150,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const skillTool = buildSkillTool({ skills, onLog: append });
     const scriptTools = buildScriptTools({
       blueprint,
-      sandbox: session,
+      environment: session,
       blueprintDir,
       onLog: append,
     });
@@ -114,7 +163,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     });
     const builtinTools = buildBuiltinTools({
       allowlist: blueprint.tools,
-      sandbox: session,
+      environment: session,
       blueprintDir,
       engine: opts.engine,
       onLog: append,
@@ -149,10 +198,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       dynamicChannels.length > 0
         ? {
             ...blueprint,
-            outputSchema: composeOutputSchemaWithChannels(
-              blueprint.outputSchema,
-              dynamicChannels,
-            ),
+            outputSchema: composeOutputSchemaWithChannels(blueprint.outputSchema, dynamicChannels),
           }
         : blueprint;
     const systemPrompt = assembleSystemPrompt({
@@ -196,6 +242,34 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
             message: `tool calls reached ${limits.warnThresholdPct}% of limit (${toolCalls}/${limits.toolCalls})`,
           });
         }
+        // Permission gate: pause for explicit allow/deny before firing.
+        const policy = blueprint.toolPolicies?.[ctx.toolCall.name];
+        if (policy?.confirm && opts.onConfirmRequest) {
+          append({
+            timestamp: Date.now(),
+            level: "warn",
+            message: `tool ${ctx.toolCall.name} awaiting confirmation`,
+            meta: { toolUseId: ctx.toolCall.id },
+          });
+          const resolution = await opts.onConfirmRequest({
+            runId,
+            toolUseId: ctx.toolCall.id,
+            toolName: ctx.toolCall.name,
+            args: ctx.args,
+          });
+          append({
+            timestamp: Date.now(),
+            level: resolution.allow ? "info" : "warn",
+            message: `tool ${ctx.toolCall.name} ${resolution.allow ? "approved" : "denied"}`,
+            meta: { toolUseId: ctx.toolCall.id, denyMessage: resolution.denyMessage },
+          });
+          if (!resolution.allow) {
+            return {
+              block: true,
+              reason: `denied by user${resolution.denyMessage ? `: ${resolution.denyMessage}` : ""}`,
+            };
+          }
+        }
         return undefined;
       },
       afterToolCall: async (ctx) => {
@@ -218,20 +292,93 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       (config as AgentLoopConfig & { tools?: unknown }).tools = tools;
     }
 
-    const messages = await runAgentLoop(
+    const onEvent = (e: AgentEvent) => {
+      events.push(e);
+      if (e.type === "message_end" && e.message.role === "assistant") {
+        const u = (e.message as AssistantMessage).usage;
+        if (u) usageTotal = sumUsage(usageTotal, u);
+      }
+    };
+
+    // Initial agent invocation. May iterate when [outcomes.grader] is set.
+    let messages = await runAgentLoop(
       [userPrompt],
       { systemPrompt, messages: [], tools },
       config,
-      (e: AgentEvent) => {
-        events.push(e);
-        if (e.type === "message_end" && e.message.role === "assistant") {
-          const u = (e.message as AssistantMessage).usage;
-          if (u) usageTotal = sumUsage(usageTotal, u);
-        }
-      },
+      onEvent,
       signal,
       streamSimple,
     );
+
+    // Grader iteration loop. Only fires when blueprint.outcomes.grader is set
+    // AND a rubric is available (rubricLoaded for file-backed, rubricText otherwise).
+    const graderCfg = blueprint.outcomes?.grader;
+    const rubricBody = graderCfg
+      ? (graderCfg.rubricLoaded ?? graderCfg.rubricText ?? undefined)
+      : undefined;
+    const graderEvaluations: GraderEvaluation[] = [];
+    if (graderCfg && rubricBody) {
+      let graderLlm: ResolvedLLM = opts.grader?.llm ?? llm;
+      if (opts.engineLlm && opts.engineLlm.hasRole("grader")) {
+        try {
+          const resolved = await opts.engineLlm.forRole("grader");
+          graderLlm = { model: resolved.model, apiKey: resolved.apiKey };
+        } catch {
+          // Fall through to legacy override.
+        }
+      }
+      const maxIter = graderCfg.maxIterations;
+      for (let iter = 0; iter < maxIter; iter++) {
+        const lastAssistant = lastAssistantMessage(messages);
+        const artifact = artifactSnapshot(lastAssistant, effectiveBlueprint);
+        const evaluation = await runGrader({
+          blueprint,
+          llm: graderLlm,
+          rubric: rubricBody,
+          artifact,
+          iteration: iter,
+          log,
+          runId,
+          signal,
+        });
+        graderEvaluations.push(evaluation);
+        if (evaluation.usage) {
+          usageTotal = sumUsage(usageTotal, {
+            input: evaluation.usage.input,
+            output: evaluation.usage.output,
+            cost: evaluation.usage.cost
+              ? { total: evaluation.usage.cost, input: 0, output: 0 }
+              : undefined,
+          } as Usage);
+        }
+
+        if (evaluation.result === "satisfied" || evaluation.result === "failed") break;
+        if (iter === maxIter - 1) break; // grader said needs_revision but no budget left
+
+        // Reset the per-iteration verdict so a stale "success" from the prior
+        // round doesn't shadow the next round's report_status call.
+        verdict = undefined;
+
+        const revision: AgentMessage = {
+          role: "user",
+          content: buildRevisionPrompt(evaluation),
+          timestamp: Date.now(),
+        };
+        append({
+          timestamp: Date.now(),
+          level: "info",
+          message: `grader needs_revision; injecting feedback for iteration ${iter + 1}/${maxIter}`,
+        });
+        messages = await runAgentLoop(
+          [revision],
+          { systemPrompt, messages, tools },
+          config,
+          onEvent,
+          signal,
+          streamSimple,
+        );
+      }
+    }
 
     const finalAssistant = lastAssistantMessage(messages);
     const output = extractOutput(finalAssistant, effectiveBlueprint);
@@ -242,6 +389,24 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         level: "warn",
         message: `output failed schema validation: ${outputValidation.errors?.map((e) => `${e.path} ${e.message}`).join("; ") ?? "(unknown)"}`,
       });
+    }
+
+    // Apply final grader verdict if grader ran and is now decisive.
+    const finalGrader = graderEvaluations[graderEvaluations.length - 1];
+    if (finalGrader && graderCfg) {
+      if (finalGrader.result === "satisfied") {
+        verdict = { outcome: "success", reason: finalGrader.explanation };
+      } else if (finalGrader.result === "failed") {
+        verdict = { outcome: "error", reason: `grader: ${finalGrader.explanation}` };
+      } else if (graderCfg.onVerdict !== "advisory") {
+        // needs_revision after iterations exhausted -> warning (default) or error (fail-only)
+        const outcome: RunVerdict["outcome"] =
+          graderCfg.onVerdict === "fail-only" ? "error" : "warning";
+        verdict = {
+          outcome,
+          reason: `grader: max_iterations (${graderCfg.maxIterations}) exhausted - ${finalGrader.explanation}`,
+        };
+      }
     }
     const finishedAt = Date.now();
     const cost = usageTotal?.cost?.total ?? 0;
@@ -297,6 +462,8 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       id: runId,
       deploymentId,
       blueprintId: blueprint.id,
+      blueprintVersion: blueprint.version,
+      blueprintHash: blueprint.contentHash,
       triggeredBy,
       status,
       input,
@@ -319,6 +486,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       messages,
       verdict,
       retriable: classification.retriable,
+      graderEvaluations: graderEvaluations.length > 0 ? graderEvaluations : undefined,
     };
   } finally {
     await mcpRuntime?.close().catch(() => undefined);
@@ -367,7 +535,8 @@ function classifyRun(args: ClassifyArgs): RunClassification {
 
   // Authoritative verdict from report_status if the agent called it.
   if (verdict) {
-    if (verdict.outcome === "success") return { failed: false, retriable: false, errorMessage: undefined };
+    if (verdict.outcome === "success")
+      return { failed: false, retriable: false, errorMessage: undefined };
     return {
       failed: true,
       retriable: verdict.outcome === "warning",
@@ -443,6 +612,21 @@ function lastAssistantMessage(messages: AgentMessage[]): AssistantMessage | unde
     if (m && m.role === "assistant") return m as AssistantMessage;
   }
   return undefined;
+}
+
+function artifactSnapshot(msg: AssistantMessage | undefined, blueprint: Blueprint): string {
+  const out = extractOutput(msg, blueprint);
+  if (out.structuredOutput) {
+    return [
+      out.finalText,
+      "",
+      "### structured_output",
+      "```json",
+      JSON.stringify(out.structuredOutput, null, 2),
+      "```",
+    ].join("\n");
+  }
+  return out.finalText || "(empty artifact)";
 }
 
 function extractOutput(msg: AssistantMessage | undefined, blueprint: Blueprint): RunOutput {

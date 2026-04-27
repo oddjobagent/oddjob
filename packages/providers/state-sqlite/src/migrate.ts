@@ -5,6 +5,10 @@ import sql0002 from "./migrations/0002_deployment_extras.sql" with { type: "text
 import sql0003 from "./migrations/0003_run_validation.sql" with { type: "text" };
 import sql0004 from "./migrations/0004_channel_templates.sql" with { type: "text" };
 import sql0005 from "./migrations/0005_blueprint_versions.sql" with { type: "text" };
+import sql0006 from "./migrations/0006_environments.sql" with { type: "text" };
+import sql0007 from "./migrations/0007_plugins_and_roles.sql" with { type: "text" };
+import sql0008 from "./migrations/0008_config_provenance.sql" with { type: "text" };
+import sql0009 from "./migrations/0009_environment_wiring.sql" with { type: "text" };
 
 interface Migration {
   version: string;
@@ -17,6 +21,10 @@ const MIGRATIONS: Migration[] = [
   { version: "0003_run_validation.sql", sql: sql0003 },
   { version: "0004_channel_templates.sql", sql: sql0004 },
   { version: "0005_blueprint_versions.sql", sql: sql0005 },
+  { version: "0006_environments.sql", sql: sql0006 },
+  { version: "0007_plugins_and_roles.sql", sql: sql0007 },
+  { version: "0008_config_provenance.sql", sql: sql0008 },
+  { version: "0009_environment_wiring.sql", sql: sql0009 },
 ];
 
 export async function runMigrations(db: Database): Promise<void> {

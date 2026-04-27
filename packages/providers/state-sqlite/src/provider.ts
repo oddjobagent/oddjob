@@ -12,6 +12,15 @@ import type {
   Deployment,
   DeploymentInput,
   DeploymentListFilter,
+  EngineModelRoleRecord,
+  Environment,
+  EnvironmentInput,
+  ModelCatalogRecord,
+  ModelInfo,
+  PluginManifest,
+  PluginRecord,
+  PluginSource,
+  ProviderCredentialRecord,
   Run,
   RunFilter,
   StateProvider,
@@ -253,7 +262,13 @@ export class StateSqliteProvider implements StateProvider {
   async listBlueprintVersions(id: string): Promise<BlueprintVersionRow[]> {
     const rows = this.db
       .query<
-        { blueprint_id: string; version: string; description: string; content_hash: string; created_at: number },
+        {
+          blueprint_id: string;
+          version: string;
+          description: string;
+          content_hash: string;
+          created_at: number;
+        },
         [string]
       >(
         "SELECT blueprint_id, version, description, content_hash, created_at FROM blueprint_versions WHERE blueprint_id = ? ORDER BY created_at DESC",
@@ -303,7 +318,17 @@ export class StateSqliteProvider implements StateProvider {
     if (tag === DEFAULT_TAG) {
       // Keep legacy single-row blueprints table in sync with the latest pointer.
       const cfgRow = this.db
-        .query<{ config_json: string; description: string; content_hash: string; source_path: string; schema_version: number; config_toml: string }, [string, string]>(
+        .query<
+          {
+            config_json: string;
+            description: string;
+            content_hash: string;
+            source_path: string;
+            schema_version: number;
+            config_toml: string;
+          },
+          [string, string]
+        >(
           "SELECT config_json, description, content_hash, source_path, schema_version, config_toml FROM blueprint_versions WHERE blueprint_id = ? AND version = ?",
         )
         .get(id, version);
@@ -348,30 +373,34 @@ export class StateSqliteProvider implements StateProvider {
       id,
       name: input.name,
       blueprintId: input.blueprintId,
+      blueprintTag: input.blueprintTag ?? "latest",
       triggers: input.triggers,
       channels: input.channels,
       limits,
       status: "active",
       modelOverride: input.modelOverride,
+      modelRoleOverrides: input.modelRoleOverrides,
       defaultInput: input.defaultInput,
       createdAt: now,
       updatedAt: now,
     };
     this.db
       .query(
-        `INSERT INTO deployments (id, name, blueprint_id, triggers_json, channels_json, limits_json, status, model_override, default_input_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO deployments (id, name, blueprint_id, blueprint_tag, triggers_json, channels_json, limits_json, status, model_override, default_input_json, model_role_overrides_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         dep.id,
         dep.name,
         dep.blueprintId,
+        dep.blueprintTag,
         JSON.stringify(dep.triggers),
         JSON.stringify(dep.channels),
         JSON.stringify(dep.limits),
         dep.status,
         dep.modelOverride ?? null,
         dep.defaultInput !== undefined ? JSON.stringify(dep.defaultInput) : null,
+        dep.modelRoleOverrides ? JSON.stringify(dep.modelRoleOverrides) : null,
         now,
         now,
       );
@@ -410,20 +439,22 @@ export class StateSqliteProvider implements StateProvider {
     this.db
       .query(
         `UPDATE deployments
-            SET name = ?, blueprint_id = ?, triggers_json = ?, channels_json = ?,
+            SET name = ?, blueprint_id = ?, blueprint_tag = ?, triggers_json = ?, channels_json = ?,
                 limits_json = ?, status = ?, model_override = ?, default_input_json = ?,
-                updated_at = ?
+                model_role_overrides_json = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
         next.name,
         next.blueprintId,
+        next.blueprintTag,
         JSON.stringify(next.triggers),
         JSON.stringify(next.channels),
         JSON.stringify(next.limits),
         next.status,
         next.modelOverride ?? null,
         next.defaultInput !== undefined ? JSON.stringify(next.defaultInput) : null,
+        next.modelRoleOverrides ? JSON.stringify(next.modelRoleOverrides) : null,
         next.updatedAt,
         id,
       );
@@ -531,16 +562,12 @@ export class StateSqliteProvider implements StateProvider {
         record.deploymentId,
         record.connectorName,
         Buffer.from(record.accessTokenEncrypted, "base64"),
-        record.refreshTokenEncrypted
-          ? Buffer.from(record.refreshTokenEncrypted, "base64")
-          : null,
+        record.refreshTokenEncrypted ? Buffer.from(record.refreshTokenEncrypted, "base64") : null,
         record.expiresAt ?? null,
         record.refreshExpiresAt ?? null,
         record.tokenUrl ?? null,
         record.clientId ?? null,
-        record.clientSecretEncrypted
-          ? Buffer.from(record.clientSecretEncrypted, "base64")
-          : null,
+        record.clientSecretEncrypted ? Buffer.from(record.clientSecretEncrypted, "base64") : null,
         record.scopes ?? null,
         record.status,
         record.updatedAt ?? now,
@@ -549,9 +576,7 @@ export class StateSqliteProvider implements StateProvider {
 
   async getConnectorToken(connectorId: string): Promise<ConnectorTokenRecord | null> {
     const row = this.db
-      .query<ConnectorTokenRow, [string]>(
-        "SELECT * FROM connector_tokens WHERE connector_id = ?",
-      )
+      .query<ConnectorTokenRow, [string]>("SELECT * FROM connector_tokens WHERE connector_id = ?")
       .get(connectorId);
     return row ? rowToConnectorToken(row) : null;
   }
@@ -564,9 +589,7 @@ export class StateSqliteProvider implements StateProvider {
   }
 
   async deleteConnectorToken(connectorId: string): Promise<void> {
-    this.db
-      .query("DELETE FROM connector_tokens WHERE connector_id = ?")
-      .run(connectorId);
+    this.db.query("DELETE FROM connector_tokens WHERE connector_id = ?").run(connectorId);
   }
 
   async upsertChannelTemplate(template: ChannelTemplate): Promise<void> {
@@ -612,6 +635,223 @@ export class StateSqliteProvider implements StateProvider {
     this.db.query("DELETE FROM channel_templates WHERE name = ?").run(name);
   }
 
+  async upsertEnvironment(input: EnvironmentInput): Promise<Environment> {
+    const now = Date.now();
+    const env: Environment = {
+      id: input.id,
+      name: input.name,
+      description: input.description,
+      config: input.config,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.db
+      .query(
+        `INSERT INTO environments (id, name, description, config_json, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              description = excluded.description,
+              config_json = excluded.config_json,
+              updated_at = excluded.updated_at`,
+      )
+      .run(env.id, env.name ?? null, env.description ?? null, JSON.stringify(env.config), now, now);
+    const existing = await this.getEnvironment(env.id);
+    return existing ?? env;
+  }
+
+  async getEnvironment(id: string): Promise<Environment | null> {
+    const row = this.db.query<EnvRow, [string]>("SELECT * FROM environments WHERE id = ?").get(id);
+    return row ? rowToEnv(row) : null;
+  }
+
+  async listEnvironments(): Promise<Environment[]> {
+    const rows = this.db.query<EnvRow, []>("SELECT * FROM environments ORDER BY id").all();
+    return rows.map(rowToEnv);
+  }
+
+  async deleteEnvironment(id: string): Promise<void> {
+    this.db.query("DELETE FROM environments WHERE id = ?").run(id);
+  }
+
+  async listPlugins(): Promise<PluginRecord[]> {
+    const rows = this.db.query<PluginRow, []>("SELECT * FROM plugins ORDER BY slug").all();
+    return rows.map(rowToPlugin);
+  }
+
+  async getPlugin(slug: string): Promise<PluginRecord | null> {
+    const row = this.db
+      .query<PluginRow, [string]>("SELECT * FROM plugins WHERE slug = ?")
+      .get(slug);
+    return row ? rowToPlugin(row) : null;
+  }
+
+  async upsertPlugin(record: PluginRecord): Promise<void> {
+    this.db
+      .query(
+        `INSERT INTO plugins (slug, version, source, enabled, manifest_json, config_json, installed_at, disabled_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET
+              version = excluded.version,
+              source = excluded.source,
+              enabled = excluded.enabled,
+              manifest_json = excluded.manifest_json,
+              config_json = excluded.config_json,
+              disabled_at = excluded.disabled_at`,
+      )
+      .run(
+        record.slug,
+        record.version,
+        record.source,
+        record.enabled ? 1 : 0,
+        JSON.stringify(record.manifest),
+        record.configJson ?? null,
+        record.installedAt,
+        record.disabledAt ?? null,
+      );
+  }
+
+  async setPluginEnabled(slug: string, enabled: boolean): Promise<void> {
+    this.db
+      .query(`UPDATE plugins SET enabled = ?, disabled_at = ? WHERE slug = ?`)
+      .run(enabled ? 1 : 0, enabled ? null : Date.now(), slug);
+  }
+
+  async deletePlugin(slug: string): Promise<void> {
+    // Soft delete: flip enabled off + stamp disabled_at; rows linger for audit.
+    this.db
+      .query(`UPDATE plugins SET enabled = 0, disabled_at = ? WHERE slug = ?`)
+      .run(Date.now(), slug);
+  }
+
+  async listProviderCredentials(providerSlug?: string): Promise<ProviderCredentialRecord[]> {
+    const rows = providerSlug
+      ? this.db
+          .query<ProviderCredRow, [string]>(
+            "SELECT * FROM provider_credentials WHERE provider_slug = ? ORDER BY credential_name",
+          )
+          .all(providerSlug)
+      : this.db
+          .query<ProviderCredRow, []>(
+            "SELECT * FROM provider_credentials ORDER BY provider_slug, credential_name",
+          )
+          .all();
+    return rows.map(rowToProviderCred);
+  }
+
+  async getProviderCredential(
+    providerSlug: string,
+    credentialName: string,
+  ): Promise<ProviderCredentialRecord | null> {
+    const row = this.db
+      .query<ProviderCredRow, [string, string]>(
+        "SELECT * FROM provider_credentials WHERE provider_slug = ? AND credential_name = ?",
+      )
+      .get(providerSlug, credentialName);
+    return row ? rowToProviderCred(row) : null;
+  }
+
+  async upsertProviderCredential(record: ProviderCredentialRecord): Promise<void> {
+    this.db
+      .query(
+        `INSERT INTO provider_credentials (provider_slug, credential_name, api_key_secret, options_json, source, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(provider_slug, credential_name) DO UPDATE SET
+              api_key_secret = excluded.api_key_secret,
+              options_json = excluded.options_json,
+              source = excluded.source,
+              updated_at = excluded.updated_at`,
+      )
+      .run(
+        record.providerSlug,
+        record.credentialName,
+        record.apiKeySecret ?? null,
+        record.optionsJson ?? null,
+        record.source,
+        record.createdAt,
+        record.updatedAt,
+      );
+  }
+
+  async deleteProviderCredential(providerSlug: string, credentialName: string): Promise<void> {
+    this.db
+      .query("DELETE FROM provider_credentials WHERE provider_slug = ? AND credential_name = ?")
+      .run(providerSlug, credentialName);
+  }
+
+  async listEngineModelRoles(): Promise<EngineModelRoleRecord[]> {
+    const rows = this.db
+      .query<EngineRoleRow, []>("SELECT * FROM engine_model_roles ORDER BY role")
+      .all();
+    return rows.map(rowToEngineRole);
+  }
+
+  async getEngineModelRole(role: string): Promise<EngineModelRoleRecord | null> {
+    const row = this.db
+      .query<EngineRoleRow, [string]>("SELECT * FROM engine_model_roles WHERE role = ?")
+      .get(role);
+    return row ? rowToEngineRole(row) : null;
+  }
+
+  async upsertEngineModelRole(record: EngineModelRoleRecord): Promise<void> {
+    this.db
+      .query(
+        `INSERT INTO engine_model_roles (role, provider_slug, model_id, credential_name, options_json, source, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(role) DO UPDATE SET
+              provider_slug = excluded.provider_slug,
+              model_id = excluded.model_id,
+              credential_name = excluded.credential_name,
+              options_json = excluded.options_json,
+              source = excluded.source,
+              updated_at = excluded.updated_at`,
+      )
+      .run(
+        record.role,
+        record.providerSlug,
+        record.modelId,
+        record.credentialName,
+        record.optionsJson ?? null,
+        record.source,
+        record.updatedAt,
+      );
+  }
+
+  async deleteEngineModelRole(role: string): Promise<void> {
+    this.db.query("DELETE FROM engine_model_roles WHERE role = ?").run(role);
+  }
+
+  async listModelCatalog(providerSlug?: string): Promise<ModelCatalogRecord[]> {
+    const rows = providerSlug
+      ? this.db
+          .query<ModelCatalogRow, [string]>(
+            "SELECT * FROM model_catalog WHERE provider_slug = ? ORDER BY model_id",
+          )
+          .all(providerSlug)
+      : this.db
+          .query<ModelCatalogRow, []>(
+            "SELECT * FROM model_catalog ORDER BY provider_slug, model_id",
+          )
+          .all();
+    return rows.map(rowToCatalog);
+  }
+
+  async upsertModelCatalogEntry(entry: ModelCatalogRecord): Promise<void> {
+    this.db
+      .query(
+        `INSERT INTO model_catalog (provider_slug, model_id, data_json, fetched_at)
+              VALUES (?, ?, ?, ?)
+         ON CONFLICT(provider_slug, model_id) DO UPDATE SET
+              data_json = excluded.data_json,
+              fetched_at = excluded.fetched_at`,
+      )
+      .run(entry.providerSlug, entry.modelId, JSON.stringify(entry.data), entry.fetchedAt);
+  }
+
+  async deleteModelCatalogEntries(providerSlug: string): Promise<void> {
+    this.db.query("DELETE FROM model_catalog WHERE provider_slug = ?").run(providerSlug);
+  }
+
   async updateRun(id: string, patch: Partial<Run>): Promise<void> {
     const current = await this.getRun(id);
     if (!current) throw new Error(`Run not found: ${id}`);
@@ -620,6 +860,7 @@ export class StateSqliteProvider implements StateProvider {
       .query(
         `UPDATE runs SET status = ?, output_json = ?, output_validation_json = ?, error = ?,
                           cost_usd = ?, token_input = ?, token_output = ?, tool_calls = ?,
+                          blueprint_version = ?, blueprint_hash = ?,
                           started_at = ?, finished_at = ?
                     WHERE id = ?`,
       )
@@ -632,6 +873,8 @@ export class StateSqliteProvider implements StateProvider {
         next.tokenInput,
         next.tokenOutput,
         next.toolCalls,
+        next.blueprintVersion ?? null,
+        next.blueprintHash ?? "",
         next.startedAt ?? null,
         next.finishedAt ?? null,
         id,
@@ -643,14 +886,100 @@ interface DeploymentRow {
   id: string;
   name: string;
   blueprint_id: string;
+  blueprint_tag: string;
   triggers_json: string;
   channels_json: string;
   limits_json: string;
   status: string;
   model_override: string | null;
   default_input_json: string | null;
+  model_role_overrides_json: string | null;
   created_at: number;
   updated_at: number;
+}
+
+interface PluginRow {
+  slug: string;
+  version: string;
+  source: string;
+  enabled: number;
+  manifest_json: string;
+  config_json: string | null;
+  installed_at: number;
+  disabled_at: number | null;
+}
+
+interface ProviderCredRow {
+  provider_slug: string;
+  credential_name: string;
+  api_key_secret: string | null;
+  options_json: string | null;
+  source: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface EngineRoleRow {
+  role: string;
+  provider_slug: string;
+  model_id: string;
+  credential_name: string;
+  options_json: string | null;
+  source: string;
+  updated_at: number;
+}
+
+interface ModelCatalogRow {
+  provider_slug: string;
+  model_id: string;
+  data_json: string;
+  fetched_at: number;
+}
+
+function rowToPlugin(row: PluginRow): PluginRecord {
+  return {
+    slug: row.slug,
+    version: row.version,
+    source: row.source as PluginSource,
+    enabled: row.enabled === 1,
+    manifest: JSON.parse(row.manifest_json) as PluginManifest,
+    configJson: row.config_json ?? undefined,
+    installedAt: row.installed_at,
+    disabledAt: row.disabled_at ?? undefined,
+  };
+}
+
+function rowToProviderCred(row: ProviderCredRow): ProviderCredentialRecord {
+  return {
+    providerSlug: row.provider_slug,
+    credentialName: row.credential_name,
+    apiKeySecret: row.api_key_secret ?? undefined,
+    optionsJson: row.options_json ?? undefined,
+    source: row.source === "config" ? "config" : "dashboard",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToEngineRole(row: EngineRoleRow): EngineModelRoleRecord {
+  return {
+    role: row.role,
+    providerSlug: row.provider_slug,
+    modelId: row.model_id,
+    credentialName: row.credential_name,
+    optionsJson: row.options_json ?? undefined,
+    source: row.source === "config" ? "config" : "dashboard",
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToCatalog(row: ModelCatalogRow): ModelCatalogRecord {
+  return {
+    providerSlug: row.provider_slug,
+    modelId: row.model_id,
+    data: JSON.parse(row.data_json) as ModelInfo,
+    fetchedAt: row.fetched_at,
+  };
 }
 
 interface RunRow {
@@ -679,11 +1008,15 @@ function rowToDeployment(row: DeploymentRow): Deployment {
     id: row.id,
     name: row.name,
     blueprintId: row.blueprint_id as `${string}/${string}`,
+    blueprintTag: row.blueprint_tag ?? "latest",
     triggers: JSON.parse(row.triggers_json),
     channels: JSON.parse(row.channels_json),
     limits: JSON.parse(row.limits_json),
     status: row.status as Deployment["status"],
     modelOverride: row.model_override ?? undefined,
+    modelRoleOverrides: row.model_role_overrides_json
+      ? (JSON.parse(row.model_role_overrides_json) as Deployment["modelRoleOverrides"])
+      : undefined,
     defaultInput: row.default_input_json ? JSON.parse(row.default_input_json) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -705,6 +1038,26 @@ function rowToTemplate(row: ChannelTemplateRow): ChannelTemplate {
     type: row.type,
     config: JSON.parse(row.config_json),
     description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface EnvRow {
+  id: string;
+  name: string | null;
+  description: string | null;
+  config_json: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToEnv(row: EnvRow): Environment {
+  return {
+    id: row.id,
+    name: row.name ?? undefined,
+    description: row.description ?? undefined,
+    config: JSON.parse(row.config_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

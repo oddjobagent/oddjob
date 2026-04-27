@@ -2,9 +2,9 @@
 
 End-user artifacts (entry points), not libraries. Each app may be published or shipped as a binary.
 
-| App | Purpose |
-|---|---|
-| `cli` | `oddjob` command. Entry point for `bun build --compile` → single binary. Glues server + dashboard for `oddjob serve`. |
+| App         | Purpose                                                                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cli`       | `oddjob` command. Entry point for `bun build --compile` → single binary. Glues server + dashboard for `oddjob serve`.                                                                 |
 | `dashboard` | React 19 + TanStack Query + Tailwind v4 + shadcn-style components. Mounted by `oddjob serve` at `/` and `/dashboard`. Can also run standalone via `bun run --cwd apps/dashboard dev`. |
 
 ## Decoupling rules

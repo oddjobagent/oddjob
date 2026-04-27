@@ -5,7 +5,13 @@ import type { Blueprint, ChannelConfig, Deployment, LogEntry, Run } from "@oddjo
 import type {
   BuiltinToolDescriptor,
   ChannelTypeDescriptor,
+  CredentialUpsert,
   ModelOption,
+  PluginSummary,
+  ProviderDetail,
+  ProviderSummary,
+  RoleAssignmentSummary,
+  RoleSetInput,
 } from "@oddjob/api-client";
 
 import { api } from "./client.ts";
@@ -38,11 +44,60 @@ export function useBlueprints() {
   });
 }
 
-export function useBlueprint(id: string | undefined) {
+export function useBlueprint(id: string | undefined, ref?: { tag?: string; version?: string }) {
   return useQuery<Blueprint>({
-    queryKey: ["blueprints", id],
-    queryFn: () => api.blueprints.get(id!),
+    queryKey: ["blueprints", id, ref?.tag ?? null, ref?.version ?? null],
+    queryFn: () => api.blueprints.get(id!, ref),
     enabled: Boolean(id),
+  });
+}
+
+export function useBlueprintVersions(id: string | undefined) {
+  return useQuery<{
+    versions: Array<{
+      blueprintId: string;
+      version: string;
+      description: string;
+      contentHash: string;
+      createdAt: number;
+    }>;
+  }>({
+    queryKey: ["blueprints", id, "versions"],
+    queryFn: () => api.blueprints.listVersions(id!),
+    enabled: Boolean(id),
+    refetchInterval: slow,
+  });
+}
+
+export function useBlueprintTags(id: string | undefined) {
+  return useQuery<{
+    tags: Array<{ blueprintId: string; tag: string; version: string; updatedAt: number }>;
+  }>({
+    queryKey: ["blueprints", id, "tags"],
+    queryFn: () => api.blueprints.listTags(id!),
+    enabled: Boolean(id),
+    refetchInterval: slow,
+  });
+}
+
+export function useSetBlueprintTag(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tag, version }: { tag: string; version: string }) =>
+      api.blueprints.setTag(id, tag, version),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["blueprints", id] });
+    },
+  });
+}
+
+export function useRemoveBlueprintTag(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tag: string) => api.blueprints.removeTag(id, tag),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["blueprints", id] });
+    },
   });
 }
 
@@ -126,8 +181,9 @@ export function useRunLogsStream(id: string | undefined, live: boolean): void {
   const queryClient = useQueryClient();
   useEffect(() => {
     if (!id || !live || typeof window === "undefined") return;
-    const cached =
-      queryClient.getQueryData<{ entries: LogEntry[] }>(["runs", id, "logs"]) ?? { entries: [] };
+    const cached = queryClient.getQueryData<{ entries: LogEntry[] }>(["runs", id, "logs"]) ?? {
+      entries: [],
+    };
     const lastTs = cached.entries.at(-1)?.timestamp ?? 0;
     const url = `${window.location.origin}/api/v1/runs/${id}/logs?stream=1&since=${
       lastTs ? lastTs + 1 : 0
@@ -136,10 +192,9 @@ export function useRunLogsStream(id: string | undefined, live: boolean): void {
     es.onmessage = (ev) => {
       try {
         const entry = JSON.parse(ev.data) as LogEntry;
-        const cur =
-          queryClient.getQueryData<{ entries: LogEntry[] }>(["runs", id, "logs"]) ?? {
-            entries: [],
-          };
+        const cur = queryClient.getQueryData<{ entries: LogEntry[] }>(["runs", id, "logs"]) ?? {
+          entries: [],
+        };
         queryClient.setQueryData(["runs", id, "logs"], {
           entries: [...cur.entries, entry],
         });
@@ -299,11 +354,95 @@ export function useCancelRun() {
   });
 }
 
+// ── Plugins, Providers, Roles ─────────────────────────────────────────
+
+export function usePlugins() {
+  return useQuery<{ plugins: PluginSummary[] }>({
+    queryKey: ["plugins"],
+    queryFn: () => api.plugins.list(),
+    refetchInterval: slow,
+  });
+}
+
+export function useTogglePlugin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, enabled }: { slug: string; enabled: boolean }) =>
+      api.plugins.setEnabled(slug, enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["plugins"] }),
+  });
+}
+
+export function useProviders() {
+  return useQuery<{ providers: ProviderSummary[] }>({
+    queryKey: ["providers"],
+    queryFn: () => api.providers.list(),
+    refetchInterval: slow,
+  });
+}
+
+export function useProvider(slug: string | undefined) {
+  return useQuery<ProviderDetail>({
+    queryKey: ["providers", slug],
+    queryFn: () => api.providers.get(slug!),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useProviderMutations() {
+  const qc = useQueryClient();
+  const refresh = useMutation({
+    mutationFn: (slug: string) => api.providers.refresh(slug),
+    onSuccess: (_data, slug) => {
+      qc.invalidateQueries({ queryKey: ["providers", slug] });
+      qc.invalidateQueries({ queryKey: ["providers"] });
+    },
+  });
+  const upsertCredential = useMutation({
+    mutationFn: ({ slug, input }: { slug: string; input: CredentialUpsert }) =>
+      api.providers.upsertCredential(slug, input),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["providers", vars.slug] });
+      qc.invalidateQueries({ queryKey: ["providers"] });
+      qc.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
+  const deleteCredential = useMutation({
+    mutationFn: ({ slug, credentialName }: { slug: string; credentialName: string }) =>
+      api.providers.deleteCredential(slug, credentialName),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["providers"] });
+    },
+  });
+  return { refresh, upsertCredential, deleteCredential };
+}
+
+export function useRoles() {
+  return useQuery<{ roles: RoleAssignmentSummary[] }>({
+    queryKey: ["roles"],
+    queryFn: () => api.roles.list(),
+    refetchInterval: slow,
+  });
+}
+
+export function useRoleMutations() {
+  const qc = useQueryClient();
+  const set = useMutation({
+    mutationFn: ({ role, input }: { role: string; input: RoleSetInput }) =>
+      api.roles.set(role, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
+  });
+  const remove = useMutation({
+    mutationFn: (role: string) => api.roles.remove(role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roles"] }),
+  });
+  return { set, remove };
+}
+
 export function useSecretMutations() {
   const queryClient = useQueryClient();
   const set = useMutation({
-    mutationFn: ({ name, value }: { name: string; value: string }) =>
-      api.secrets.set(name, value),
+    mutationFn: ({ name, value }: { name: string; value: string }) => api.secrets.set(name, value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["secrets"] }),
   });
   const remove = useMutation({
