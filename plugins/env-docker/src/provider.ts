@@ -171,14 +171,38 @@ export class DockerEnvironmentProvider implements EnvironmentProvider {
   async spawn(config: EnvironmentRunConfig): Promise<EnvironmentSession> {
     const image = config.config?.image ?? DEFAULT_IMAGE;
     const containerName = `oddjob-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // Container tier: hostWorkdir is a HOST path (bind-mount source);
-    // sessionWorkdir is the in-container path (bind target + cwd for tools).
-    // Pre-15i callers using the legacy `workdir` field get treated as host
-    // (with sessionWorkdir defaulting to "/work").
+    // Container tier: TWO distinct paths, both resolved here so the runtime
+    // never has to know container internals.
+    //
+    // Codex round-3: split the resolution explicitly. `EnvironmentConfig.
+    // workingDir` is a SANDBOX-INTERNAL path per its declared semantics — it
+    // controls `sessionWorkdir`, NEVER `hostWorkdir`. The host bind source
+    // comes from a separate operator-declared override (`hostBindDir`) or
+    // the per-spawn `runConfig.hostWorkdir` the runtime supplies (the
+    // blueprint dir).
+    //
+    //   hostWorkdir (HOST path bound INTO the container):
+    //     1. EnvironmentConfig.hostBindDir (operator override, advanced)
+    //     2. runConfig.hostWorkdir (runtime default = blueprint dir)
+    //     3. legacy runConfig.workdir alias
+    //     4. fresh tempdir
+    //
+    //   sessionWorkdir (path INSIDE the container, also the bind target):
+    //     1. runConfig.sessionWorkdir (runtime override)
+    //     2. EnvironmentConfig.workingDir (operator-declared sandbox cwd)
+    //     3. "/work" (default)
     const hostWorkdir =
-      config.hostWorkdir ?? config.workdir ?? (await mkdtemp(join(tmpdir(), "oddjob-docker-")));
-    const callerSuppliedHost = !!(config.hostWorkdir ?? config.workdir);
-    const sessionWorkdir = config.sessionWorkdir ?? "/work";
+      config.config?.hostBindDir ??
+      config.hostWorkdir ??
+      config.workdir ??
+      (await mkdtemp(join(tmpdir(), "oddjob-docker-")));
+    const callerSuppliedHost = !!(
+      config.config?.hostBindDir ??
+      config.hostWorkdir ??
+      config.workdir
+    );
+    const sessionWorkdir =
+      config.sessionWorkdir ?? config.config?.workingDir ?? "/work";
 
     // Build env file so secrets don't leak via `ps auxe`. Track every host
     // path we materialise inside the (possibly caller-owned) workdir so

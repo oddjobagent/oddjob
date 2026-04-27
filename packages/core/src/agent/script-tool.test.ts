@@ -82,21 +82,6 @@ describe("buildScriptTools host vs session path resolution (15i-3 codex follow-u
     expect(calls[0]!.command).toBe("bun run '/Users/op/projects/myagent/scripts/parse.ts'");
   });
 
-  test("absolute script path is passed through verbatim (operator opt-in)", async () => {
-    // If the operator wrote an absolute path in the blueprint, they're
-    // saying this exact path inside the session — we don't second-guess.
-    const calls: RunCall[] = [];
-    const session = makeStubSession("/work", calls);
-    const tools = buildScriptTools({
-      blueprint: makeBlueprint({ parse: "/opt/baked/parse.ts" }),
-      environment: session,
-      blueprintDir: "/Users/op/projects/myagent",
-      sessionScriptsRoot: "/work",
-    });
-    await tools[0]!.execute("call-1", {});
-    expect(calls[0]!.command).toBe("bun run '/opt/baked/parse.ts'");
-  });
-
   test("custom sessionWorkdir override (e.g. /srv/app) is honored end-to-end", async () => {
     const calls: RunCall[] = [];
     const session = makeStubSession("/srv/app", calls);

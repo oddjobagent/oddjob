@@ -41,9 +41,14 @@ export class ProcessEnvironmentProvider implements EnvironmentProvider {
 
   async spawn(config: EnvironmentRunConfig): Promise<EnvironmentSession> {
     // Trusted-tier: host == session (no namespace boundary), so the same path
-    // is bound to both `hostWorkdir` and `sessionWorkdir`. The legacy
-    // `workdir` field is honored as a fallback for pre-15i callers.
+    // is bound to both `hostWorkdir` and `sessionWorkdir`. Resolution order:
+    //   1. `EnvironmentConfig.workingDir` — operator-declared, applies to
+    //      every Run on this Environment (pre-15i users relied on this).
+    //   2. Per-spawn `hostWorkdir` / `sessionWorkdir` from the runtime.
+    //   3. Legacy `workdir` alias for pre-15i callers.
+    //   4. Fresh per-Run tempdir.
     const root =
+      config.config?.workingDir ??
       config.hostWorkdir ??
       config.sessionWorkdir ??
       config.workdir ??
@@ -209,7 +214,10 @@ class ProcessSession implements EnvironmentSession {
     this.active.clear();
     this.sessionAbortHandlers.clear();
     const callerSuppliedWorkdir =
-      this.config.hostWorkdir ?? this.config.sessionWorkdir ?? this.config.workdir;
+      this.config.config?.workingDir ??
+      this.config.hostWorkdir ??
+      this.config.sessionWorkdir ??
+      this.config.workdir;
     if (!callerSuppliedWorkdir) {
       await rm(this.root, { recursive: true, force: true });
     }

@@ -91,6 +91,56 @@ describe("DockerEnvironmentProvider workdir semantics (unit, stubbed runDocker)"
     }
   });
 
+  test("EnvironmentConfig.workingDir flows to sessionWorkdir, NOT hostWorkdir (codex round-3)", async () => {
+    // Regression: pre-round-3 loop.ts folded workingDir into hostWorkdir, so
+    // declaring `working_dir = "/srv/app"` on a docker Environment caused
+    // Docker to try to bind HOST `/srv/app` (doesn't exist) into the
+    // container. Now `workingDir` is correctly treated as sandbox-internal.
+    const host = await mkdtemp(join(tmpdir(), "oddjob-docker-test-"));
+    try {
+      const stub = makeStub();
+      const provider = new DockerEnvironmentProvider({ runDocker: stub.runDocker });
+      const session = await provider.spawn({
+        hostWorkdir: host,
+        config: { type: "cloud", workingDir: "/srv/app" },
+      });
+      expect(session.sessionWorkdir).toBe("/srv/app");
+      const runArgv = stub.calls[0]?.argv ?? [];
+      const dashV = runArgv.indexOf("-v");
+      // Bind source MUST be the host blueprint dir, not the in-container path.
+      expect(runArgv[dashV + 1]).toBe(`${host}:/srv/app`);
+      const dashW = runArgv.indexOf("-w");
+      expect(runArgv[dashW + 1]).toBe("/srv/app");
+      expect(runArgv).not.toContain("/srv/app:/srv/app"); // no host=/srv/app bind
+    } finally {
+      await rm(host, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
+  test("EnvironmentConfig.hostBindDir overrides the runtime hostWorkdir (operator advanced)", async () => {
+    // hostBindDir lets an operator declare a different on-disk source when
+    // the blueprint dir isn't the right thing to bind (e.g. shipping a /srv
+    // tree separately from the .toml).
+    const host = await mkdtemp(join(tmpdir(), "oddjob-docker-test-"));
+    const altHost = await mkdtemp(join(tmpdir(), "oddjob-docker-alt-"));
+    try {
+      const stub = makeStub();
+      const provider = new DockerEnvironmentProvider({ runDocker: stub.runDocker });
+      const session = await provider.spawn({
+        hostWorkdir: host, // would-be runtime default
+        config: { type: "cloud", hostBindDir: altHost, workingDir: "/srv/app" },
+      });
+      expect(session.sessionWorkdir).toBe("/srv/app");
+      const runArgv = stub.calls[0]?.argv ?? [];
+      const dashV = runArgv.indexOf("-v");
+      // hostBindDir wins for the bind source; workingDir wins for sessionWorkdir.
+      expect(runArgv[dashV + 1]).toBe(`${altHost}:/srv/app`);
+    } finally {
+      await rm(host, { recursive: true, force: true }).catch(() => undefined);
+      await rm(altHost, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
   test("legacy `workdir` field still maps to host bind (back-compat)", async () => {
     const host = await mkdtemp(join(tmpdir(), "oddjob-docker-test-"));
     try {

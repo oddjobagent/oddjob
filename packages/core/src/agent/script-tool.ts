@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, posix } from "node:path";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import type { TSchema } from "typebox";
 import { Type } from "typebox";
@@ -50,18 +49,18 @@ type FreeFormParams = Record<string, unknown>;
 export function buildScriptTools(opts: ScriptToolOptions): AgentTool<TSchema>[] {
   const tools: AgentTool<TSchema>[] = [];
   for (const [toolName, scriptPath] of Object.entries(opts.blueprint.scripts)) {
-    // Host-side absolute path used for sidecar lookup at build time.
-    const hostAbs = isAbsolute(scriptPath) ? scriptPath : resolve(opts.blueprintDir, scriptPath);
-    // Session-side absolute path used at execute time. Absolute host paths
-    // can't be rebased — pass through and trust the caller (env-process /
-    // env-local-strict where host == session). Relative paths rebase onto
-    // the session-side root so the script is reachable inside containers.
-    // Use posix.join so forward slashes are emitted regardless of host OS;
-    // sessionWorkdir is always a Unix-shape path (we don't run Windows
-    // sandboxes today).
-    const sessionAbs = isAbsolute(scriptPath)
-      ? scriptPath
-      : posix.join(opts.sessionScriptsRoot, scriptPath);
+    // Codex round-3: absolute paths are unreachable here — `blueprint/
+    // validate.ts:36` rejects them at parse time. We resolve relative paths
+    // against TWO roots:
+    //   - `blueprintDir` (host) for the sidecar JSON schema lookup at
+    //     build time, since sidecars live next to the script on disk.
+    //   - `sessionScriptsRoot` (session) for the runtime `bun run …`
+    //     invocation, since that runs inside the session and the host path
+    //     would not exist there for container / remote-vm tiers.
+    // posix.join is intentional — sessionWorkdir is always Unix-shaped (no
+    // Windows sandboxes today).
+    const hostAbs = resolve(opts.blueprintDir, scriptPath);
+    const sessionAbs = posix.join(opts.sessionScriptsRoot, scriptPath);
     tools.push(makeScriptTool(toolName, hostAbs, sessionAbs, opts));
   }
   return tools;

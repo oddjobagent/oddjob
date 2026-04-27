@@ -145,6 +145,29 @@ describe("ProcessEnvironmentProvider", () => {
     await session.kill();
   }, 10_000);
 
+  test("EnvironmentConfig.workingDir is honored as session workdir (codex round-3)", async () => {
+    const { mkdtemp, realpath, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "oddjob-cfg-wd-"));
+    try {
+      const sb = new ProcessEnvironmentProvider();
+      const session = await sb.spawn({
+        config: { type: "local", workingDir: dir },
+      });
+      expect(session.sessionWorkdir).toBe(dir);
+      const r = await session.exec("pwd");
+      expect(r.exitCode).toBe(0);
+      // macOS symlinks /var/folders → /private/var/folders so `pwd` returns
+      // the canonical path while mkdtemp returned the symlinked one.
+      const expected = await realpath(dir);
+      expect(r.stdout.trim()).toBe(expected);
+      await session.kill();
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
+
   test("default export is a definePlugin module that registers env-process", async () => {
     const mod = await import("./index.ts");
     const plugin = mod.default;

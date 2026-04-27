@@ -155,13 +155,18 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const startedAt = Date.now();
 
   const blueprintDir = isAbsolute(blueprint.path) ? dirname(blueprint.path) : process.cwd();
-  // Effective HOST workdir for this Run: the EnvironmentConfig.workingDir
-  // wins when set, otherwise fall back to the blueprint's host directory
-  // (matches pre-Phase-15 behavior for the trusted process backend). This is
-  // a HOST path — providers may bind-mount or upload from it but tools never
-  // see it directly. Tools always resolve cwd against `sessionWorkdir`
-  // (resolved by the provider; see EnvironmentRunConfig).
-  const hostWorkdir = environment.config.workingDir ?? blueprintDir;
+  // HOST-side default workdir the runtime hands every provider at spawn time.
+  // Providers that bind-mount (env-docker) use it as the bind source unless
+  // the EnvironmentConfig declares a `hostBindDir` override; trusted /
+  // local-strict tiers use it as the session workdir (host == session) unless
+  // the caller supplied a different one.
+  //
+  // 15i codex round-3: do NOT fold `environment.config.workingDir` here.
+  // `workingDir` is a SANDBOX-INTERNAL path (e.g. "/work" / "/home/daytona/
+  // work") per its declared semantics; using it as a host path made
+  // `working_dir = "/work"` mean "bind /work on the operator's machine into
+  // the container", which fails everywhere except the trusted tier.
+  const hostWorkdir = blueprintDir;
 
   // Start the egress proxy when the env's networking is "limited". The
   // process provider injects HTTPS_PROXY into the spawned shell so all

@@ -193,7 +193,10 @@ export class WrappedSession implements EnvironmentSession {
       /* ignore */
     }
     const callerSuppliedWorkdir =
-      this.ctx.config.hostWorkdir ?? this.ctx.config.sessionWorkdir ?? this.ctx.config.workdir;
+      this.ctx.config.config?.workingDir ??
+      this.ctx.config.hostWorkdir ??
+      this.ctx.config.sessionWorkdir ??
+      this.ctx.config.workdir;
     if (!callerSuppliedWorkdir) {
       await rm(this.ctx.root, { recursive: true, force: true });
     }
@@ -211,9 +214,17 @@ export async function newWrapperContext(
   rootPrefix: string,
   metaPrefix: string,
 ): Promise<WrapperContext> {
-  // Strict-local tier: host == session (no namespace boundary). Resolve the
-  // workdir from any of the three caller-supplied aliases.
-  const callerSuppliedWorkdir = config.hostWorkdir ?? config.sessionWorkdir ?? config.workdir;
+  // Strict-local tier: host == session (no namespace boundary). Resolution
+  // order matches env-process:
+  //   1. EnvironmentConfig.workingDir (operator-declared, per-Environment).
+  //   2. Per-spawn hostWorkdir / sessionWorkdir from runtime.
+  //   3. Legacy `workdir` alias.
+  //   4. Fresh tempdir.
+  const callerSuppliedWorkdir =
+    config.config?.workingDir ??
+    config.hostWorkdir ??
+    config.sessionWorkdir ??
+    config.workdir;
   let root: string;
   if (callerSuppliedWorkdir) {
     await validateStrictWorkdir(callerSuppliedWorkdir);
