@@ -1,6 +1,6 @@
 import type { BlueprintId } from "./blueprint.ts";
 import type { ChannelConfig } from "./channel.ts";
-import type { EnvironmentConfig } from "./environment.ts";
+import type { EnvironmentConfig, EnvironmentProviderRef } from "./environment.ts";
 import type { Limits } from "./limits.ts";
 import type { Trigger } from "./trigger.ts";
 
@@ -35,8 +35,14 @@ export interface Deployment {
    * Inline EnvironmentConfig override (or full inline config when
    * environmentId is unset). Merge semantics: values replace referenced
    * fields key-by-key; `networking.allowedHosts` is concat-merged.
+   *
+   * `provider` is loosened to a `Partial<EnvironmentProviderRef>` so a
+   * deployment can override only the credential while inheriting the
+   * service from the referenced environment.
    */
-  environmentInline?: Partial<EnvironmentConfig>;
+  environmentInline?: Omit<Partial<EnvironmentConfig>, "provider"> & {
+    provider?: Partial<EnvironmentProviderRef>;
+  };
   createdAt: number;
   updatedAt: number;
 }
@@ -59,7 +65,9 @@ export interface DeploymentInput {
   modelRoleOverrides?: Record<string, ModelRoleOverride>;
   defaultInput?: unknown;
   environmentId?: string;
-  environmentInline?: Partial<EnvironmentConfig>;
+  environmentInline?: Omit<Partial<EnvironmentConfig>, "provider"> & {
+    provider?: Partial<EnvironmentProviderRef>;
+  };
 }
 
 export interface DeploymentListFilter {

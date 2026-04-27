@@ -284,6 +284,16 @@ export class WorkerPool {
         level: "info",
         message: `environment resolved: service=${resolvedEnv.service.id} (tier=${resolvedEnv.service.trustTier}) source=${resolvedEnv.source}`,
       });
+      // Snapshot the resolved environment on the Run row so historical runs
+      // survive later edits to environment records / engine defaults.
+      await this.rt.state.updateRun(runId, {
+        environmentSnapshot: {
+          id: resolvedEnv.envRecord?.id,
+          source: resolvedEnv.source,
+          serviceId: resolvedEnv.service.id,
+          trustTier: resolvedEnv.service.trustTier,
+        },
+      });
 
       const result = await runOnce({
         blueprint: bp,

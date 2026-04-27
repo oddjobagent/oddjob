@@ -9,7 +9,6 @@
 // EnvironmentConfig key, except `networking.allowedHosts` which is concat-merged
 // + deduped so engine-level required hosts (LLM provider) stay reachable.
 
-import type { Deployment } from "../types/deployment.ts";
 import type {
   Environment,
   EnvironmentConfig,
@@ -58,7 +57,10 @@ export interface ResolvedEnvironment {
 }
 
 export interface ResolveEnvironmentOptions {
-  deployment: Pick<Deployment, "environmentId" | "environmentInline">;
+  deployment: {
+    environmentId?: string;
+    environmentInline?: EnvironmentConfigInlineOverride;
+  };
   /** Lookup by id; typically `state.getEnvironment(id)`. */
   getEnvironment: (id: string) => Promise<Environment | null>;
   /** Engine-level default environment id (engine_settings). */
@@ -177,40 +179,93 @@ async function finalize(
 }
 
 /**
+ * Inline override shape for `mergeConfigs`. Loosens `provider` so a
+ * deployment can override only the credential while inheriting the service
+ * from the referenced environment.
+ */
+export type EnvironmentConfigInlineOverride = Omit<Partial<EnvironmentConfig>, "provider"> & {
+  provider?: Partial<EnvironmentProviderRef>;
+};
+
+/**
  * Shallow merge of an inline override on top of a base config. Most fields
  * replace key-by-key; `networking.allowedHosts` is concat-deduped so engine-
  * level required hosts stay reachable.
  */
 export function mergeConfigs(
   base: Partial<EnvironmentConfig> | undefined,
-  inline: Partial<EnvironmentConfig> | undefined,
+  inline: EnvironmentConfigInlineOverride | undefined,
 ): Partial<EnvironmentConfig> {
   if (!base && !inline) return {};
-  if (!base) return { ...inline };
+  if (!base) {
+    // Pure-inline path: provider must be a fully-formed EnvironmentProviderRef.
+    const out: Partial<EnvironmentConfig> = { ...inline } as Partial<EnvironmentConfig>;
+    if (inline?.provider && !inline.provider.service) {
+      // No base to inherit from; drop the partial provider.
+      delete out.provider;
+    }
+    return out;
+  }
   if (!inline) return { ...base };
   const merged: Partial<EnvironmentConfig> = { ...base };
   if (inline.type !== undefined) merged.type = inline.type;
   if (inline.image !== undefined) merged.image = inline.image;
   if (inline.workingDir !== undefined) merged.workingDir = inline.workingDir;
   if (inline.template !== undefined) merged.template = inline.template;
-  if (inline.packages !== undefined) merged.packages = inline.packages;
-  if (inline.resources !== undefined) merged.resources = inline.resources;
-  if (inline.provider !== undefined)
-    merged.provider = mergeProvider(base.provider, inline.provider);
+  if (inline.packages !== undefined)
+    merged.packages = mergePackages(base.packages, inline.packages);
+  if (inline.resources !== undefined)
+    merged.resources = mergeResources(base.resources, inline.resources);
+  if (inline.provider !== undefined) {
+    const p = mergeProvider(base.provider, inline.provider);
+    if (p) merged.provider = p;
+  }
   if (inline.networking !== undefined)
     merged.networking = mergeNetworking(base.networking, inline.networking);
   return merged;
 }
 
+/**
+ * Per-key provider merge. Inline service falls back to base; inline credential
+ * falls back to base. If neither has a service, returns undefined (caller
+ * uses fallbackServiceId).
+ */
 function mergeProvider(
   base: EnvironmentProviderRef | undefined,
-  inline: EnvironmentProviderRef,
-): EnvironmentProviderRef {
-  // Inline replaces, but a missing `credential` falls back to base.
+  inline: Partial<EnvironmentProviderRef>,
+): EnvironmentProviderRef | undefined {
+  const service = inline.service ?? base?.service;
+  if (!service) return undefined;
   return {
-    service: inline.service,
+    service,
     credential: inline.credential ?? base?.credential,
   };
+}
+
+/**
+ * Per-package-manager merge. Inline arrays REPLACE the base array for that
+ * manager (npm replaces npm, apt replaces apt). Missing keys in inline fall
+ * through to base. This matches the spec's "key-by-key object merge".
+ */
+function mergePackages(
+  base: EnvironmentConfig["packages"],
+  inline: EnvironmentConfig["packages"],
+): EnvironmentConfig["packages"] {
+  if (!base) return inline;
+  if (!inline) return base;
+  return { ...base, ...inline };
+}
+
+/**
+ * Per-field resource merge. Inline values replace base for that key only.
+ */
+function mergeResources(
+  base: EnvironmentConfig["resources"],
+  inline: EnvironmentConfig["resources"],
+): EnvironmentConfig["resources"] {
+  if (!base) return inline;
+  if (!inline) return base;
+  return { ...base, ...inline };
 }
 
 function mergeNetworking(

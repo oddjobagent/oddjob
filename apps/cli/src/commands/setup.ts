@@ -69,29 +69,38 @@ export default defineCommand({
         .join("\n");
       process.stdout.write(`environment services registered:\n${summary}\n`);
 
-      // Ensure ≥1 environment row exists. If none, auto-create `default`.
-      const envs = await rt.state.listEnvironments();
-      if (envs.length === 0) {
-        const pick = pickDefaultServiceId();
-        // Fall back to the first registered service if `process` isn't there.
-        const serviceId = rt.plugins.environmentFor(pick.id) ? pick.id : services[0]!.id;
+      // Idempotently ensure the hard-default `default` Environment row exists.
+      // The cascade resolver always names "default" as its hardDefaultId so
+      // even when an engine default is set, the row must remain present as a
+      // last-resort fallback (e.g. operator deletes the engine_setting row).
+      const existing = await rt.state.getEnvironment("default");
+      const pick = pickDefaultServiceId();
+      const serviceId = rt.plugins.environmentFor(pick.id) ? pick.id : services[0]!.id;
+      if (!existing) {
         await rt.state.upsertEnvironment({
           id: "default",
           name: "Default",
           description: `Auto-created at setup. Backed by '${serviceId}'.`,
           config: { type: "local", provider: { service: serviceId } },
         });
-        await rt.state.setEngineSetting("default_environment_id", "default");
         process.stdout.write(`created default environment: id="default" service="${serviceId}"\n`);
         if (pick.warning) process.stderr.write(`${pick.warning}\n`);
       } else {
+        process.stdout.write(
+          `default environment already exists: service=${existing.config.provider?.service ?? "(unset)"}\n`,
+        );
+      }
+      // Ensure engine default points at SOMETHING. Prefer the existing
+      // engine_setting; otherwise fall back to "default".
+      const engineDefault = await rt.state.getEngineSetting<string>("default_environment_id");
+      if (!engineDefault) {
+        await rt.state.setEngineSetting("default_environment_id", "default");
+        process.stdout.write(`engine default set to: default\n`);
+      }
+      const envs = await rt.state.listEnvironments();
+      if (envs.length > 1) {
         const ids = envs.map((e) => e.id).join(", ");
-        process.stdout.write(`environments already configured: ${ids}\n`);
-        const engineDefault = await rt.state.getEngineSetting<string>("default_environment_id");
-        if (!engineDefault && envs.length > 0) {
-          await rt.state.setEngineSetting("default_environment_id", envs[0]!.id);
-          process.stdout.write(`engine default set to: ${envs[0]!.id}\n`);
-        }
+        process.stdout.write(`environments configured: ${ids}\n`);
       }
     } finally {
       await shutdownRuntime(rt);

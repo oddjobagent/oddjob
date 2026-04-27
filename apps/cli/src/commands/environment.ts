@@ -130,7 +130,7 @@ const credentialAdd = defineCommand({
       return;
     }
     const upsert = await rawFetch(`/api/v1/providers/${args.service}/credentials`, {
-      method: "POST",
+      method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         credentialName: credName,

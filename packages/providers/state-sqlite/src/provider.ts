@@ -482,8 +482,8 @@ export class StateSqliteProvider implements StateProvider {
         `INSERT INTO runs (id, deployment_id, blueprint_id, blueprint_hash, blueprint_version, triggered_by, status,
                            input_json, output_json, output_validation_json, error, cost_usd,
                            token_input, token_output, tool_calls,
-                           started_at, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                           started_at, finished_at, created_at, environment_snapshot_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         run.id,
@@ -504,6 +504,7 @@ export class StateSqliteProvider implements StateProvider {
         run.startedAt ?? null,
         run.finishedAt ?? null,
         run.createdAt,
+        run.environmentSnapshot ? JSON.stringify(run.environmentSnapshot) : null,
       );
   }
 
@@ -895,7 +896,7 @@ export class StateSqliteProvider implements StateProvider {
         `UPDATE runs SET status = ?, output_json = ?, output_validation_json = ?, error = ?,
                           cost_usd = ?, token_input = ?, token_output = ?, tool_calls = ?,
                           blueprint_version = ?, blueprint_hash = ?,
-                          started_at = ?, finished_at = ?
+                          started_at = ?, finished_at = ?, environment_snapshot_json = ?
                     WHERE id = ?`,
       )
       .run(
@@ -911,6 +912,7 @@ export class StateSqliteProvider implements StateProvider {
         next.blueprintHash ?? "",
         next.startedAt ?? null,
         next.finishedAt ?? null,
+        next.environmentSnapshot ? JSON.stringify(next.environmentSnapshot) : null,
         id,
       );
   }
@@ -1047,6 +1049,7 @@ interface RunRow {
   started_at: number | null;
   finished_at: number | null;
   created_at: number;
+  environment_snapshot_json: string | null;
 }
 
 function rowToDeployment(row: DeploymentRow): Deployment {
@@ -1173,5 +1176,8 @@ function rowToRun(row: RunRow): Run {
     startedAt: row.started_at ?? undefined,
     finishedAt: row.finished_at ?? undefined,
     createdAt: row.created_at,
+    environmentSnapshot: row.environment_snapshot_json
+      ? (JSON.parse(row.environment_snapshot_json) as Run["environmentSnapshot"])
+      : undefined,
   };
 }

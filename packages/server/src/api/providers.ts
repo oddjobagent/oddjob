@@ -121,7 +121,12 @@ export const upsertCredential =
   (rt: Runtime): Handler =>
   async (req, ctx) => {
     const slug = ctx.params.slug ?? "";
-    if (!rt.plugins.providerFor(slug)) return notFound(`provider '${slug}' not found`);
+    // Accept credentials for either model-providers OR environment services
+    // (Daytona, E2B, etc. live in `provider_credentials` too — see plugin
+    // plan + 15b cascade resolver).
+    if (!rt.plugins.providerFor(slug) && !rt.plugins.environmentFor(slug)) {
+      return notFound(`provider or environment service '${slug}' not found`);
+    }
     const body = await readJson<CredentialUpsert>(req);
     if (!body) return badRequest("body required");
     const credentialName = body.credentialName ?? "default";

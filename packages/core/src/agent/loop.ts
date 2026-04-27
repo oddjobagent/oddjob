@@ -147,12 +147,17 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const startedAt = Date.now();
 
   const blueprintDir = isAbsolute(blueprint.path) ? dirname(blueprint.path) : process.cwd();
+  // Effective workdir for this Run: the EnvironmentConfig.workingDir wins
+  // when set, otherwise fall back to the blueprint's host directory (matches
+  // pre-Phase-15 behavior for the trusted process backend). This is what the
+  // session sees AND what tools resolve relative paths against.
+  const effectiveCwd = environment.config.workingDir ?? blueprintDir;
   // Spawn an environment session for this Run. The provider receives the
   // resolved EnvironmentConfig + per-spawn ergonomics (workdir, timeout,
   // abort). Egress proxy injection (15c) reads from `environment.config`.
   const session: EnvironmentSession = await environment.provider.spawn({
     config: environment.config,
-    workdir: environment.config.workingDir ?? blueprintDir,
+    workdir: effectiveCwd,
     timeoutMs: limits?.durationMs,
     signal,
   });
@@ -175,6 +180,9 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const scriptTools = buildScriptTools({
       blueprint,
       environment: session,
+      // Script tools resolve sidecar files from the host blueprint dir at
+      // build-time, but execute inside the session — keep blueprintDir for
+      // the host-side lookup and rely on the session to receive its own cwd.
       blueprintDir,
       onLog: append,
     });
@@ -188,7 +196,10 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const builtinTools = buildBuiltinTools({
       allowlist: blueprint.tools,
       environment: session,
-      blueprintDir,
+      // Builtin tools (bash/read/write/etc) operate inside the session. Use
+      // the effective workdir so they resolve relative paths against the same
+      // root the session was spawned in, not the host blueprint dir.
+      blueprintDir: effectiveCwd,
       engine: opts.engine,
       onLog: append,
       plugins: opts.plugins,
@@ -208,7 +219,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           out.push(
             svc.build({
               environment: session,
-              blueprintDir,
+              blueprintDir: effectiveCwd,
               engine: opts.engine,
               onLog: append,
             }) as (typeof out)[number],

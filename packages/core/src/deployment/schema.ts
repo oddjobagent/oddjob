@@ -102,8 +102,11 @@ const PackageManifestOverrideSchema = z.strictObject({
   pip: z.array(z.string()).optional(),
 });
 
+// Inline provider override allows partial: a deployment may set just the
+// credential to switch a referenced environment from "default" to a tenant-
+// specific row without restating the service.
 const ProviderRefOverrideSchema = z.strictObject({
-  service: z.string().min(1),
+  service: z.string().min(1).optional(),
   credential: z.string().min(1).optional(),
 });
 

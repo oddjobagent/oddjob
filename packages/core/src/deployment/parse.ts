@@ -3,7 +3,6 @@ import { parse as parseToml } from "smol-toml";
 import { BlueprintParseError } from "../blueprint/errors.ts";
 import type { ChannelConfig } from "../types/channel.ts";
 import type { DeploymentInput } from "../types/deployment.ts";
-import type { EnvironmentConfig } from "../types/environment.ts";
 import type { Limits } from "../types/limits.ts";
 import type { Trigger, WebhookAuth } from "../types/trigger.ts";
 import { type DeploymentRaw, DeploymentRawSchema } from "./schema.ts";
@@ -71,7 +70,9 @@ function normalizeDeployment(raw: DeploymentRaw, options: ParseDeploymentOptions
 
 type RawInline = NonNullable<DeploymentRaw["environment_inline"]>;
 
-function normalizeEnvironmentInline(raw: RawInline): Partial<EnvironmentConfig> {
+function normalizeEnvironmentInline(
+  raw: RawInline,
+): NonNullable<DeploymentInput["environmentInline"]> {
   const networking = raw.networking
     ? raw.networking.type === "unrestricted"
       ? { type: "unrestricted" as const }
@@ -89,7 +90,11 @@ function normalizeEnvironmentInline(raw: RawInline): Partial<EnvironmentConfig> 
         diskMb: raw.resources.disk_mb,
       }
     : undefined;
-  const out: Partial<EnvironmentConfig> = {};
+  // Use the inline-override shape so `provider` may be a partial (a deployment
+  // can override only the credential while inheriting service from the
+  // referenced environment). The cascade resolver enforces that the final
+  // resolved EnvironmentConfig always has a fully-formed provider.
+  const out: NonNullable<DeploymentInput["environmentInline"]> = {};
   if (raw.type !== undefined) out.type = raw.type;
   if (raw.packages !== undefined) out.packages = raw.packages;
   if (networking !== undefined) out.networking = networking;

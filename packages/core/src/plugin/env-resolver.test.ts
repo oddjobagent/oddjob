@@ -239,4 +239,38 @@ describe("mergeConfigs", () => {
     );
     expect(merged.provider?.credential).toBe("default");
   });
+
+  test("inline can override credential alone (service inherited from base)", () => {
+    const merged = mergeConfigs(
+      { provider: { service: "daytona", credential: "default" } },
+      { provider: { credential: "tenant-A" } },
+    );
+    expect(merged.provider?.service).toBe("daytona");
+    expect(merged.provider?.credential).toBe("tenant-A");
+  });
+
+  test("inline provider with neither service nor credential is dropped (no base)", () => {
+    const merged = mergeConfigs(undefined, { provider: {} });
+    expect(merged.provider).toBeUndefined();
+  });
+
+  test("packages merge per-package-manager (apt + pip survives an npm-only override)", () => {
+    const merged = mergeConfigs(
+      { packages: { apt: ["ffmpeg"], pip: ["pandas"] } },
+      { packages: { npm: ["puppeteer"] } },
+    );
+    expect(merged.packages?.apt).toEqual(["ffmpeg"]);
+    expect(merged.packages?.pip).toEqual(["pandas"]);
+    expect(merged.packages?.npm).toEqual(["puppeteer"]);
+  });
+
+  test("resources merge per-key (cpu override keeps base memMb/diskMb)", () => {
+    const merged = mergeConfigs(
+      { resources: { cpu: 1, memMb: 512, diskMb: 1024 } },
+      { resources: { cpu: 4 } },
+    );
+    expect(merged.resources?.cpu).toBe(4);
+    expect(merged.resources?.memMb).toBe(512);
+    expect(merged.resources?.diskMb).toBe(1024);
+  });
 });

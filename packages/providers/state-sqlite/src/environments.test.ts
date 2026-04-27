@@ -66,4 +66,93 @@ describe("environments table", () => {
     await p.deleteEnvironment("alpha");
     expect(await p.getEnvironment("alpha")).toBeNull();
   });
+
+  test("Phase 15b: provider/resources/template fields round-trip", async () => {
+    await p.upsertEnvironment({
+      id: "remote-1",
+      config: {
+        type: "cloud",
+        provider: { service: "daytona", credential: "default" },
+        resources: { cpu: 2, memMb: 2048, diskMb: 8192 },
+        template: "ubuntu-22.04",
+      },
+    });
+    const fetched = await p.getEnvironment("remote-1");
+    expect(fetched?.config.provider?.service).toBe("daytona");
+    expect(fetched?.config.provider?.credential).toBe("default");
+    expect(fetched?.config.resources?.cpu).toBe(2);
+    expect(fetched?.config.resources?.memMb).toBe(2048);
+    expect(fetched?.config.template).toBe("ubuntu-22.04");
+  });
+});
+
+describe("Phase 15b: engine_settings", () => {
+  test("get returns null when key missing", async () => {
+    expect(await p.getEngineSetting("nonexistent")).toBeNull();
+  });
+
+  test("set + get round trip with JSON encoding", async () => {
+    await p.setEngineSetting("default_environment_id", "default");
+    expect(await p.getEngineSetting<string>("default_environment_id")).toBe("default");
+  });
+
+  test("set overwrites existing value", async () => {
+    await p.setEngineSetting("default_environment_id", "default");
+    await p.setEngineSetting("default_environment_id", "data-analysis");
+    expect(await p.getEngineSetting<string>("default_environment_id")).toBe("data-analysis");
+  });
+
+  test("delete removes the key", async () => {
+    await p.setEngineSetting("default_environment_id", "x");
+    await p.deleteEngineSetting("default_environment_id");
+    expect(await p.getEngineSetting("default_environment_id")).toBeNull();
+  });
+
+  test("supports complex JSON values", async () => {
+    const value = { foo: "bar", arr: [1, 2, 3], nested: { ok: true } };
+    await p.setEngineSetting("complex", value);
+    const back = await p.getEngineSetting<typeof value>("complex");
+    expect(back).toEqual(value);
+  });
+});
+
+describe("Phase 15b: deployments env wiring", () => {
+  test("create deployment with environmentId persists round trip", async () => {
+    await p.upsertEnvironment({
+      id: "for-deploy",
+      config: { type: "local", provider: { service: "process" } },
+    });
+    await p.upsertBlueprint({
+      id: "demo/env-wire",
+      name: "env-wire",
+      namespace: "demo",
+      version: "0.0.1",
+      schemaVersion: 1,
+      description: "x",
+      author: "x",
+      tags: [],
+      model: "faux/x",
+      prompt: "x",
+      tools: [],
+      skills: [],
+      connectors: {},
+      scripts: {},
+      memory: { store: "kv", retention: "30d" },
+      secrets: {},
+      failOnToolError: false,
+      path: "<inline>",
+      contentHash: "b".repeat(64),
+    } as never);
+    const dep = await p.createDeployment({
+      name: "env-wire-dep",
+      blueprintId: "demo/env-wire",
+      triggers: [{ type: "manual" }],
+      channels: [],
+      environmentId: "for-deploy",
+      environmentInline: { image: "override-image" },
+    });
+    const fetched = await p.getDeployment(dep.id);
+    expect(fetched?.environmentId).toBe("for-deploy");
+    expect(fetched?.environmentInline?.image).toBe("override-image");
+  });
 });
