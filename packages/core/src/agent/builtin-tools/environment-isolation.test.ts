@@ -3,17 +3,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SandboxProcessProvider } from "../../../../../packages/providers/sandbox-process/src/provider.ts";
+import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 
 import { buildBuiltinTools } from "./index.ts";
 
 let dir: string;
-let provider: SandboxProcessProvider;
-let session: Awaited<ReturnType<SandboxProcessProvider["spawn"]>>;
+let provider: ProcessEnvironmentProvider;
+let session: Awaited<ReturnType<ProcessEnvironmentProvider["spawn"]>>;
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "oddjob-env-iso-"));
-  provider = new SandboxProcessProvider();
+  provider = new ProcessEnvironmentProvider();
   await provider.connect();
   session = await provider.spawn({ workdir: dir });
 });

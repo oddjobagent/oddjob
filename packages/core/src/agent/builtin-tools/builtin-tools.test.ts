@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SandboxProcessProvider } from "../../../../../packages/providers/sandbox-process/src/provider.ts";
+import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 
 import { buildBuiltinTools, BUILTIN_TOOL_NAMES, isBuiltinToolName } from "./index.ts";
 
@@ -46,7 +46,7 @@ describe("buildBuiltinTools", () => {
 
   test("bash tool actually runs a command end-to-end", async () => {
     const dir = await mkdtemp(join(tmpdir(), "oddjob-builtin-bash-"));
-    const provider = new SandboxProcessProvider();
+    const provider = new ProcessEnvironmentProvider();
     await provider.connect();
     const session = await provider.spawn({ workdir: dir });
     try {

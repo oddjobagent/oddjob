@@ -22,11 +22,13 @@
     "@oddjob/logging-sqlite": "workspace:*",
     "@oddjob/mcp-client": "workspace:*",
     "@oddjob/queue-sqlite": "workspace:*",
-    "@oddjob/sandbox-process": "workspace:*",
     "@oddjob/scheduler-croner": "workspace:*",
     "@oddjob/sdk": "workspace:*",
     "@oddjob/secrets-sqlite": "workspace:*",
     "@oddjob/state-sqlite": "workspace:*",
     "croner": "^10.0.1"
+  },
+  "devDependencies": {
+    "@oddjob/plugin-env-process": "workspace:*"
   }
 }

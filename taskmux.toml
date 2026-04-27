@@ -1,0 +1,4 @@
+name = "taskmux"
+
+[tasks.server]
+command = "bun apps/cli/src/index.ts serve --port 7777"

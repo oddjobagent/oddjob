@@ -9,7 +9,7 @@ import { PluginRegistry, RoleResolver, registerBundled } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
-import { SandboxProcessProvider } from "@oddjob/sandbox-process";
+import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 import { SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import { StateSqliteProvider } from "@oddjob/state-sqlite";
 import { definePlugin } from "@oddjob/sdk";
@@ -56,7 +56,7 @@ beforeAll(async () => {
           packageManagers: [],
         },
         available: async () => ({ ok: true }),
-        create: () => new SandboxProcessProvider(),
+        create: () => new ProcessEnvironmentProvider(),
       }),
     ),
   );

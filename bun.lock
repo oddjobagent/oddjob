@@ -32,13 +32,14 @@
         "@oddjob/plugin-anthropic": "workspace:*",
         "@oddjob/plugin-builtin-tools": "workspace:*",
         "@oddjob/plugin-channels-core": "workspace:*",
+        "@oddjob/plugin-env-local-strict": "workspace:*",
+        "@oddjob/plugin-env-process": "workspace:*",
         "@oddjob/plugin-llama-local": "workspace:*",
         "@oddjob/plugin-openai": "workspace:*",
         "@oddjob/plugin-openrouter": "workspace:*",
         "@oddjob/plugin-web-fetch-core": "workspace:*",
         "@oddjob/plugin-web-search-core": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
-        "@oddjob/sandbox-process": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
         "@oddjob/sdk": "workspace:*",
         "@oddjob/secrets-sqlite": "workspace:*",
@@ -99,6 +100,7 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
+        "@oddjob/plugin-env-process": "workspace:*",
         "@types/js-yaml": "^4.0.9",
         "@types/turndown": "^5.0.5",
       },
@@ -188,13 +190,6 @@
         "@oddjob/core": "workspace:*",
       },
     },
-    "packages/providers/sandbox-process": {
-      "name": "@oddjob/sandbox-process",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
     "packages/providers/scheduler-croner": {
       "name": "@oddjob/scheduler-croner",
       "version": "0.0.0",
@@ -242,12 +237,14 @@
         "@oddjob/logging-sqlite": "workspace:*",
         "@oddjob/mcp-client": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
-        "@oddjob/sandbox-process": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
         "@oddjob/sdk": "workspace:*",
         "@oddjob/secrets-sqlite": "workspace:*",
         "@oddjob/state-sqlite": "workspace:*",
         "croner": "^10.0.1",
+      },
+      "devDependencies": {
+        "@oddjob/plugin-env-process": "workspace:*",
       },
     },
     "plugins/anthropic": {
@@ -275,6 +272,22 @@
         "@oddjob/channel-email": "workspace:*",
         "@oddjob/channel-slack": "workspace:*",
         "@oddjob/channel-webhook": "workspace:*",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/env-local-strict": {
+      "name": "@oddjob/plugin-env-local-strict",
+      "version": "0.1.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/env-process": {
+      "name": "@oddjob/plugin-env-process",
+      "version": "0.1.0",
+      "dependencies": {
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
       },
@@ -494,6 +507,10 @@
 
     "@oddjob/plugin-channels-core": ["@oddjob/plugin-channels-core@workspace:plugins/channels-core"],
 
+    "@oddjob/plugin-env-local-strict": ["@oddjob/plugin-env-local-strict@workspace:plugins/env-local-strict"],
+
+    "@oddjob/plugin-env-process": ["@oddjob/plugin-env-process@workspace:plugins/env-process"],
+
     "@oddjob/plugin-llama-local": ["@oddjob/plugin-llama-local@workspace:plugins/llama-local"],
 
     "@oddjob/plugin-openai": ["@oddjob/plugin-openai@workspace:plugins/openai"],
@@ -507,8 +524,6 @@
     "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:packages/providers/queue-memory"],
 
     "@oddjob/queue-sqlite": ["@oddjob/queue-sqlite@workspace:packages/providers/queue-sqlite"],
-
-    "@oddjob/sandbox-process": ["@oddjob/sandbox-process@workspace:packages/providers/sandbox-process"],
 
     "@oddjob/scheduler-croner": ["@oddjob/scheduler-croner@workspace:packages/providers/scheduler-croner"],
 

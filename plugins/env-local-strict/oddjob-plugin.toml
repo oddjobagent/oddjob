@@ -1,0 +1,9 @@
+slug = "env-local-strict"
+name = "Local strict environments"
+description = "Seatbelt (macOS), bubblewrap (Linux), AppContainer (Windows). Restricts FS writes to workdir; restricts reads to workdir + system runtime libs (Mac: /System, /Library/Frameworks, /opt/homebrew; Linux: /usr, /lib via bwrap ro-binds). Denies host env passthrough."
+version = "0.1.0"
+author = "Oddjob"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 
 import { loadBlueprint } from "../blueprint/index.ts";
 import { runOnce } from "./loop.ts";
-import { SandboxProcessProvider } from "../../../../packages/providers/sandbox-process/src/provider.ts";
+import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 
-const sandbox = new SandboxProcessProvider();
+const sandbox = new ProcessEnvironmentProvider();
 const testEnv = { provider: sandbox, config: { type: "local" as const } };
 
 const SATISFIED = `\`\`\`json

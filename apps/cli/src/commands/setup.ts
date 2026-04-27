@@ -6,39 +6,88 @@ import { CONFIG_PATH, DEFAULT_CONFIG, ODDJOB_HOME, loadConfig, saveConfig } from
 import { buildRuntime, shutdownRuntime } from "../lib/runtime.ts";
 
 /**
- * Pick the OS-appropriate default environment service id. When 15d ships,
- * this picks `seatbelt` on macOS / `bwrap` on Linux. For now we have only the
- * trusted-local `process` service; print a loud warning.
+ * Per-platform priority order for picking the default environment service.
+ * Higher-trust services come first; the trusted-local `process` service is
+ * the very last resort.
  */
-function pickDefaultServiceId(): { id: string; warning?: string } {
+function priorityOrderForPlatform(): string[] {
   const platform = process.platform;
-  // 15d will register seatbelt (mac) / bwrap (linux). Until then the only
-  // bundled environment is `process`, which gives the agent full host access.
-  if (platform === "darwin") {
-    return {
-      id: "process",
-      warning:
-        "WARNING: env-process gives agents full host access. Switch to local-strict (seatbelt) when @oddjob/plugin-env-local-strict ships in 15d.",
-    };
-  }
-  if (platform === "linux") {
-    return {
-      id: "process",
-      warning:
-        "WARNING: env-process gives agents full host access. Switch to local-strict (bwrap) when @oddjob/plugin-env-local-strict ships in 15d.",
-    };
-  }
-  return {
-    id: "process",
-    warning:
-      "WARNING: env-process gives agents full host access. Native AppContainer ships in v1.1; until then prefer WSL2 + bwrap.",
-  };
+  if (platform === "darwin") return ["seatbelt", "process"];
+  if (platform === "linux") return ["bwrap", "process"];
+  if (platform === "win32") return ["appcontainer", "process"];
+  return ["process"];
 }
+
+interface AvailabilityProbe {
+  (id: string): Promise<{ ok: boolean; reason?: string } | undefined>;
+}
+
+interface PickedDefault {
+  /** Service id chosen. Always non-null when called with a non-empty registry. */
+  id: string;
+  /** Trust tier of the picked service, surfaced to the operator. */
+  trustTier: string;
+  /** Optional warning printed after creation (e.g. "fell back to process"). */
+  warning?: string;
+}
+
+/**
+ * Walk the platform's priority order, calling `available()` on each
+ * registered service until we find one that says ok. Returns the first
+ * available service plus a warning if we had to fall back below the
+ * preferred tier.
+ *
+ * Refuses with `null` if nothing is available — caller should error.
+ */
+async function pickDefaultService(
+  registered: ReadonlyArray<{ id: string; trustTier: string }>,
+  available: AvailabilityProbe,
+): Promise<PickedDefault | null> {
+  const order = priorityOrderForPlatform();
+  const reasons: string[] = [];
+  for (const id of order) {
+    const svc = registered.find((s) => s.id === id);
+    if (!svc) continue;
+    const status = await available(id);
+    if (status?.ok) {
+      const fellBack = order.indexOf(id) > 0;
+      return {
+        id,
+        trustTier: svc.trustTier,
+        warning: fellBack
+          ? `WARNING: preferred ${order[0]} unavailable; fell back to ${id} (${svc.trustTier}).${reasons.length ? " Reasons: " + reasons.join("; ") : ""}`
+          : undefined,
+      };
+    }
+    reasons.push(`${id}=${status?.reason ?? "unknown"}`);
+  }
+  // Nothing in the priority order was available. Try ANY registered
+  // service before giving up — the operator may have side-loaded a custom
+  // strict env (e.g. firejail) that's not in the platform default list.
+  for (const svc of registered) {
+    const status = await available(svc.id);
+    if (status?.ok) {
+      return {
+        id: svc.id,
+        trustTier: svc.trustTier,
+        warning: `WARNING: no platform-default env service available; using side-loaded ${svc.id} (${svc.trustTier}).`,
+      };
+    }
+  }
+  return null;
+}
+
+const STRICT_TIERS = new Set(["local-strict", "container", "remote-vm"]);
 
 export default defineCommand({
   meta: { name: "setup", description: "First-time setup: dirs, master key, config, environments." },
   args: {
     force: { type: "boolean", description: "Re-run even if already set up", default: false },
+    "migrate-default": {
+      type: "boolean",
+      description: "Migrate existing 'default' env to a stricter service if one is now available.",
+      default: false,
+    },
   },
   async run({ args }) {
     const cfg = await loadConfig().catch(() => DEFAULT_CONFIG);
@@ -51,9 +100,6 @@ export default defineCommand({
       `master key: ${args.force ? "rotated" : "loaded"} (${key.length * 8}-bit)\n`,
     );
 
-    // Setup gate: build the runtime + verify ≥1 environment service is
-    // registered, then ensure ≥1 environment record exists. Auto-create a
-    // `default` row pointing at the platform-appropriate service.
     const rt = await buildRuntime(cfg);
     try {
       const services = rt.plugins.listEnvironments();
@@ -69,29 +115,61 @@ export default defineCommand({
         .join("\n");
       process.stdout.write(`environment services registered:\n${summary}\n`);
 
-      // Idempotently ensure the hard-default `default` Environment row exists.
-      // The cascade resolver always names "default" as its hardDefaultId so
-      // even when an engine default is set, the row must remain present as a
-      // last-resort fallback (e.g. operator deletes the engine_setting row).
+      const probe: AvailabilityProbe = async (id) => {
+        const svc = rt.plugins.environmentFor(id);
+        return svc ? await svc.available() : undefined;
+      };
+      const pick = await pickDefaultService(
+        services.map((s) => ({ id: s.id, trustTier: s.trustTier })),
+        probe,
+      );
+      if (!pick) {
+        process.stderr.write(
+          "ERROR: no environment service reports available=true. Install bubblewrap (Linux), enable Seatbelt (macOS), or accept the env-process trade-off.\n",
+        );
+        process.exitCode = 2;
+        return;
+      }
+
       const existing = await rt.state.getEnvironment("default");
-      const pick = pickDefaultServiceId();
-      const serviceId = rt.plugins.environmentFor(pick.id) ? pick.id : services[0]!.id;
       if (!existing) {
         await rt.state.upsertEnvironment({
           id: "default",
           name: "Default",
-          description: `Auto-created at setup. Backed by '${serviceId}'.`,
-          config: { type: "local", provider: { service: serviceId } },
+          description: `Auto-created at setup. Backed by '${pick.id}' (${pick.trustTier}).`,
+          config: { type: "local", provider: { service: pick.id } },
         });
-        process.stdout.write(`created default environment: id="default" service="${serviceId}"\n`);
+        process.stdout.write(
+          `created default environment: id="default" service="${pick.id}" trust="${pick.trustTier}"\n`,
+        );
         if (pick.warning) process.stderr.write(`${pick.warning}\n`);
       } else {
-        process.stdout.write(
-          `default environment already exists: service=${existing.config.provider?.service ?? "(unset)"}\n`,
-        );
+        const currentService = existing.config.provider?.service ?? "(unset)";
+        process.stdout.write(`default environment already exists: service=${currentService}\n`);
+        const currentSvc = services.find((s) => s.id === currentService);
+        const currentlyStrict = currentSvc ? STRICT_TIERS.has(currentSvc.trustTier) : false;
+        const pickedStrict = STRICT_TIERS.has(pick.trustTier);
+        if (!currentlyStrict && pickedStrict && currentService !== pick.id) {
+          if (args["migrate-default"]) {
+            await rt.state.upsertEnvironment({
+              ...existing,
+              description: `Migrated to '${pick.id}' (${pick.trustTier}) at setup --migrate-default.`,
+              config: {
+                ...existing.config,
+                provider: { ...existing.config.provider, service: pick.id },
+              },
+            });
+            process.stdout.write(
+              `migrated default environment: ${currentService} -> ${pick.id} (${pick.trustTier})\n`,
+            );
+          } else {
+            process.stderr.write(
+              `NOTE: stricter environment '${pick.id}' (${pick.trustTier}) is now available. Re-run \`oddjob setup --migrate-default\` to switch the default to it.\n`,
+            );
+          }
+        }
       }
-      // Ensure engine default points at SOMETHING. Prefer the existing
-      // engine_setting; otherwise fall back to "default".
+
       const engineDefault = await rt.state.getEngineSetting<string>("default_environment_id");
       if (!engineDefault) {
         await rt.state.setEngineSetting("default_environment_id", "default");

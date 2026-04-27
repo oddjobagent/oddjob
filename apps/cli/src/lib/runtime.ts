@@ -6,7 +6,6 @@ import type {
   ChannelProvider,
   EngineConfig,
   EngineModelRoleRecord,
-  EnvironmentProvider,
   LegacyResolver,
   ProviderCredentialRecord,
   ResolvedRoleModel,
@@ -14,7 +13,6 @@ import type {
 } from "@oddjob/core";
 import { loadLocalPlugins, PluginRegistry, registerBundled, RoleResolver } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
-import { definePlugin } from "@oddjob/sdk";
 
 import openaiPlugin from "@oddjob/plugin-openai";
 import anthropicPlugin from "@oddjob/plugin-anthropic";
@@ -24,42 +22,15 @@ import channelsCorePlugin from "@oddjob/plugin-channels-core";
 import builtinToolsPlugin from "@oddjob/plugin-builtin-tools";
 import webSearchCorePlugin from "@oddjob/plugin-web-search-core";
 import webFetchCorePlugin from "@oddjob/plugin-web-fetch-core";
+import envProcessPlugin from "@oddjob/plugin-env-process";
+import envLocalStrictPlugin from "@oddjob/plugin-env-local-strict";
 import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
 import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
-import { SandboxProcessProvider } from "@oddjob/sandbox-process";
 import { SchedulerCronerProvider } from "@oddjob/scheduler-croner";
 import { loadOrCreateMasterKey, SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import type { Runtime } from "@oddjob/server";
 import { StateSqliteProvider } from "@oddjob/state-sqlite";
-
-// Bundled "process" environment plugin. Wraps SandboxProcessProvider as an
-// EnvironmentService so the cascade resolver can pick it up via id "process".
-// 15d will move this into a real `@oddjob/plugin-env-process` workspace.
-const envProcessPlugin = definePlugin(
-  {
-    slug: "env-process",
-    name: "Process environment",
-    description: "Trusted-local: runs commands in the host shell (tempdir per session). Dev only.",
-    version: "0.0.0",
-  },
-  (b) =>
-    b.environment({
-      id: "process",
-      displayName: "Process (host shell)",
-      trustTier: "trusted",
-      capabilities: {
-        snapshot: false,
-        fork: false,
-        pauseResume: false,
-        exposePort: false,
-        egressAllowlist: false,
-        packageManagers: [],
-      },
-      available: async () => ({ ok: true }),
-      create: (): EnvironmentProvider => new SandboxProcessProvider(),
-    }),
-);
 
 import {
   LOGS_DB,
@@ -107,6 +78,7 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     webSearchCorePlugin,
     webFetchCorePlugin,
     envProcessPlugin,
+    envLocalStrictPlugin,
   ]) {
     const reg = registerBundled(plugins, p);
     if (disabledSlugs.has(reg.record.slug)) plugins.setEnabled(reg.record.slug, false);
