@@ -11,6 +11,28 @@ export interface ChannelSlackOptions {
 
 export class ChannelSlackProvider implements ChannelProvider {
   readonly name = "channel-slack";
+  readonly outputContract = {
+    type: "object",
+    description:
+      "Agent-fillable Slack fields. Set only when the deployment's slack channel uses mode = 'dynamic'.",
+    properties: {
+      target: {
+        type: "string",
+        description:
+          "Channel id or webhook URL. Overrides deploy-time `target`. Use cautiously.",
+      },
+      text: {
+        type: "string",
+        description: "Plain text body. Overrides the run's finalText.",
+      },
+      blocks: {
+        type: "array",
+        items: { type: "object" },
+        description: "Slack Block Kit blocks. When set, `text` is the fallback for unformatted clients.",
+      },
+    },
+  } as const;
+
   private readonly secrets?: SecretsProvider;
 
   constructor(opts: ChannelSlackOptions = {}) {

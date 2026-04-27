@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": ["generated_at", "timezone", "stories"],
+  "properties": {
+    "generated_at": { "type": "string", "description": "ISO 8601 timestamp" },
+    "timezone": { "type": "string" },
+    "stories": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["rank", "title", "url", "points", "num_comments", "score", "hn_url"],
+        "properties": {
+          "rank": { "type": "integer" },
+          "title": { "type": "string" },
+          "url": { "type": "string" },
+          "points": { "type": "integer" },
+          "num_comments": { "type": "integer" },
+          "score": { "type": "integer", "description": "points + 2 * num_comments" },
+          "hn_url": { "type": "string" }
+        }
+      }
+    },
+    "top_story_summary": { "type": "string" },
+    "channels": {
+      "type": "object",
+      "description": "Per-channel delivery overrides; the harness merges this into channel config at delivery time.",
+      "properties": {
+        "email": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string", "maxLength": 200 },
+            "body_text": { "type": "string" },
+            "body_html": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

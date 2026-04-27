@@ -1,0 +1,22 @@
+blueprint = "./blueprint.toml"
+
+[[trigger]]
+type = "manual"
+
+# Console mirror so we can see runs in the dashboard log tail.
+[[channel]]
+type = "console"
+
+# Email delivery — agent fills `subject` and HTML body per run via `channels.email`.
+# Static fallbacks: `to` comes from input; `from` is the verified sender.
+[[channel]]
+type = "email"
+mode = "dynamic"
+to = "{{input.email}}"
+from = "onboarding@resend.dev"
+resend_api_key_secret_ref = "RESEND_API_KEY"
+
+[limits]
+duration = "120s"
+tool_calls = 30
+budget = 0.50

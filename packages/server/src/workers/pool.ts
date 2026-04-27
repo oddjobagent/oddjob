@@ -1,8 +1,31 @@
 import { randomUUID } from "node:crypto";
 
+import type { ChannelConfig, EmailChannelConfig } from "@oddjob/core";
 import { runOnce } from "@oddjob/core";
 
 import type { Runtime } from "../runtime.ts";
+import { renderTemplate, type TemplateContext } from "./template.ts";
+
+function resolveChannelTemplates(ch: ChannelConfig, ctx: TemplateContext): ChannelConfig {
+  if (ch.type === "email") {
+    const e: EmailChannelConfig = {
+      ...ch,
+      to: Array.isArray(ch.to)
+        ? ch.to.map((t) => renderTemplate(t, ctx))
+        : renderTemplate(ch.to, ctx),
+      from: ch.from ? renderTemplate(ch.from, ctx) : ch.from,
+      subject: ch.subject ? renderTemplate(ch.subject, ctx) : ch.subject,
+    };
+    return e;
+  }
+  if (ch.type === "webhook") {
+    return { ...ch, url: renderTemplate(ch.url, ctx) };
+  }
+  if (ch.type === "slack") {
+    return { ...ch, target: renderTemplate(ch.target, ctx) };
+  }
+  return ch;
+}
 
 export interface WorkerPoolOptions {
   runtime: Runtime;
@@ -65,7 +88,7 @@ export class WorkerPool {
       while (this.state.running && this.state.inFlight < this.rt.config.maxWorkers) {
         const next = await this.rt.queue.dequeue(this.state.workerId, this.rt.config.leaseMs);
         if (!next) break;
-        void this.processRun(next.runId, next.config);
+        void this.processRun(next.runId, next.config, next.attempts);
       }
     } catch (err) {
       console.error("[oddjob] poll error:", err);
@@ -74,7 +97,11 @@ export class WorkerPool {
     }
   }
 
-  private async processRun(runId: string, config: import("@oddjob/core").RunConfig): Promise<void> {
+  private async processRun(
+    runId: string,
+    config: import("@oddjob/core").RunConfig,
+    attempts: number,
+  ): Promise<void> {
     this.state.inFlight++;
     const abort = new AbortController();
     this.state.abortControllers.set(runId, abort);
@@ -124,7 +151,24 @@ export class WorkerPool {
       if (!bp) throw new Error(`blueprint ${config.blueprintId} not found`);
 
       const secretRef = bp.secrets.openrouter ?? bp.secrets.api ?? bp.secrets.anthropic;
-      const resolved = await this.rt.llm.resolveModel(bp.model, secretRef);
+      const modelId = dep.modelOverride ?? bp.model;
+      const resolved = await this.rt.llm.resolveModel(modelId, secretRef);
+      const mergedInput = mergeInput(dep.defaultInput, config.input);
+
+      // Compose dynamic-channel descriptors from the deployment's channel list.
+      // Pull each channel's outputContract from its provider so the agent gets
+      // the schema fragment in its system prompt + composed output_schema.
+      const dynamicChannels = dep.channels
+        .filter((c) => c.mode === "dynamic")
+        .map((c) => {
+          const provider = this.rt.channelFor(c.type);
+          return {
+            name: c.type,
+            type: c.type,
+            contract: (provider as { outputContract?: Record<string, unknown> } | undefined)
+              ?.outputContract,
+          };
+        });
 
       const result = await runOnce({
         blueprint: bp,
@@ -133,46 +177,115 @@ export class WorkerPool {
         log: this.rt.log,
         mcp: this.rt.mcp,
         secrets: this.rt.secrets,
-        input: config.input,
+        auth: this.rt.auth,
+        engine: this.rt.engine,
+        input: mergedInput,
         runId,
         deploymentId: dep.id,
         triggeredBy: config.triggeredBy,
         limits: dep.limits,
         signal: abort.signal,
+        dynamicChannels: dynamicChannels.length > 0 ? dynamicChannels : undefined,
       });
 
-      await this.rt.state.updateRun(runId, result.run);
+      // If this attempt failed but is retry-eligible, persist as `retrying`
+      // so the dashboard distinguishes "this attempt failed but harness will
+      // try again" from "permanent failure".
+      const willRetry =
+        result.run.status === "failed" &&
+        result.retriable &&
+        attempts <= (bp.outcomes?.maxRetries ?? 0);
+      const persistedRun: typeof result.run = willRetry
+        ? { ...result.run, status: "retrying" }
+        : result.run;
+      await this.rt.state.updateRun(runId, persistedRun);
 
-      // deliver to channels
+      // deliver to channels (with template resolution against input + output)
+      const tplCtx = {
+        input: mergedInput,
+        output: {
+          finalText: result.output.finalText,
+          structured: result.output.structuredOutput,
+        },
+        run: {
+          id: runId,
+          deploymentId: dep.id,
+          blueprintId: bp.id,
+          startedAt: result.run.startedAt,
+          finishedAt: result.run.finishedAt,
+          costUsd: result.run.costUsd,
+        },
+      };
+      const channelsBlock = (
+        result.output.structuredOutput as { channels?: Record<string, unknown> } | undefined
+      )?.channels;
       for (const ch of dep.channels) {
         const provider = this.rt.channelFor(ch.type);
         if (!provider) continue;
+        const resolvedCh = resolveChannelTemplates(ch, tplCtx);
+        // Dynamic mode: layer agent-emitted overrides over the resolved config
+        // and pick a per-channel body if the agent supplied one.
+        const dyn =
+          ch.mode === "dynamic" && channelsBlock
+            ? (channelsBlock[ch.type] as Record<string, unknown> | undefined)
+            : undefined;
+        const dispatchCh = mergeDynamicOverrides(resolvedCh, dyn);
+        const body = pickChannelBody(ch.type, dyn) ?? result.output.finalText;
         try {
           await provider.send({
-            body: result.output.finalText,
+            body,
             format: "markdown",
             meta: {
               runId,
               deploymentId: dep.id,
               blueprintId: bp.id,
               structured: result.output.structuredOutput,
-              channelConfig: ch,
+              channelConfig: dispatchCh,
             },
+          });
+          await this.rt.log.log(runId, {
+            timestamp: Date.now(),
+            level: "info",
+            message: `channel ${ch.type} delivered`,
+            meta: channelLogMeta(dispatchCh),
           });
         } catch (err) {
           await this.rt.log.log(runId, {
             timestamp: Date.now(),
             level: "error",
             message: `channel ${ch.type} delivery failed: ${(err as Error).message}`,
+            meta: channelLogMeta(dispatchCh),
           });
         }
       }
 
-      const ack = await this.rt.queue.ack(runId, this.state.workerId);
+      // Branch: success → ack, retriable verdict + budget left → requeue with backoff,
+      // anything else → nack (final failure, stays in queue with status='failed').
+      const outcomes = bp.outcomes;
+      const maxRetries = outcomes?.maxRetries ?? 0;
+      const baseBackoff = outcomes?.retryBackoffMs ?? 30_000;
+      let queueOp: "ack" | "nack" | "requeue";
+      let queueResult: string;
+      if (willRetry) {
+        const delay = baseBackoff * Math.pow(2, Math.max(0, attempts - 1));
+        queueResult = await this.rt.queue.requeue(runId, this.state.workerId, delay);
+        queueOp = "requeue";
+        await this.rt.log.log(runId, {
+          timestamp: Date.now(),
+          level: "warn",
+          message: `requeued for retry attempt ${attempts + 1}/${maxRetries + 1} in ${delay}ms`,
+        });
+      } else if (result.run.status === "failed") {
+        queueResult = await this.rt.queue.nack(runId, this.state.workerId, result.run.error);
+        queueOp = "nack";
+      } else {
+        queueResult = await this.rt.queue.ack(runId, this.state.workerId);
+        queueOp = "ack";
+      }
       await this.rt.log.log(runId, {
         timestamp: Date.now(),
-        level: ack === "ok" ? "info" : "warn",
-        message: `run finished status=${result.run.status} ack=${ack} cost=$${(result.run.costUsd ?? 0).toFixed(6)}`,
+        level: queueResult === "ok" ? "info" : "warn",
+        message: `run finished status=${result.run.status} ${queueOp}=${queueResult} cost=$${(result.run.costUsd ?? 0).toFixed(6)} attempts=${attempts}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -212,4 +325,115 @@ export class WorkerPool {
       this.state.inFlight--;
     }
   }
+
+  /**
+   * Cancel an in-flight or queued run.
+   * - Running: aborts the AbortController; worker's finally block updates the row.
+   * - Queued (no lease yet): drops the queue row and marks the run cancelled.
+   */
+  async cancelRun(runId: string): Promise<"running" | "queued" | "unknown"> {
+    const abort = this.state.abortControllers.get(runId);
+    if (abort) {
+      abort.abort();
+      await this.rt.state.updateRun(runId, {
+        status: "cancelled",
+        finishedAt: Date.now(),
+        error: "cancelled by user",
+      });
+      return "running";
+    }
+    const dropped = (await this.rt.queue.cancel?.(runId)) ?? false;
+    if (dropped) {
+      const existing = await this.rt.state.getRun(runId).catch(() => null);
+      if (existing) {
+        await this.rt.state.updateRun(runId, {
+          status: "cancelled",
+          finishedAt: Date.now(),
+          error: "cancelled by user",
+        });
+      }
+      return "queued";
+    }
+    return "unknown";
+  }
 }
+
+/**
+ * Layer agent-emitted overrides (`output.structured.channels.<type>`) onto a
+ * deploy-time-resolved channel config. Only known fields per channel type are
+ * accepted; unknown keys are ignored.
+ */
+function mergeDynamicOverrides(
+  resolved: import("@oddjob/core").ChannelConfig,
+  dyn: Record<string, unknown> | undefined,
+): import("@oddjob/core").ChannelConfig {
+  if (!dyn) return resolved;
+  if (resolved.type === "email") {
+    const next = { ...resolved };
+    if (typeof dyn.subject === "string") next.subject = dyn.subject;
+    if (Array.isArray(dyn.to)) next.to = dyn.to.filter((v) => typeof v === "string") as string[];
+    return next;
+  }
+  if (resolved.type === "slack") {
+    const next = { ...resolved };
+    if (typeof dyn.target === "string") next.target = dyn.target;
+    return next;
+  }
+  if (resolved.type === "webhook") {
+    const next = { ...resolved };
+    if (typeof dyn.url === "string") next.url = dyn.url;
+    if (dyn.headers && typeof dyn.headers === "object" && !Array.isArray(dyn.headers)) {
+      next.headers = { ...(resolved.headers ?? {}), ...(dyn.headers as Record<string, string>) };
+    }
+    return next;
+  }
+  return resolved;
+}
+
+/**
+ * If the agent supplied a body field appropriate for the channel type, return
+ * it. Otherwise return undefined so the caller falls back to finalText.
+ */
+function pickChannelBody(
+  type: string,
+  dyn: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!dyn) return undefined;
+  if (type === "email") {
+    if (typeof dyn.body_html === "string") return dyn.body_html;
+    if (typeof dyn.body_text === "string") return dyn.body_text;
+    return undefined;
+  }
+  if (type === "slack") {
+    if (Array.isArray(dyn.blocks)) return JSON.stringify(dyn.blocks);
+    if (typeof dyn.text === "string") return dyn.text;
+    return undefined;
+  }
+  if (type === "webhook") {
+    if (dyn.payload !== undefined) return JSON.stringify(dyn.payload);
+    return undefined;
+  }
+  return undefined;
+}
+
+function channelLogMeta(ch: import("@oddjob/core").ChannelConfig): Record<string, unknown> {
+  if (ch.type === "email") return { type: "email", to: ch.to, from: ch.from, subject: ch.subject };
+  if (ch.type === "slack") return { type: "slack", target: ch.target };
+  if (ch.type === "webhook") return { type: "webhook", url: ch.url };
+  return { type: ch.type };
+}
+
+function mergeInput(defaultInput: unknown, runInput: unknown): unknown {
+  if (runInput === undefined || runInput === null) return defaultInput;
+  if (defaultInput === undefined || defaultInput === null) return runInput;
+  if (
+    typeof defaultInput === "object" &&
+    !Array.isArray(defaultInput) &&
+    typeof runInput === "object" &&
+    !Array.isArray(runInput)
+  ) {
+    return { ...(defaultInput as object), ...(runInput as object) };
+  }
+  return runInput;
+}
+

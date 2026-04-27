@@ -1,4 +1,5 @@
 import type { Runtime } from "../runtime.ts";
+import type { WorkerPool } from "../workers/pool.ts";
 import { type Handler, json, notFound } from "../middleware/index.ts";
 
 export const list =
@@ -20,10 +21,88 @@ export const get =
 
 export const logs =
   (rt: Runtime): Handler =>
-  async (_req, ctx) => {
+  async (req, ctx) => {
     const id = ctx.params.id ?? "";
     const since = Number(ctx.url.searchParams.get("since") ?? "0");
     const limit = Number(ctx.url.searchParams.get("limit") ?? "1000");
+    const stream = ctx.url.searchParams.get("stream") === "1";
+    if (stream) return streamLogs(rt, id, since, req);
     const entries = await rt.log.getLogs(id, { since, limit });
     return json({ entries });
+  };
+
+
+function streamLogs(rt: Runtime, runId: string, sinceParam: number, req: Request): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    async start(controller) {
+      let since = sinceParam;
+      let closed = false;
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          closed = true;
+        }
+      }, 15_000);
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(heartbeat);
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      };
+      req.signal.addEventListener("abort", close);
+
+      while (!closed) {
+        const fresh = await rt.log
+          .getLogs(runId, { since, limit: 500 })
+          .catch((): import("@oddjob/core").LogEntry[] => []);
+        if (closed) break;
+        for (const entry of fresh) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(entry)}\n\n`),
+          );
+          if (entry.timestamp >= since) since = entry.timestamp + 1;
+        }
+        // Stop streaming once the run is in a terminal state and we've drained.
+        const run = await rt.state.getRun(runId).catch(() => null);
+        if (
+          run &&
+          run.status !== "running" &&
+          run.status !== "queued" &&
+          fresh.length === 0
+        ) {
+          controller.enqueue(encoder.encode("event: end\ndata: {}\n\n"));
+          close();
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-store",
+      "connection": "keep-alive",
+    },
+  });
+}
+
+export const cancel =
+  (rt: Runtime, workers: WorkerPool): Handler =>
+  async (_req, ctx) => {
+    const id = ctx.params.id ?? "";
+    const run = await rt.state.getRun(id);
+    if (!run) return notFound("run not found");
+    if (run.status !== "queued" && run.status !== "running") {
+      return json({ runId: id, result: "noop", status: run.status });
+    }
+    const result = await workers.cancelRun(id);
+    return json({ runId: id, result });
   };

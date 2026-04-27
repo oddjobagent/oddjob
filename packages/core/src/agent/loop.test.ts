@@ -68,6 +68,130 @@ describe("runOnce - faux LLM", () => {
     reg.unregister();
   });
 
+  test("verdict tool with outcome=warning marks run failed + retriable", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-warn" }] });
+    reg.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "report_status",
+            { outcome: "warning", reason: "web_fetch returned 503" },
+            { id: "v-1" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("done")], { stopReason: "stop" }),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/echo", { validate: true, checkFs: true });
+    const r = await runOnce({
+      blueprint: {
+        ...bp,
+        model: "faux/test-warn",
+        outcomes: {
+          success: "ok",
+          warning: "transient",
+          error: "fatal",
+          warningTools: [],
+          errorTools: [],
+          maxRetries: 2,
+          retryBackoffMs: 1000,
+        },
+      },
+      llm: { model: reg.getModel() },
+      sandbox,
+      input: "x",
+    });
+
+    expect(r.run.status).toBe("failed");
+    expect(r.retriable).toBe(true);
+    expect(r.verdict?.outcome).toBe("warning");
+    expect(r.run.error).toContain("web_fetch returned 503");
+    reg.unregister();
+  });
+
+  test("verdict outcome=error marks run failed + non-retriable", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-err" }] });
+    reg.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "report_status",
+            { outcome: "error", reason: "auth invalid" },
+            { id: "v-2" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage([fauxText("done")], { stopReason: "stop" }),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/echo", { validate: true, checkFs: true });
+    const r = await runOnce({
+      blueprint: {
+        ...bp,
+        model: "faux/test-err",
+        outcomes: {
+          warningTools: [],
+          errorTools: [],
+          maxRetries: 0,
+          retryBackoffMs: 0,
+        },
+      },
+      llm: { model: reg.getModel() },
+      sandbox,
+      input: "x",
+    });
+
+    expect(r.run.status).toBe("failed");
+    expect(r.retriable).toBe(false);
+    expect(r.verdict?.outcome).toBe("error");
+    reg.unregister();
+  });
+
+  test("dynamic channels compose into output schema; agent fills channels.email", async () => {
+    const reg = registerFauxProvider({ models: [{ id: "test-dyn-ch" }] });
+    reg.setResponses([
+      fauxAssistantMessage(
+        '```json\n{"channels":{"email":{"subject":"Hot take","body_text":"hi"}}}\n```',
+        { stopReason: "stop" },
+      ),
+    ]);
+
+    const bp = await loadBlueprint("./jobs/structured-output", {
+      validate: true,
+      checkFs: true,
+    });
+    const r = await runOnce({
+      blueprint: { ...bp, model: "faux/test-dyn-ch" },
+      llm: { model: reg.getModel() },
+      sandbox,
+      input: "anything",
+      dynamicChannels: [
+        {
+          name: "email",
+          type: "email",
+          contract: {
+            type: "object",
+            properties: {
+              subject: { type: "string" },
+              body_text: { type: "string" },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(r.output.structuredOutput).toBeDefined();
+    const channels = r.output.structuredOutput?.channels as
+      | { email?: { subject?: string; body_text?: string } }
+      | undefined;
+    expect(channels?.email?.subject).toBe("Hot take");
+    expect(channels?.email?.body_text).toBe("hi");
+    reg.unregister();
+  });
+
   test("structured output extracts JSON from final assistant text", async () => {
     const reg = registerFauxProvider({ models: [{ id: "test-struct" }] });
     reg.setResponses([

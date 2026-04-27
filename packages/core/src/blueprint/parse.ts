@@ -7,6 +7,7 @@ import type {
   Blueprint,
   BlueprintId,
   BlueprintMemory,
+  BlueprintOutcomes,
   BlueprintOutputSchema,
 } from "../types/blueprint.ts";
 import type {
@@ -63,8 +64,18 @@ function normalizeBlueprint(
     retention: raw.memory.retention,
   };
 
-  const outputSchema: BlueprintOutputSchema | undefined = raw.output_schema
-    ? { type: "json-schema", schema: raw.output_schema.schema }
+  const out = resolveSchemaSource(raw.output_schema, "output_schema");
+  const inp = resolveSchemaSource(raw.input_schema, "input_schema");
+  const outcomes: BlueprintOutcomes | undefined = raw.outcomes
+    ? {
+        success: raw.outcomes.success,
+        warning: raw.outcomes.warning,
+        error: raw.outcomes.error,
+        warningTools: raw.outcomes.warning_tools,
+        errorTools: raw.outcomes.error_tools,
+        maxRetries: raw.outcomes.max_retries,
+        retryBackoffMs: raw.outcomes.retry_backoff_ms,
+      }
     : undefined;
 
   const id = `${raw.author}/${raw.name}` as BlueprintId;
@@ -87,7 +98,12 @@ function normalizeBlueprint(
     scripts: raw.scripts,
     memory,
     secrets: raw.secrets,
-    outputSchema,
+    failOnToolError: raw.fail_on_tool_error,
+    outputSchema: out.schema,
+    outputSchemaFile: out.file,
+    inputSchema: inp.schema,
+    inputSchemaFile: inp.file,
+    outcomes,
     path: options.path,
     contentHash,
     sourceToml,
@@ -166,6 +182,37 @@ function normalizeAuth(raw: ConnectorAuthRaw | undefined): ConnectorAuth {
 
 function sha256(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
+function resolveSchemaSource(
+  raw: { json_schema?: Record<string, unknown> | string; json_schema_file?: string } | undefined,
+  where: string,
+): { schema?: BlueprintOutputSchema; file?: string } {
+  if (!raw) return {};
+  if (raw.json_schema !== undefined) {
+    const inline = raw.json_schema;
+    const schema =
+      typeof inline === "string" ? parseJsonStrict(inline, `${where}.json_schema`) : inline;
+    return { schema: { type: "json-schema", schema } };
+  }
+  if (raw.json_schema_file) return { file: raw.json_schema_file };
+  return {};
+}
+
+function parseJsonStrict(source: string, where: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch (err) {
+    throw new BlueprintParseError(
+      `${where}: invalid JSON heredoc — ${(err as Error).message}`,
+      err,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new BlueprintParseError(`${where}: must be a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function formatZodIssues(error: z.ZodError): string {

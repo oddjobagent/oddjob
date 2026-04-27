@@ -78,9 +78,27 @@ export const MemorySchema = z.strictObject({
     .default("30d"),
 });
 
-export const OutputSchemaSchema = z.strictObject({
-  type: z.literal("json-schema"),
-  schema: z.record(z.string(), z.unknown()),
+const SchemaSourceSchema = z
+  .strictObject({
+    json_schema: z.union([z.record(z.string(), z.unknown()), z.string()]).optional(),
+    json_schema_file: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) => Boolean(v.json_schema) !== Boolean(v.json_schema_file),
+    "specify exactly one of json_schema or json_schema_file",
+  );
+
+export const OutputSchemaSchema = SchemaSourceSchema;
+export const InputSchemaSchema = SchemaSourceSchema;
+
+export const OutcomesSchema = z.strictObject({
+  success: z.string().min(1).optional(),
+  warning: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
+  warning_tools: z.array(z.string()).default([]),
+  error_tools: z.array(z.string()).default([]),
+  max_retries: z.number().int().min(0).max(10).default(0),
+  retry_backoff_ms: z.number().int().min(0).default(30_000),
 });
 
 export const BlueprintRawSchema = z.strictObject({
@@ -103,8 +121,13 @@ export const BlueprintRawSchema = z.strictObject({
 
   memory: MemorySchema.default({ store: "kv", retention: "30d" }),
   secrets: z.record(z.string(), z.string()).default({}),
+  // Legacy. Default false (graceful). The new [outcomes] block supersedes
+  // this with proper soft/hard error classification.
+  fail_on_tool_error: z.boolean().default(false),
 
   output_schema: OutputSchemaSchema.optional(),
+  input_schema: InputSchemaSchema.optional(),
+  outcomes: OutcomesSchema.optional(),
 });
 
 export type BlueprintRaw = z.infer<typeof BlueprintRawSchema>;

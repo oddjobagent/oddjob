@@ -1,1 +1,1 @@
-export { AuthLocalProvider } from "./provider.ts";
+export { AuthLocalProvider, type AuthLocalOptions } from "./provider.ts";

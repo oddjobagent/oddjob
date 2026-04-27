@@ -54,8 +54,9 @@ export class QueueSqliteProvider implements QueueProvider {
     const now = Date.now();
     const leasedUntil = now + leaseMs;
     // Atomic UPDATE...RETURNING claims one eligible row in a single statement.
+    // Eligibility = (queued AND available_at <= now) OR a stale-running lease.
     const row = this.db
-      .query<ClaimRow, [string, number, number, number]>(
+      .query<ClaimRow, [string, number, number, number, number]>(
         `UPDATE queued_runs
             SET status = 'running',
                 worker_id = ?,
@@ -64,13 +65,13 @@ export class QueueSqliteProvider implements QueueProvider {
                 started_at = COALESCE(started_at, ?)
           WHERE run_id = (
             SELECT run_id FROM queued_runs
-             WHERE status = 'queued'
+             WHERE (status = 'queued' AND available_at <= ?)
                 OR (status = 'running' AND leased_until IS NOT NULL AND leased_until < ?)
              ORDER BY enqueued_at ASC LIMIT 1
           )
           RETURNING run_id, config_json, attempts, leased_until`,
       )
-      .get(workerId, leasedUntil, now, now);
+      .get(workerId, leasedUntil, now, now, now);
     if (!row) return null;
     return {
       runId: row.run_id,
@@ -114,6 +115,31 @@ export class QueueSqliteProvider implements QueueProvider {
       )
       .run(error ?? null, Date.now(), runId, workerId);
     return result.changes > 0 ? "ok" : "lease_lost";
+  }
+
+  async requeue(runId: string, workerId: string, delayMs: number): Promise<AckResult> {
+    const availableAt = Date.now() + Math.max(0, delayMs);
+    const result = this.db
+      .query(
+        `UPDATE queued_runs
+            SET status = 'queued',
+                leased_until = NULL,
+                worker_id = NULL,
+                available_at = ?
+          WHERE run_id = ? AND worker_id = ? AND status = 'running'`,
+      )
+      .run(availableAt, runId, workerId);
+    return result.changes > 0 ? "ok" : "lease_lost";
+  }
+
+  async cancel(runId: string): Promise<boolean> {
+    // Only drop if not currently leased — running rows must be aborted via the worker pool's AbortController.
+    const result = this.db
+      .query(
+        `DELETE FROM queued_runs WHERE run_id = ? AND status = 'queued' AND worker_id IS NULL`,
+      )
+      .run(runId);
+    return result.changes > 0;
   }
 
   async reclaimStale(): Promise<number> {

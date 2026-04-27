@@ -57,19 +57,60 @@ scopes = ["read"]
     expect(gsc?.auth.kind).toBe("oauth2");
   });
 
-  test("with output_schema", () => {
+  test("with inline json_schema as TOML table", () => {
     const toml = `${MIN_VALID}
-[output_schema]
-type = "json-schema"
-[output_schema.schema]
+[output_schema.json_schema]
 type = "object"
-[output_schema.schema.properties]
-[output_schema.schema.properties.title]
+[output_schema.json_schema.properties]
+[output_schema.json_schema.properties.title]
 type = "string"
 `;
     const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
     expect(b.outputSchema?.type).toBe("json-schema");
     expect(b.outputSchema?.schema.type).toBe("object");
+    expect(b.outputSchemaFile).toBeUndefined();
+  });
+
+  test("with inline json_schema as JSON heredoc", () => {
+    const toml = `${MIN_VALID}
+[output_schema]
+json_schema = """
+{
+  "type": "object",
+  "properties": { "title": { "type": "string" } }
+}
+"""
+`;
+    const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
+    expect(b.outputSchema?.type).toBe("json-schema");
+    expect((b.outputSchema?.schema as Record<string, unknown>).type).toBe("object");
+  });
+
+  test("with json_schema_file leaves outputSchemaFile pending", () => {
+    const toml = `${MIN_VALID}
+[output_schema]
+json_schema_file = "./output.schema.json"
+`;
+    const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
+    expect(b.outputSchema).toBeUndefined();
+    expect(b.outputSchemaFile).toBe("./output.schema.json");
+  });
+
+  test("rejects both json_schema and json_schema_file", () => {
+    const toml = `${MIN_VALID}
+[output_schema]
+json_schema_file = "./out.json"
+json_schema = "{}"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(/exactly one/);
+  });
+
+  test("rejects invalid JSON heredoc", () => {
+    const toml = `${MIN_VALID}
+[output_schema]
+json_schema = "not json"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(/invalid JSON/);
   });
 
   test("with scripts and skills", () => {

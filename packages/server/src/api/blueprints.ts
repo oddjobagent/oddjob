@@ -2,8 +2,14 @@ import type { Runtime } from "../runtime.ts";
 import { type Handler, badRequest, json, notFound, readJson } from "../middleware/index.ts";
 
 interface PushBody {
-  toml: string;
+  toml?: string;
   path?: string;
+  /**
+   * Pre-resolved blueprint JSON (CLI sends this when sidecar schemas were
+   * resolved at load-time). Server skips TOML parsing and validates directly.
+   * `sourceToml` on the blueprint preserves the original TOML for display.
+   */
+  blueprint?: unknown;
 }
 
 export const list =
@@ -26,9 +32,16 @@ export const push =
   (rt: Runtime): Handler =>
   async (req) => {
     const body = await readJson<PushBody>(req);
-    if (!body || !body.toml) return badRequest("body.toml required");
+    if (!body) return badRequest("body required");
     const { parseBlueprint, validateBlueprint } = await import("@oddjob/core");
-    const bp = parseBlueprint(body.toml, { path: body.path ?? "<api>" });
+    let bp;
+    if (body.blueprint && typeof body.blueprint === "object") {
+      bp = body.blueprint as Parameters<typeof rt.state.upsertBlueprint>[0];
+    } else if (body.toml) {
+      bp = parseBlueprint(body.toml, { path: body.path ?? "<api>" });
+    } else {
+      return badRequest("body.toml or body.blueprint required");
+    }
     validateBlueprint(bp, { checkFs: false });
     await rt.state.upsertBlueprint(bp);
     return json(bp, { status: 201 });

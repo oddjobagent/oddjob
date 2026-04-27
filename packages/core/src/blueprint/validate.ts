@@ -1,10 +1,12 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
+import { BUILTIN_TOOL_NAMES } from "../agent/builtin-tools/index.ts";
 import type { Blueprint } from "../types/blueprint.ts";
 import { type BlueprintIssue, BlueprintValidationError } from "./errors.ts";
 
 const SCRIPT_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".py"]);
+const BUILTIN_NAMES_SET: ReadonlySet<string> = new Set(BUILTIN_TOOL_NAMES);
 
 export interface ValidateOptions {
   checkFs?: boolean;
@@ -79,6 +81,26 @@ export function validateBlueprint(
     }
   }
 
+  for (const toolName of blueprint.tools) {
+    if (!BUILTIN_NAMES_SET.has(toolName)) {
+      const suggestion = nearestBuiltin(toolName);
+      issues.push({
+        path: "tools",
+        message: suggestion
+          ? `unknown built-in tool '${toolName}' (did you mean '${suggestion}'?)`
+          : `unknown built-in tool '${toolName}' (valid: ${[...BUILTIN_NAMES_SET].join(", ")})`,
+      });
+    }
+  }
+  for (const toolName of blueprint.tools) {
+    if (Object.hasOwn(blueprint.scripts, toolName)) {
+      issues.push({
+        path: `tools`,
+        message: `built-in tool '${toolName}' collides with a script of the same name; rename the script`,
+      });
+    }
+  }
+
   for (const secretRef of Object.values(blueprint.secrets)) {
     if (!secretRef.match(/^[A-Z][A-Z0-9_]*$/)) {
       issues.push({
@@ -99,6 +121,31 @@ export function validateBlueprint(
     }
   }
 
+  if (blueprint.outputSchemaFile) {
+    issues.push({
+      path: "output_schema.json_schema_file",
+      message:
+        `unresolved sidecar '${blueprint.outputSchemaFile}'. Sidecar files are resolved by the CLI at push/load time — ` +
+        "if you see this on the server, the blueprint was sent without sidecar resolution.",
+    });
+  }
+  if (blueprint.inputSchemaFile) {
+    issues.push({
+      path: "input_schema.json_schema_file",
+      message: `unresolved sidecar '${blueprint.inputSchemaFile}' (CLI/load-time resolution required)`,
+    });
+  }
+  if (blueprint.inputSchema) {
+    const root = blueprint.inputSchema.schema;
+    if (!root || typeof root !== "object") {
+      issues.push({ path: "input_schema.schema", message: "must be an object" });
+    } else if (root.type !== "object") {
+      issues.push({
+        path: "input_schema.schema.type",
+        message: 'top-level JSON Schema must have type: "object"',
+      });
+    }
+  }
   if (blueprint.outputSchema) {
     const root = blueprint.outputSchema.schema;
     if (!root || typeof root !== "object") {
@@ -133,4 +180,35 @@ function blueprintDir(blueprint: Blueprint): string {
 function extOf(p: string): string {
   const dot = p.lastIndexOf(".");
   return dot === -1 ? "" : p.slice(dot);
+}
+
+function nearestBuiltin(input: string): string | undefined {
+  const lower = input.toLowerCase();
+  let best: string | undefined;
+  let bestScore = Infinity;
+  for (const name of BUILTIN_NAMES_SET) {
+    const score = levenshtein(lower, name);
+    if (score < bestScore && score <= 2) {
+      best = name;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = new Array(b.length + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prevDiag = prev[0]!;
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]!;
+      prev[j] = a[i - 1] === b[j - 1] ? prevDiag : 1 + Math.min(prevDiag, prev[j - 1]!, prev[j]!);
+      prevDiag = tmp;
+    }
+  }
+  return prev[b.length]!;
 }

@@ -13,6 +13,29 @@ export interface ChannelWebhookOptions {
 
 export class ChannelWebhookProvider implements ChannelProvider {
   readonly name = "channel-webhook";
+  readonly outputContract = {
+    type: "object",
+    description:
+      "Agent-fillable webhook fields. Set only when the deployment's webhook channel uses mode = 'dynamic'.",
+    properties: {
+      url: {
+        type: "string",
+        format: "uri",
+        description: "Override deploy-time `url`. Most deployments should leave this unset.",
+      },
+      payload: {
+        type: "object",
+        description:
+          "Body to POST. When set, replaces the default { runId, finalText, structured } envelope.",
+      },
+      headers: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "Headers merged into deploy-time `headers`.",
+      },
+    },
+  } as const;
+
   private readonly secrets?: SecretsProvider;
 
   constructor(opts: ChannelWebhookOptions = {}) {

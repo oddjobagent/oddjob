@@ -1,5 +1,9 @@
+import * as Auth from "./api/auth.ts";
 import * as Blueprints from "./api/blueprints.ts";
+import * as Channels from "./api/channels.ts";
+import * as Cron from "./api/cron.ts";
 import * as Deployments from "./api/deployments.ts";
+import * as Engine from "./api/engine.ts";
 import * as Runs from "./api/runs.ts";
 import * as Secrets from "./api/secrets.ts";
 import * as Health from "./api/health.ts";
@@ -7,6 +11,7 @@ import {
   type Handler,
   type HandlerContext,
   bearerCheck,
+  json,
   notFound,
   serverError,
 } from "./middleware/index.ts";
@@ -52,7 +57,6 @@ function isLoopbackBind(host: string): boolean {
 
 export async function startServer(opts: StartServerOptions): Promise<ServerHandle> {
   const rt = opts.runtime;
-  const routes: Route[] = buildRoutes(rt);
 
   if (!isLoopbackBind(rt.config.host) && !rt.bearerToken) {
     throw new Error(
@@ -63,6 +67,8 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
 
   const workers = new WorkerPool({ runtime: rt });
   await workers.start();
+
+  const routes: Route[] = buildRoutes(rt, workers);
 
   // Restore cron triggers for active deployments
   if (rt.scheduler) {
@@ -93,16 +99,46 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
       try {
         const url = new URL(req.url);
 
+        // CORS preflight: respond before auth check (browsers strip Authorization
+        // from OPTIONS by design). Mirror Origin/headers/methods, never wildcard
+        // when bearer auth is required (cookie/credential safety).
+        if (req.method === "OPTIONS") {
+          return corsPreflight(req, rt);
+        }
+
+        // Bootstrap endpoint — needs to be reachable WITHOUT a token so the
+        // dashboard can ask "do I need a token?" before showing a login form.
+        if (req.method === "GET" && url.pathname === "/_oddjob/auth") {
+          return withCors(
+            json({
+              tokenRequired: !!rt.bearerToken,
+              loopback: isLoopbackBind(rt.config.host),
+            }),
+            req,
+            rt,
+          );
+        }
+
+        // Token verification helper for the dashboard.
+        if (req.method === "POST" && url.pathname === "/_oddjob/auth/verify") {
+          if (!rt.bearerToken) {
+            return withCors(json({ ok: true }), req, rt);
+          }
+          const check = bearerCheck(req, rt.bearerToken);
+          if (check) return withCors(check, req, rt);
+          return withCors(json({ ok: true }), req, rt);
+        }
+
         // Auth decision is based on the bind host (where we listen), NOT the
         // Host header (which a client controls). If we're bound to a non-loopback
         // address we always require a bearer token. If we're bound to loopback
         // and a token is configured, also require it for /api/ calls.
         if (!isLoopbackBind(rt.config.host)) {
           const r = bearerCheck(req, rt.bearerToken);
-          if (r) return r;
+          if (r) return withCors(r, req, rt);
         } else if (rt.bearerToken && url.pathname.startsWith("/api/")) {
           const r = bearerCheck(req, rt.bearerToken);
-          if (r) return r;
+          if (r) return withCors(r, req, rt);
         }
 
         for (const route of routes) {
@@ -114,10 +150,11 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
             params[n] = decodeURIComponent(m[i + 1] ?? "");
           });
           const ctx: HandlerContext = { url, params };
-          return await route.handler(req, ctx);
+          const resp = await route.handler(req, ctx);
+          return withCors(resp, req, rt);
         }
 
-        return notFound(`no route: ${req.method} ${url.pathname}`);
+        return withCors(notFound(`no route: ${req.method} ${url.pathname}`), req, rt);
       } catch (err) {
         return serverError(err);
       }
@@ -138,7 +175,38 @@ export async function startServer(opts: StartServerOptions): Promise<ServerHandl
   };
 }
 
-function buildRoutes(rt: Runtime): Route[] {
+function corsHeaders(req: Request, rt: Runtime): Record<string, string> {
+  const origin = req.headers.get("origin");
+  if (!origin) return {};
+  // Loopback no-token: open. Otherwise mirror the requesting origin and rely on
+  // Authorization-bearer (not cookies) to keep things sane. We never use `*`
+  // when bearer auth is required because a wildcard origin disallows credentials.
+  const allowOrigin = origin;
+  return {
+    "access-control-allow-origin": allowOrigin,
+    "vary": "origin",
+    "access-control-allow-credentials": rt.bearerToken ? "true" : "false",
+    "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+    "access-control-allow-headers":
+      req.headers.get("access-control-request-headers") ?? "authorization,content-type",
+    "access-control-max-age": "600",
+  };
+}
+
+function withCors(resp: Response, req: Request, rt: Runtime): Response {
+  const h = corsHeaders(req, rt);
+  if (Object.keys(h).length === 0) return resp;
+  const out = new Response(resp.body, resp);
+  for (const [k, v] of Object.entries(h)) out.headers.set(k, v);
+  return out;
+}
+
+function corsPreflight(req: Request, rt: Runtime): Response {
+  const headers = corsHeaders(req, rt);
+  return new Response(null, { status: 204, headers });
+}
+
+function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
   const r = (method: string, path: string, h: Handler): Route => {
     const paramNames: string[] = [];
     const pattern = new RegExp(
@@ -167,14 +235,39 @@ function buildRoutes(rt: Runtime): Route[] {
     r("PATCH", "/api/v1/deployments/:id", Deployments.update(rt)),
     r("DELETE", "/api/v1/deployments/:id", Deployments.remove(rt)),
     r("POST", "/api/v1/deployments/:id/run", Deployments.trigger(rt)),
+    r("POST", "/api/v1/deployments/:id/pause", Deployments.pause(rt)),
+    r("POST", "/api/v1/deployments/:id/resume", Deployments.resume(rt)),
+    r("POST", "/api/v1/deployments/:id/archive", Deployments.archive(rt)),
+    r("POST", "/api/v1/deployments/:id/unarchive", Deployments.unarchive(rt)),
+    r("GET", "/api/v1/deployments/:id/next-run", Deployments.nextRun(rt)),
 
     r("GET", "/api/v1/runs", Runs.list(rt)),
     r("GET", "/api/v1/runs/:id", Runs.get(rt)),
     r("GET", "/api/v1/runs/:id/logs", Runs.logs(rt)),
+    r("POST", "/api/v1/runs/:id/cancel", Runs.cancel(rt, workers)),
 
     r("GET", "/api/v1/secrets", Secrets.list(rt)),
     r("PUT", "/api/v1/secrets/:name", Secrets.set(rt)),
     r("DELETE", "/api/v1/secrets/:name", Secrets.remove(rt)),
+
+    r("GET", "/api/v1/engine", Engine.get(rt)),
+    r("PATCH", "/api/v1/engine", Engine.update(rt)),
+    r("GET", "/api/v1/engine/tools", Engine.tools()),
+    r("GET", "/api/v1/models", Engine.models(rt)),
+
+    r("GET", "/api/v1/channels/types", Channels.types()),
+    r("POST", "/api/v1/channels/test", Channels.test(rt)),
+    r("GET", "/api/v1/channel-templates", Channels.listTemplates(rt)),
+    r("POST", "/api/v1/channel-templates", Channels.upsertTemplate(rt)),
+    r("GET", "/api/v1/channel-templates/:name", Channels.getTemplate(rt)),
+    r("DELETE", "/api/v1/channel-templates/:name", Channels.deleteTemplate(rt)),
+
+    r("POST", "/api/v1/cron/preview", Cron.preview()),
+
+    r("GET", "/api/v1/auth/connectors", Auth.list(rt)),
+    r("GET", "/api/v1/auth/connectors/:connectorId", Auth.status(rt)),
+    r("POST", "/api/v1/auth/connectors/initiate", Auth.initiate(rt)),
+    r("DELETE", "/api/v1/auth/connectors/:connectorId", Auth.revoke(rt)),
 
     r("POST", "/webhooks/:namespace/:name", webhook(rt)),
   ];

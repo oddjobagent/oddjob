@@ -1,6 +1,6 @@
 # oddjob/ workspace
 
-Bun monorepo. 21 packages (`core`, `server`, `cli`, `sdk`, `api-client`, 16 providers) + 1 app (`apps/dashboard`).
+Bun monorepo. 20 packages (`core`, `server`, `sdk`, `api-client`, 16 providers) + 2 apps (`apps/cli`, `apps/dashboard`).
 
 ## Stack invariants
 
@@ -28,7 +28,7 @@ taskmux restart server    # reload after code change (server runs under taskmux)
 
 Build the single binary:
 ```bash
-bun build --compile --outfile=./dist/oddjob ./packages/cli/src/index.ts
+bun build --compile --outfile=./dist/oddjob ./apps/cli/src/index.ts
 ./dist/oddjob serve --port 7777
 ```
 
@@ -40,4 +40,4 @@ bun build --compile --outfile=./dist/oddjob ./packages/cli/src/index.ts
 - **Server is run via `taskmux`** (not directly). See root `CLAUDE.md`.
 - **citty boolean flags:** `"no-ui"` doesn't bind to `args["no-ui"]` cleanly — citty parses `--no-ui` as the negation of `ui`. Pattern: `args: { ui: { type: "boolean", default: true } }`, then check `args.ui`.
 - **Dashboard auth gap (live):** the server doesn't inject a bearer-token meta tag. Localhost no-token mode works fine; non-loopback bearer mode would 401 every request. See STATUS.md for plan.
-- **Lazy Proxy in `packages/cli/src/lib/api.ts`** for `api.<ns>.<method>(...)` works for direct calls but breaks on reflection (`Object.keys(api.runs)`, `"list" in api.runs`). Don't reflect on it.
+- **Lazy Proxy in `apps/cli/src/lib/api.ts`** for `api.<ns>.<method>(...)` works for direct calls but breaks on reflection (`Object.keys(api.runs)`, `"list" in api.runs`). Don't reflect on it.

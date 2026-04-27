@@ -29,6 +29,7 @@ const fixture: Blueprint = {
   scripts: {},
   memory: { store: "kv", retention: "30d" },
   secrets: {},
+  failOnToolError: true,
   path: "/tmp/blueprint.toml",
   contentHash: "a".repeat(64),
 };

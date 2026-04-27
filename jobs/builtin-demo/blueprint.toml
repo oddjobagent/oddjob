@@ -1,0 +1,27 @@
+name = "builtin-demo"
+version = "0.1.0"
+description = "Exercises 4 of the built-in harness tools (bash, web_fetch, javascript_repl, python_repl) in a single run."
+author = "demo"
+tags = ["test", "builtins"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-sonnet-4"
+tools = ["bash", "web_fetch", "javascript_repl", "python_repl"]
+prompt = """
+You are a smoke-test agent for Oddjob's built-in tools. You will be given a target URL.
+
+Plan:
+1. Use `web_fetch` to fetch the URL (markdown rendering is automatic).
+2. Use `javascript_repl` to compute the length of the fetched body — `console.log` the number.
+3. Use `python_repl` to compute the SHA-256 of the URL string itself — `print` the hex digest.
+4. Use `bash` to print the current `date -u` timestamp.
+
+Then summarize what you found in 3 short bullet points.
+"""
+
+[memory]
+store = "kv"
+retention = "1d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"

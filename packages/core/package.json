@@ -18,12 +18,17 @@
   "dependencies": {
     "@mariozechner/pi-agent-core": "^0.70.2",
     "@mariozechner/pi-ai": "^0.70.2",
+    "@mariozechner/pi-coding-agent": "^0.70.2",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "js-yaml": "^4.1.1",
     "smol-toml": "^1.6.1",
+    "turndown": "^7.2.0",
     "typebox": "^1.1.33",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9"
+    "@types/js-yaml": "^4.0.9",
+    "@types/turndown": "^5.0.5"
   }
 }

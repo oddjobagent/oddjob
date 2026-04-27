@@ -1,11 +1,22 @@
 import { Link } from "@tanstack/react-router";
-import { Activity, Box, FileCog, Key, LayoutDashboard, ServerCog } from "lucide-react";
+import {
+  Activity,
+  Box,
+  FileCog,
+  Inbox,
+  Key,
+  LayoutDashboard,
+  ServerCog,
+  Settings2,
+} from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/runs", label: "Runs", icon: Activity },
   { to: "/deployments", label: "Deployments", icon: ServerCog },
   { to: "/blueprints", label: "Blueprints", icon: Box },
+  { to: "/channels", label: "Channels", icon: Inbox },
+  { to: "/engine", label: "Engine", icon: Settings2 },
   { to: "/secrets", label: "Secrets", icon: Key },
 ] as const;
 
@@ -21,7 +32,8 @@ export function Sidebar(): React.JSX.Element {
           <Link
             key={to}
             to={to}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            activeOptions={{ exact: to === "/" }}
             activeProps={{ className: "bg-accent text-accent-foreground" }}
           >
             <Icon className="size-4" />

@@ -111,10 +111,11 @@ function normalizeWebhookAuth(raw: WebhookAuthRaw): WebhookAuth {
 function normalizeChannel(raw: DeploymentRaw["channel"][number]): ChannelConfig {
   switch (raw.type) {
     case "console":
-      return { type: "console" };
+      return { type: "console", mode: raw.mode };
     case "slack":
       return {
         type: "slack",
+        mode: raw.mode,
         target: raw.target,
         webhookUrlSecretRef: raw.webhook_url_secret_ref,
         botTokenSecretRef: raw.bot_token_secret_ref,
@@ -122,14 +123,17 @@ function normalizeChannel(raw: DeploymentRaw["channel"][number]): ChannelConfig 
     case "email":
       return {
         type: "email",
+        mode: raw.mode,
         to: raw.to,
         from: raw.from,
+        subject: raw.subject,
         smtpUrlSecretRef: raw.smtp_url_secret_ref,
         resendApiKeySecretRef: raw.resend_api_key_secret_ref,
       };
     case "webhook":
       return {
         type: "webhook",
+        mode: raw.mode,
         url: raw.url,
         hmacSecretRef: raw.hmac_secret_ref,
         headers: raw.headers,

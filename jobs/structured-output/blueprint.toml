@@ -24,24 +24,4 @@ retention = "1d"
 openrouter = "OPENROUTER_API_KEY"
 
 [output_schema]
-type = "json-schema"
-
-[output_schema.schema]
-type = "object"
-required = ["title", "summary"]
-
-[output_schema.schema.properties]
-[output_schema.schema.properties.title]
-type = "string"
-
-[output_schema.schema.properties.date_iso]
-type = "string"
-format = "date"
-
-[output_schema.schema.properties.attendees]
-type = "array"
-[output_schema.schema.properties.attendees.items]
-type = "string"
-
-[output_schema.schema.properties.summary]
-type = "string"
+json_schema_file = "./output.schema.json"

@@ -1,12 +1,21 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { TSchema } from "typebox";
 
-import type { Blueprint, McpProvider, McpSession, SecretsProvider } from "../index.ts";
+import type {
+  AuthProvider,
+  Blueprint,
+  McpProvider,
+  McpSession,
+  SecretsProvider,
+} from "../index.ts";
 
 export interface McpToolBuilderOptions {
   blueprint: Blueprint;
   mcp?: McpProvider;
   secrets?: SecretsProvider;
+  auth?: AuthProvider;
+  /** Used to namespace OAuth tokens per deployment. */
+  deploymentId?: string;
 }
 
 export interface McpRuntime {
@@ -31,6 +40,15 @@ export async function buildMcpRuntime(opts: McpToolBuilderOptions): Promise<McpR
           if (v) return v;
         }
         return process.env[auth.secretRef] ?? null;
+      }
+      if (auth.kind === "oauth2") {
+        if (!opts.auth) return null;
+        const tokenKey = `${opts.deploymentId ?? "_global"}:${connectorId}`;
+        try {
+          return await opts.auth.refreshIfNeeded(tokenKey);
+        } catch {
+          return null;
+        }
       }
       return null;
     });

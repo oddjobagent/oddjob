@@ -7,8 +7,12 @@ import { Route as runsRoute } from "./routes/runs.tsx";
 import { Route as runDetailRoute } from "./routes/runs.$id.tsx";
 import { Route as deploymentsRoute } from "./routes/deployments.tsx";
 import { Route as deploymentDetailRoute } from "./routes/deployments.$id.tsx";
+import { Route as deploymentNewRoute } from "./routes/deployments.new.tsx";
+import { Route as deploymentEditRoute } from "./routes/deployments.$id.edit.tsx";
 import { Route as blueprintsRoute } from "./routes/blueprints.tsx";
 import { Route as blueprintDetailRoute } from "./routes/blueprints.$id.tsx";
+import { Route as channelsRoute } from "./routes/channels.tsx";
+import { Route as engineRoute } from "./routes/engine.tsx";
 import { Route as secretsRoute } from "./routes/secrets.tsx";
 
 const routeTree = rootRoute.addChildren([
@@ -17,9 +21,13 @@ const routeTree = rootRoute.addChildren([
   runsRoute,
   runDetailRoute,
   deploymentsRoute,
+  deploymentNewRoute,
+  deploymentEditRoute,
   deploymentDetailRoute,
   blueprintsRoute,
   blueprintDetailRoute,
+  channelsRoute,
+  engineRoute,
   secretsRoute,
 ]);
 

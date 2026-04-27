@@ -93,7 +93,7 @@ describe("server end-to-end", () => {
     // Override blueprint to use faux model after push (no need; we will pass model via secrets workaround later)
     // For now, mutate blueprint in DB to swap model
     const bp = await runtime.state.getBlueprint("demo/echo");
-    if (bp) await runtime.state.upsertBlueprint({ ...bp, model: "faux/echo" });
+    if (bp) await runtime.state.upsertBlueprint({ ...bp, model: "faux/echo" }, { force: true });
 
     const createDep = await fetch(`${BASE()}/api/v1/deployments`, {
       method: "POST",

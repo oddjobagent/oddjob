@@ -82,6 +82,37 @@ describe("QueueSqliteProvider", () => {
     if (b) await q.ack(b.runId, W2);
   });
 
+  test("requeue with delay defers re-pickup until availableAt elapses", async () => {
+    const id = await q.enqueue({
+      deploymentId: "d1",
+      blueprintId: "demo/echo",
+      triggeredBy: "manual",
+    });
+    await q.dequeue(W1, 5000);
+    expect(await q.requeue(id, W1, 200)).toBe("ok");
+    // Immediately after requeue: should NOT be claimable.
+    const tooEarly = await q.dequeue(W2, 5000);
+    expect(tooEarly?.runId).not.toBe(id);
+    if (tooEarly) await q.ack(tooEarly.runId, W2);
+    // Wait past the backoff and confirm it's claimable.
+    await new Promise((r) => setTimeout(r, 250));
+    const claimed = await q.dequeue(W2, 5000);
+    expect(claimed?.runId).toBe(id);
+    expect(claimed?.attempts).toBe(2);
+    if (claimed) await q.ack(claimed.runId, W2);
+  });
+
+  test("requeue from wrong worker returns lease_lost", async () => {
+    const id = await q.enqueue({
+      deploymentId: "d1",
+      blueprintId: "demo/echo",
+      triggeredBy: "manual",
+    });
+    await q.dequeue(W1, 5000);
+    expect(await q.requeue(id, W2, 100)).toBe("lease_lost");
+    await q.ack(id, W1);
+  });
+
   test("reclaimStale recovers expired leases", async () => {
     const id = await q.enqueue({
       deploymentId: "d1",

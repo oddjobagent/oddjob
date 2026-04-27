@@ -1,0 +1,53 @@
+name = "hn-digest"
+version = "0.6.1"
+description = "Hacker News morning digest. Fetches the front page, ranks the top 5 stories, summarizes the leader, and produces a markdown digest. Email delivery is a deploy-time channel concern, not part of this blueprint."
+author = "demo"
+tags = ["news", "digest", "demo"]
+license = "MIT"
+
+model = "openrouter/anthropic/claude-haiku-4.5"
+tools = ["web_fetch", "python_repl", "datetime"]
+
+prompt = """
+You produce a Hacker News morning digest. The deployment routes your output to its configured channels — you do NOT need to send anything yourself.
+
+Plan:
+
+1. `datetime` with the input timezone and format="human" for the header timestamp.
+
+2. `web_fetch` https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=20 with format="raw" (it's JSON).
+
+3. `python_repl`: parse the JSON, score each hit by `points + 2 * num_comments`, pick the top 5, print tab-separated rows: rank, score, points, num_comments, title, url, story_id.
+
+4. `web_fetch` the #1 story URL with format="markdown" — capture ~1500 chars. If it's a non-article (PDF/video/repo), skip and note inline.
+
+5. Your **final assistant message** must be exactly ONE fenced ```json block matching the output_schema. **No prose, no narration, no markdown around it.** Just the fenced JSON. Concretely include:
+   - `generated_at`, `timezone`, the 5 `stories[]`, and `top_story_summary`
+   - `channels.email.subject`: a contextual one-line subject reflecting the day's lead story (≤80 chars; e.g. "HN digest: <topic> leads today's front page")
+   - `channels.email.body_html`: the full digest as simple HTML (use h1, ol/li, p, a; no CSS frameworks)
+   - `channels.email.body_text`: a plain-text version (same content, no markdown)
+
+6. Before emitting the final JSON, call `report_status` per the Outcome contract.
+"""
+
+[memory]
+store = "kv"
+retention = "7d"
+
+[secrets]
+openrouter = "OPENROUTER_API_KEY"
+
+[input_schema]
+json_schema_file = "./input.schema.json"
+
+[output_schema]
+json_schema_file = "./output.schema.json"
+
+[outcomes]
+success = "Digest produced successfully — markdown body composed, structured JSON emitted, 5 stories ranked."
+warning = "Transient failure: HN Algolia rate-limit, web_fetch 5xx on the top-story URL, model rate-limit. The harness will retry."
+error = "Fatal failure: HN API permanently broken / response shape changed, schema validation failed."
+warning_tools = ["web_fetch", "python_repl"]
+error_tools = []
+max_retries = 2
+retry_backoff_ms = 30000

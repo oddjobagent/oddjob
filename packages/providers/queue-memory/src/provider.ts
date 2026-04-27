@@ -10,6 +10,7 @@ interface Slot {
   leasedUntil?: number;
   attempts: number;
   enqueuedAt: number;
+  availableAt: number;
 }
 
 export class QueueMemoryProvider implements QueueProvider {
@@ -24,7 +25,15 @@ export class QueueMemoryProvider implements QueueProvider {
 
   async enqueue(config: RunConfig): Promise<string> {
     const runId = randomUUID();
-    this.slots.set(runId, { runId, config, status: "queued", attempts: 0, enqueuedAt: Date.now() });
+    const now = Date.now();
+    this.slots.set(runId, {
+      runId,
+      config,
+      status: "queued",
+      attempts: 0,
+      enqueuedAt: now,
+      availableAt: 0,
+    });
     return runId;
   }
 
@@ -32,7 +41,9 @@ export class QueueMemoryProvider implements QueueProvider {
     const now = Date.now();
     const candidate = [...this.slots.values()]
       .filter(
-        (s) => s.status === "queued" || (s.status === "running" && (s.leasedUntil ?? 0) < now),
+        (s) =>
+          (s.status === "queued" && s.availableAt <= now) ||
+          (s.status === "running" && (s.leasedUntil ?? 0) < now),
       )
       .toSorted((a, b) => a.enqueuedAt - b.enqueuedAt)[0];
     if (!candidate) return null;
@@ -69,6 +80,23 @@ export class QueueMemoryProvider implements QueueProvider {
     slot.workerId = undefined;
     slot.leasedUntil = undefined;
     return "ok";
+  }
+
+  async requeue(runId: string, workerId: string, delayMs: number): Promise<AckResult> {
+    const slot = this.slots.get(runId);
+    if (!slot || slot.workerId !== workerId || slot.status !== "running") return "lease_lost";
+    slot.status = "queued";
+    slot.workerId = undefined;
+    slot.leasedUntil = undefined;
+    slot.availableAt = Date.now() + Math.max(0, delayMs);
+    return "ok";
+  }
+
+  async cancel(runId: string): Promise<boolean> {
+    const slot = this.slots.get(runId);
+    if (!slot || slot.status !== "queued") return false;
+    this.slots.delete(runId);
+    return true;
   }
 
   async reclaimStale(): Promise<number> {

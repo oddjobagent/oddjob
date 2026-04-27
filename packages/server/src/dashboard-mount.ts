@@ -21,10 +21,14 @@ const SPA_PATHS: readonly string[] = [
   "/runs",
   "/runs/:id",
   "/deployments",
+  "/deployments/new",
   "/deployments/:id",
+  "/deployments/:id/edit",
   "/blueprints",
   "/blueprints/:namespace",
   "/blueprints/:namespace/:name",
+  "/channels",
+  "/engine",
   "/secrets",
 ];
 

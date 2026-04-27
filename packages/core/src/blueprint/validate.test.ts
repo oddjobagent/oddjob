@@ -23,6 +23,7 @@ function fixture(over: Partial<Blueprint> = {}): Blueprint {
     scripts: {},
     memory: { store: "kv", retention: "30d" },
     secrets: {},
+    failOnToolError: true,
     path: "/tmp/blueprint.toml",
     contentHash: "0".repeat(64),
     ...over,
@@ -82,5 +83,34 @@ describe("validateBlueprint", () => {
     expect(() =>
       validateBlueprint(fixture({ scripts: { parse: "/etc/hosts" } }), { checkFs: false }),
     ).toThrow(/relative/);
+  });
+
+  test("accepts known built-in tools", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["bash", "web_fetch", "python_repl"] }), {
+        checkFs: false,
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects unknown built-in tool with did-you-mean", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["bsh"] }), { checkFs: false }),
+    ).toThrow(/did you mean 'bash'/);
+  });
+
+  test("rejects unknown built-in tool without near match", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["totally-not-a-tool"] }), { checkFs: false }),
+    ).toThrow(/unknown built-in tool/);
+  });
+
+  test("rejects built-in colliding with script of same name", () => {
+    expect(() =>
+      validateBlueprint(
+        fixture({ tools: ["bash"], scripts: { bash: "scripts/bash.sh" } }),
+        { checkFs: false },
+      ),
+    ).toThrow(/collides/);
   });
 });

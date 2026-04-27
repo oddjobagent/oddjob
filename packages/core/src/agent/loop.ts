@@ -10,6 +10,7 @@ import {
 import { type AssistantMessage, type Message, streamSimple, type Usage } from "@mariozechner/pi-ai";
 
 import type { LogEntry, LogProvider } from "../providers/logging.ts";
+import type { AuthProvider } from "../providers/auth.ts";
 import type { McpProvider } from "../providers/mcp.ts";
 import type { SecretsProvider } from "../providers/secrets.ts";
 import type { SandboxProvider, SandboxSession } from "../providers/sandbox.ts";
@@ -18,9 +19,17 @@ import type { Limits } from "../types/limits.ts";
 import type { Run, RunId } from "../types/run.ts";
 import type { RunOutput } from "../types/output.ts";
 
+import { buildBuiltinTools, type EngineConfig } from "./builtin-tools/index.ts";
+import { validateOutput } from "./output-validate.ts";
 import { buildMcpRuntime } from "./mcp-tool.ts";
-import { buildSkillTool, buildSkillSystemPrompt } from "./skill-tool.ts";
+import {
+  composeOutputSchemaWithChannels,
+  type DynamicChannelDescriptor,
+} from "./output-schema-compose.ts";
+import { createReportStatusTool, type RunVerdict } from "./report-status-tool.ts";
+import { buildSkillTool } from "./skill-tool.ts";
 import { buildScriptTools } from "./script-tool.ts";
+import { assembleSystemPrompt } from "./system-prompt.ts";
 import { loadSkills, type LoadedSkill } from "../skills/index.ts";
 
 export interface ResolvedLLM {
@@ -42,6 +51,15 @@ export interface RunOnceOptions {
   systemPromptExtra?: string;
   mcp?: McpProvider;
   secrets?: SecretsProvider;
+  auth?: AuthProvider;
+  engine?: EngineConfig;
+  /**
+   * Channels with `mode = "dynamic"` from the deployment. When provided, the
+   * harness composes their contracts into the effective output_schema and
+   * exposes the contract block in the system prompt. The agent fills
+   * `output.structured.channels.<name>` per channel.
+   */
+  dynamicChannels?: readonly DynamicChannelDescriptor[];
 }
 
 export interface RunOnceResult {
@@ -49,6 +67,9 @@ export interface RunOnceResult {
   output: RunOutput;
   events: AgentEvent[];
   messages: AgentMessage[];
+  verdict?: RunVerdict;
+  /** Whether the run is retry-eligible (verdict.outcome === "warning"). */
+  retriable: boolean;
 }
 
 export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
@@ -69,6 +90,10 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   };
 
   let toolCalls = 0;
+  let toolErrorCount = 0;
+  let lastToolError: string | undefined;
+  let lastToolErrorName: string | undefined;
+  let verdict: RunVerdict | undefined;
   let usageTotal: Usage | undefined;
   let mcpRuntime: Awaited<ReturnType<typeof buildMcpRuntime>> | undefined;
   try {
@@ -84,10 +109,58 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       blueprint,
       mcp: opts.mcp,
       secrets: opts.secrets,
+      auth: opts.auth,
+      deploymentId,
     });
-    const tools = [...scriptTools, ...mcpRuntime.tools, ...(skillTool ? [skillTool] : [])];
+    const builtinTools = buildBuiltinTools({
+      allowlist: blueprint.tools,
+      sandbox: session,
+      blueprintDir,
+      engine: opts.engine,
+      onLog: append,
+    });
+    // Register report_status when [outcomes] is declared so the agent knows
+    // the harness expects an authoritative verdict.
+    const reportStatusTool = blueprint.outcomes
+      ? createReportStatusTool({
+          onVerdict: (v) => {
+            verdict = v;
+            append({
+              timestamp: Date.now(),
+              level: v.outcome === "success" ? "info" : v.outcome === "warning" ? "warn" : "error",
+              message: `verdict: ${v.outcome} — ${v.reason}`,
+            });
+          },
+        })
+      : undefined;
+    const tools = [
+      ...builtinTools,
+      ...scriptTools,
+      ...mcpRuntime.tools,
+      ...(skillTool ? [skillTool] : []),
+      ...(reportStatusTool ? [reportStatusTool] : []),
+    ];
 
-    const systemPrompt = buildSystemPrompt(blueprint, skills, systemPromptExtra);
+    // When dynamic channels are present, compose their contracts into the
+    // blueprint's effective outputSchema so the prompt + structured-output
+    // extraction both see the augmented shape.
+    const dynamicChannels = opts.dynamicChannels ?? [];
+    const effectiveBlueprint =
+      dynamicChannels.length > 0
+        ? {
+            ...blueprint,
+            outputSchema: composeOutputSchemaWithChannels(
+              blueprint.outputSchema,
+              dynamicChannels,
+            ),
+          }
+        : blueprint;
+    const systemPrompt = assembleSystemPrompt({
+      blueprint: effectiveBlueprint,
+      skills,
+      extra: systemPromptExtra,
+      dynamicChannels,
+    });
     const userPrompt: AgentMessage = {
       role: "user",
       content: typeof input === "string" ? input : JSON.stringify(input ?? {}),
@@ -112,10 +185,25 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
             level: "warn",
             message: `tool call limit ${limits.toolCalls} exceeded (soft warning, run continues)`,
           });
+        } else if (
+          limits?.toolCalls &&
+          limits.warnThresholdPct &&
+          toolCalls === Math.ceil((limits.toolCalls * limits.warnThresholdPct) / 100)
+        ) {
+          append({
+            timestamp: Date.now(),
+            level: "warn",
+            message: `tool calls reached ${limits.warnThresholdPct}% of limit (${toolCalls}/${limits.toolCalls})`,
+          });
         }
         return undefined;
       },
       afterToolCall: async (ctx) => {
+        if (ctx.isError) {
+          toolErrorCount++;
+          lastToolErrorName = ctx.toolCall.name;
+          lastToolError = `${ctx.toolCall.name}: ${extractErrorText(ctx.result)}`;
+        }
         append({
           timestamp: Date.now(),
           level: ctx.isError ? "error" : "debug",
@@ -146,7 +234,15 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     );
 
     const finalAssistant = lastAssistantMessage(messages);
-    const output = extractOutput(finalAssistant, blueprint);
+    const output = extractOutput(finalAssistant, effectiveBlueprint);
+    const outputValidation = validateOutput(blueprint, output.structuredOutput);
+    if (!outputValidation.ok) {
+      append({
+        timestamp: Date.now(),
+        level: "warn",
+        message: `output failed schema validation: ${outputValidation.errors?.map((e) => `${e.path} ${e.message}`).join("; ") ?? "(unknown)"}`,
+      });
+    }
     const finishedAt = Date.now();
     const cost = usageTotal?.cost?.total ?? 0;
     const tokenInput = usageTotal?.input ?? 0;
@@ -158,6 +254,43 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         level: "warn",
         message: `budget ${limits.budgetUsd} USD exceeded, actual ${cost.toFixed(4)} (soft warning)`,
       });
+    } else if (
+      limits?.budgetUsd &&
+      limits.warnThresholdPct &&
+      cost >= (limits.budgetUsd * limits.warnThresholdPct) / 100
+    ) {
+      append({
+        timestamp: finishedAt,
+        level: "warn",
+        message: `budget at ${limits.warnThresholdPct}% (${cost.toFixed(4)}/${limits.budgetUsd} USD)`,
+      });
+    }
+
+    const stoppedWithError = isErrorStop(finalAssistant?.stopReason);
+    const classification = classifyRun({
+      blueprint,
+      verdict,
+      stoppedWithError,
+      toolErrorCount,
+      lastToolErrorName,
+      lastToolError,
+      stopErrorMessage: finalAssistant?.errorMessage,
+    });
+    const status: Run["status"] = classification.failed ? "failed" : "complete";
+    const error = classification.errorMessage;
+    if (classification.failed) {
+      append({
+        timestamp: finishedAt,
+        level: "error",
+        message: `run failed: ${error}`,
+        meta: { toolErrorCount, verdict: verdict?.outcome },
+      });
+    } else if (verdict) {
+      append({
+        timestamp: finishedAt,
+        level: "info",
+        message: `run complete: ${verdict.outcome}`,
+      });
     }
 
     const run: Run = {
@@ -165,10 +298,11 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       deploymentId,
       blueprintId: blueprint.id,
       triggeredBy,
-      status: isErrorStop(finalAssistant?.stopReason) ? "failed" : "complete",
+      status,
       input,
       output,
-      error: finalAssistant?.errorMessage,
+      outputValidation,
+      error,
       costUsd: cost,
       tokenInput,
       tokenOutput,
@@ -178,7 +312,14 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       createdAt: startedAt,
     };
 
-    return { run, output, events, messages };
+    return {
+      run,
+      output,
+      events,
+      messages,
+      verdict,
+      retriable: classification.retriable,
+    };
   } finally {
     await mcpRuntime?.close().catch(() => undefined);
     await session.kill();
@@ -187,6 +328,95 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
 
 function isErrorStop(stop: string | undefined): boolean {
   return stop === "error" || stop === "aborted" || stop === "abort";
+}
+
+interface ClassifyArgs {
+  blueprint: Blueprint;
+  verdict: RunVerdict | undefined;
+  stoppedWithError: boolean;
+  toolErrorCount: number;
+  lastToolErrorName: string | undefined;
+  lastToolError: string | undefined;
+  stopErrorMessage: string | undefined;
+}
+
+interface RunClassification {
+  /** True when the run row should be marked status: "failed". */
+  failed: boolean;
+  /** True when the run is retry-eligible (warning verdict, attempts available). */
+  retriable: boolean;
+  /** Message stored on Run.error for display. */
+  errorMessage: string | undefined;
+}
+
+function classifyRun(args: ClassifyArgs): RunClassification {
+  const {
+    blueprint,
+    verdict,
+    stoppedWithError,
+    toolErrorCount,
+    lastToolErrorName,
+    lastToolError,
+    stopErrorMessage,
+  } = args;
+
+  // Hardest signal first: the LLM itself errored / aborted.
+  if (stoppedWithError) {
+    return { failed: true, retriable: false, errorMessage: stopErrorMessage ?? "agent stop=error" };
+  }
+
+  // Authoritative verdict from report_status if the agent called it.
+  if (verdict) {
+    if (verdict.outcome === "success") return { failed: false, retriable: false, errorMessage: undefined };
+    return {
+      failed: true,
+      retriable: verdict.outcome === "warning",
+      errorMessage: `${verdict.outcome}: ${verdict.reason}`,
+    };
+  }
+
+  // No verdict — fall through to declarative outcome rules on tool errors.
+  const o = blueprint.outcomes;
+  if (o && toolErrorCount > 0 && lastToolErrorName) {
+    if (o.errorTools.includes(lastToolErrorName)) {
+      return {
+        failed: true,
+        retriable: false,
+        errorMessage: `tool error (no retry): ${lastToolError}`,
+      };
+    }
+    if (o.warningTools.includes(lastToolErrorName)) {
+      return {
+        failed: true,
+        retriable: true,
+        errorMessage: `tool warning (retry-eligible): ${lastToolError}`,
+      };
+    }
+  }
+
+  // Legacy knob: blanket fail-on-any-tool-error (deprecated, default false).
+  if (blueprint.failOnToolError && toolErrorCount > 0) {
+    return {
+      failed: true,
+      retriable: false,
+      errorMessage: `tool error (${toolErrorCount}): ${lastToolError}`,
+    };
+  }
+
+  // Otherwise: graceful complete.
+  return { failed: false, retriable: false, errorMessage: undefined };
+}
+
+function extractErrorText(
+  result: { content?: Array<{ type: string; text?: string }> } | undefined,
+): string {
+  if (!result?.content) return "";
+  for (const block of result.content) {
+    if (block.type === "text" && typeof block.text === "string") {
+      return block.text.length > 500 ? `${block.text.slice(0, 500)}…` : block.text;
+    }
+  }
+  return "";
 }
 
 function sumUsage(prev: Usage | undefined, next: Usage): Usage {
@@ -205,18 +435,6 @@ function sumUsage(prev: Usage | undefined, next: Usage): Usage {
       total: (prev.cost?.total ?? 0) + (next.cost?.total ?? 0),
     },
   };
-}
-
-function buildSystemPrompt(blueprint: Blueprint, skills: LoadedSkill[], extra?: string): string {
-  const parts: string[] = [];
-  parts.push(blueprint.prompt.trim());
-  const skillSection = buildSkillSystemPrompt(skills);
-  if (skillSection) parts.push(skillSection);
-  if (extra) {
-    parts.push("");
-    parts.push(extra);
-  }
-  return parts.join("\n");
 }
 
 function lastAssistantMessage(messages: AgentMessage[]): AssistantMessage | undefined {

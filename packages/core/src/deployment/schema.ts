@@ -38,25 +38,32 @@ export const TriggerSchema = z.union([
   }),
 ]);
 
+const ChannelModeSchema = z.enum(["static", "dynamic"]).optional();
+
 export const ChannelConfigSchema = z.union([
   z.strictObject({
     type: z.literal("console"),
+    mode: ChannelModeSchema,
   }),
   z.strictObject({
     type: z.literal("slack"),
+    mode: ChannelModeSchema,
     target: z.string(),
     webhook_url_secret_ref: z.string().optional(),
     bot_token_secret_ref: z.string().optional(),
   }),
   z.strictObject({
     type: z.literal("email"),
+    mode: ChannelModeSchema,
     to: z.union([z.string(), z.array(z.string())]),
     from: z.string().optional(),
+    subject: z.string().optional(),
     smtp_url_secret_ref: z.string().optional(),
     resend_api_key_secret_ref: z.string().optional(),
   }),
   z.strictObject({
     type: z.literal("webhook"),
+    mode: ChannelModeSchema,
     url: z.string().url(),
     hmac_secret_ref: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),

@@ -1,13 +1,23 @@
 import type { Database } from "bun:sqlite";
 
 import sql0001 from "./migrations/0001_init.sql" with { type: "text" };
+import sql0002 from "./migrations/0002_deployment_extras.sql" with { type: "text" };
+import sql0003 from "./migrations/0003_run_validation.sql" with { type: "text" };
+import sql0004 from "./migrations/0004_channel_templates.sql" with { type: "text" };
+import sql0005 from "./migrations/0005_blueprint_versions.sql" with { type: "text" };
 
 interface Migration {
   version: string;
   sql: string;
 }
 
-const MIGRATIONS: Migration[] = [{ version: "0001_init.sql", sql: sql0001 }];
+const MIGRATIONS: Migration[] = [
+  { version: "0001_init.sql", sql: sql0001 },
+  { version: "0002_deployment_extras.sql", sql: sql0002 },
+  { version: "0003_run_validation.sql", sql: sql0003 },
+  { version: "0004_channel_templates.sql", sql: sql0004 },
+  { version: "0005_blueprint_versions.sql", sql: sql0005 },
+];
 
 export async function runMigrations(db: Database): Promise<void> {
   db.exec(

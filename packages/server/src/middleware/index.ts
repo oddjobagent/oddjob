@@ -20,6 +20,10 @@ export function notFound(message = "not found"): Response {
   return json({ error: "not_found", message }, { status: 404 });
 }
 
+export function conflict(message: string): Response {
+  return json({ error: "conflict", message }, { status: 409 });
+}
+
 export function unauthorized(message = "unauthorized"): Response {
   return json({ error: "unauthorized", message }, { status: 401 });
 }

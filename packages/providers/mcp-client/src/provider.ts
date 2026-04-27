@@ -44,12 +44,23 @@ export class McpClientProvider implements McpProvider {
 
 function makeStdioTransport(
   connector: StdioConnector,
-  _token: string | null,
+  token: string | null,
 ): StdioClientTransport {
+  // Stdio MCP servers conventionally read credentials from env. We inject the
+  // resolved api_key/bearer token under the secret_ref name so blueprints
+  // don't have to duplicate it via [connectors.x.env].
+  const env: Record<string, string> = { ...process.env, ...connector.env } as Record<string, string>;
+  if (token && (connector.auth.kind === "api_key" || connector.auth.kind === "bearer")) {
+    const envName = connector.auth.kind === "api_key" ? connector.auth.headerName : undefined;
+    const secretRef =
+      connector.auth.kind === "api_key" ? connector.auth.secretRef : connector.auth.secretRef;
+    const target = envName ?? secretRef;
+    if (target && env[target] === undefined) env[target] = token;
+  }
   return new StdioClientTransport({
     command: connector.command,
     args: connector.args,
-    env: { ...process.env, ...connector.env } as Record<string, string>,
+    env,
   });
 }
 

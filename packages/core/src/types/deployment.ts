@@ -5,7 +5,7 @@ import type { Trigger } from "./trigger.ts";
 
 export type DeploymentId = string;
 
-export type DeploymentStatus = "active" | "paused" | "disabled";
+export type DeploymentStatus = "active" | "paused" | "disabled" | "archived";
 
 export interface Deployment {
   id: DeploymentId;
@@ -15,6 +15,8 @@ export interface Deployment {
   channels: ChannelConfig[];
   limits: Limits;
   status: DeploymentStatus;
+  modelOverride?: string;
+  defaultInput?: unknown;
   createdAt: number;
   updatedAt: number;
 }
@@ -25,4 +27,10 @@ export interface DeploymentInput {
   triggers: Trigger[];
   channels: ChannelConfig[];
   limits?: Partial<Limits>;
+  modelOverride?: string;
+  defaultInput?: unknown;
+}
+
+export interface DeploymentListFilter {
+  includeArchived?: boolean;
 }

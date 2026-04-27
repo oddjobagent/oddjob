@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": ["email"],
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Recipient address. Read by the deployment's email channel via {{input.email}}."
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone for the header timestamp. Default: UTC.",
+      "default": "UTC"
+    }
+  }
+}

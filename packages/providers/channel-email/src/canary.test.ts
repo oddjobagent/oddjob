@@ -6,7 +6,7 @@ describe("ChannelEmailProvider", () => {
     const p = new ChannelEmailProvider();
     await expect(p.send({ body: "hi", format: "text" })).rejects.toThrow(/channelConfig/);
   });
-  test("rejects when only smtp configured (v1)", async () => {
+  test("smtp path requires the smtp_url secret to be set", async () => {
     const p = new ChannelEmailProvider();
     await expect(
       p.send({
@@ -20,6 +20,21 @@ describe("ChannelEmailProvider", () => {
           },
         },
       }),
-    ).rejects.toThrow(/Resend/);
+    ).rejects.toThrow(/SMTP_URL/);
+  });
+  test("rejects when neither smtp nor resend is configured", async () => {
+    const p = new ChannelEmailProvider();
+    await expect(
+      p.send({
+        body: "hi",
+        format: "text",
+        meta: {
+          channelConfig: {
+            type: "email",
+            to: "x@y.com",
+          },
+        },
+      }),
+    ).rejects.toThrow(/smtp_url_secret_ref or resend_api_key_secret_ref/);
   });
 });
