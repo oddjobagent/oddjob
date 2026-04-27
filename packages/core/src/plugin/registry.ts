@@ -36,16 +36,32 @@ export class PluginRegistry {
     // Validate ALL services before mutating any registry map. This avoids
     // leaving the registry in a partial state when one service in a plugin
     // collides — the failed plugin must not appear in `list()` either.
+    // Per-kind local Sets also catch intra-plugin duplicates that the global
+    // map check would otherwise miss (each insert overwrites the prior).
+    const localProviderIds = new Set<string>();
+    const localEnvironmentIds = new Set<string>();
     for (const svc of plugin.services) {
-      if (svc.kind === "model-provider" && this.providers.has(svc.id)) {
-        throw new Error(
-          `model provider '${svc.id}' already registered (from plugin '${this.findOwner("provider", svc.id) ?? "?"}')`,
-        );
+      if (svc.kind === "model-provider") {
+        if (this.providers.has(svc.id)) {
+          throw new Error(
+            `model provider '${svc.id}' already registered (from plugin '${this.findOwner("provider", svc.id) ?? "?"}')`,
+          );
+        }
+        if (localProviderIds.has(svc.id)) {
+          throw new Error(`model provider '${svc.id}' declared twice in plugin '${slug}'`);
+        }
+        localProviderIds.add(svc.id);
       }
-      if (svc.kind === "environment" && this.environments.has(svc.id)) {
-        throw new Error(
-          `environment service '${svc.id}' already registered (from plugin '${this.findOwner("environment", svc.id) ?? "?"}')`,
-        );
+      if (svc.kind === "environment") {
+        if (this.environments.has(svc.id)) {
+          throw new Error(
+            `environment service '${svc.id}' already registered (from plugin '${this.findOwner("environment", svc.id) ?? "?"}')`,
+          );
+        }
+        if (localEnvironmentIds.has(svc.id)) {
+          throw new Error(`environment service '${svc.id}' declared twice in plugin '${slug}'`);
+        }
+        localEnvironmentIds.add(svc.id);
       }
     }
     const record: PluginRecord = {

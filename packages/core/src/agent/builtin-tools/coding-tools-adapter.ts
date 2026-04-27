@@ -198,6 +198,8 @@ function createSessionGrepTool(
         if (args.literal) flags.push("--fixed-strings");
         if (args.glob) flags.push("--glob", shellQuote(args.glob));
         if (args.context && args.context > 0) flags.push(`-C${Math.floor(args.context)}`);
+        // `--` separator so a pattern beginning with `-` isn't parsed as an rg option.
+        flags.push("--");
         flags.push(shellQuote(args.pattern));
         flags.push(shellQuote(searchPath));
         const cmd = `rg ${flags.join(" ")} | head -n ${limit + 1}`;

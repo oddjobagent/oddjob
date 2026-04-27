@@ -79,6 +79,35 @@ describe("PluginRegistry environment services", () => {
     expect(() => reg.register(make("p2"), "bundled")).toThrow(/already registered/);
   });
 
+  test("intra-plugin duplicate environment id throws + leaves registry untouched", () => {
+    const reg = new PluginRegistry();
+    const plugin = definePlugin({ slug: "dup-self", version: "0.0.1" }, (b) => {
+      b.environment({
+        id: "twin",
+        displayName: "First",
+        trustTier: "trusted",
+        capabilities: fakeCapabilities,
+        async available() {
+          return { ok: true };
+        },
+        create: () => fakeEnvProvider,
+      });
+      b.environment({
+        id: "twin",
+        displayName: "Second",
+        trustTier: "trusted",
+        capabilities: fakeCapabilities,
+        async available() {
+          return { ok: true };
+        },
+        create: () => fakeEnvProvider,
+      });
+    });
+    expect(() => reg.register(plugin, "bundled")).toThrow(/declared twice/);
+    expect(reg.environmentFor("twin")).toBeUndefined();
+    expect(reg.list()).toHaveLength(0);
+  });
+
   test("unregister removes the environment service", () => {
     const reg = new PluginRegistry();
     const plugin = definePlugin({ slug: "fake-env", version: "0.0.1" }, (b) =>
