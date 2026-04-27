@@ -10,6 +10,12 @@ const BUILTIN_NAMES_SET: ReadonlySet<string> = new Set(BUILTIN_TOOL_NAMES);
 
 export interface ValidateOptions {
   checkFs?: boolean;
+  /**
+   * Tool names contributed by plugins. Validator accepts them in addition to
+   * the bundled built-in list. Pass enabled plugin tool names from the server
+   * boot path; CLI validation without a registry context just gets builtins.
+   */
+  pluginToolNames?: ReadonlySet<string>;
 }
 
 export function validateBlueprint(
@@ -82,15 +88,19 @@ export function validateBlueprint(
   }
 
   for (const toolName of blueprint.tools) {
-    if (!BUILTIN_NAMES_SET.has(toolName)) {
-      const suggestion = nearestBuiltin(toolName);
-      issues.push({
-        path: "tools",
-        message: suggestion
-          ? `unknown built-in tool '${toolName}' (did you mean '${suggestion}'?)`
-          : `unknown built-in tool '${toolName}' (valid: ${[...BUILTIN_NAMES_SET].join(", ")})`,
-      });
-    }
+    if (BUILTIN_NAMES_SET.has(toolName)) continue;
+    if (options.pluginToolNames?.has(toolName)) continue;
+    const suggestion = nearestBuiltin(toolName);
+    issues.push({
+      path: "tools",
+      message: suggestion
+        ? `unknown tool '${toolName}' (did you mean '${suggestion}'?)`
+        : `unknown tool '${toolName}' (valid built-ins: ${[...BUILTIN_NAMES_SET].join(", ")}; plugin-contributed tools: ${
+            options.pluginToolNames && options.pluginToolNames.size > 0
+              ? [...options.pluginToolNames].join(", ")
+              : "(none)"
+          })`,
+    });
   }
   for (const toolName of blueprint.tools) {
     if (Object.hasOwn(blueprint.scripts, toolName)) {
@@ -210,7 +220,7 @@ function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   if (!a.length) return b.length;
   if (!b.length) return a.length;
-  const prev = new Array(b.length + 1).fill(0).map((_, i) => i);
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
     let prevDiag = prev[0]!;
     prev[0] = i;

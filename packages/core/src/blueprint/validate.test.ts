@@ -102,7 +102,7 @@ describe("validateBlueprint", () => {
   test("rejects unknown built-in tool without near match", () => {
     expect(() =>
       validateBlueprint(fixture({ tools: ["totally-not-a-tool"] }), { checkFs: false }),
-    ).toThrow(/unknown built-in tool/);
+    ).toThrow(/unknown tool/);
   });
 
   test("rejects built-in colliding with script of same name", () => {

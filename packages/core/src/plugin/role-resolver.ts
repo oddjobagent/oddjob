@@ -202,7 +202,7 @@ export class RoleResolver {
         options = undefined;
       }
     }
-    if (extraOptions) options = { ...(options ?? {}), ...extraOptions };
+    if (extraOptions) options = { ...options, ...extraOptions };
     // Accept either camelCase (JS) or snake_case (TOML) baseUrl on credentials.
     const baseUrl =
       typeof options?.baseUrl === "string"

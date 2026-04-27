@@ -144,8 +144,8 @@ export const upsertCredential =
       updatedAt: now,
     });
     if (rt.reloadRoles) await rt.reloadRoles();
-    if (rt.persistConfig) await rt.persistConfig();
-    return json({ slug, credentialName, ok: true });
+    const persistError = await tryPersist(rt);
+    return json({ slug, credentialName, ok: true, ...persistError });
   };
 
 export const deleteCredential =
@@ -155,9 +155,29 @@ export const deleteCredential =
     const credentialName = ctx.params.credentialName ?? "default";
     await rt.state.deleteProviderCredential(slug, credentialName);
     if (rt.reloadRoles) await rt.reloadRoles();
-    if (rt.persistConfig) await rt.persistConfig();
-    return json({ slug, credentialName, ok: true });
+    const persistError = await tryPersist(rt);
+    return json({ slug, credentialName, ok: true, ...persistError });
   };
+
+/**
+ * Run persistConfig and surface failures without rolling back the DB. The DB
+ * is the source of truth at runtime; the next successful persist will resync
+ * the TOML. Returns `{ tomlPersistFailed, tomlPersistError }` when the TOML
+ * write failed (e.g. existing file is malformed).
+ */
+async function tryPersist(
+  rt: Runtime,
+): Promise<{ tomlPersistFailed?: true; tomlPersistError?: string }> {
+  if (!rt.persistConfig) return {};
+  try {
+    await rt.persistConfig();
+    return {};
+  } catch (err) {
+    const message = (err as Error).message;
+    console.warn(`[oddjob] persistConfig failed: ${message}`);
+    return { tomlPersistFailed: true, tomlPersistError: message };
+  }
+}
 
 function safeJson(raw: string): Record<string, unknown> | undefined {
   try {

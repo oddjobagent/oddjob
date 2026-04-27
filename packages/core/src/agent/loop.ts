@@ -19,8 +19,9 @@ import type { Limits } from "../types/limits.ts";
 import type { Run, RunId } from "../types/run.ts";
 import type { RunOutput } from "../types/output.ts";
 
-import { buildBuiltinTools, type EngineConfig } from "./builtin-tools/index.ts";
+import { buildBuiltinTools, isBuiltinToolName, type EngineConfig } from "./builtin-tools/index.ts";
 import type { EngineLLM } from "../engine/engine-llm.ts";
+import type { PluginRegistry } from "../plugin/registry.ts";
 import { validateOutput } from "./output-validate.ts";
 import { buildMcpRuntime } from "./mcp-tool.ts";
 import {
@@ -73,6 +74,13 @@ export interface RunOnceOptions {
    * legacy `llm`/`grader` paths when omitted.
    */
   engineLlm?: EngineLLM;
+  /**
+   * Optional plugin registry. When supplied, tool names in `blueprint.tools`
+   * that are NOT built-ins are looked up in the registry and built via
+   * `service.build({ environment, blueprintDir, engine, onLog })`. Lets a
+   * vibe-coded plugin contribute extra tools without touching core.
+   */
+  plugins?: PluginRegistry;
   /**
    * Optional confirmation gate. Fired before any tool whose name appears in
    * `blueprint.toolPolicies` with `confirm: true`. The harness pauses the
@@ -168,6 +176,34 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       engine: opts.engine,
       onLog: append,
     });
+    // Plugin-supplied tools: any name in the allowlist that isn't a builtin
+    // and IS registered in the plugin registry.
+    const pluginTools = (() => {
+      if (!opts.plugins) return [];
+      const out: ReturnType<typeof buildBuiltinTools> = [];
+      for (const name of blueprint.tools) {
+        if (isBuiltinToolName(name)) continue;
+        const svc = opts.plugins.toolFor(name);
+        if (!svc) continue;
+        try {
+          out.push(
+            svc.build({
+              environment: session,
+              blueprintDir,
+              engine: opts.engine,
+              onLog: append,
+            }) as (typeof out)[number],
+          );
+        } catch (err) {
+          append({
+            timestamp: Date.now(),
+            level: "error",
+            message: `plugin tool '${name}' failed to build: ${(err as Error).message}`,
+          });
+        }
+      }
+      return out;
+    })();
     // Register report_status when [outcomes] is declared so the agent knows
     // the harness expects an authoritative verdict.
     const reportStatusTool = blueprint.outcomes
@@ -184,6 +220,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       : undefined;
     const tools = [
       ...builtinTools,
+      ...pluginTools,
       ...scriptTools,
       ...mcpRuntime.tools,
       ...(skillTool ? [skillTool] : []),

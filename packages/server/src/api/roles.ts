@@ -51,8 +51,8 @@ export const set =
       updatedAt: Date.now(),
     });
     if (rt.reloadRoles) await rt.reloadRoles();
-    if (rt.persistConfig) await rt.persistConfig();
-    return json({ role, ok: true });
+    const persistError = await tryPersist(rt);
+    return json({ role, ok: true, ...persistError });
   };
 
 export const remove =
@@ -63,6 +63,20 @@ export const remove =
     if (!existing) return notFound(`role '${role}' has no assignment`);
     await rt.state.deleteEngineModelRole(role);
     if (rt.reloadRoles) await rt.reloadRoles();
-    if (rt.persistConfig) await rt.persistConfig();
-    return json({ role, ok: true });
+    const persistError = await tryPersist(rt);
+    return json({ role, ok: true, ...persistError });
   };
+
+async function tryPersist(
+  rt: Runtime,
+): Promise<{ tomlPersistFailed?: true; tomlPersistError?: string }> {
+  if (!rt.persistConfig) return {};
+  try {
+    await rt.persistConfig();
+    return {};
+  } catch (err) {
+    const message = (err as Error).message;
+    console.warn(`[oddjob] persistConfig failed: ${message}`);
+    return { tomlPersistFailed: true, tomlPersistError: message };
+  }
+}

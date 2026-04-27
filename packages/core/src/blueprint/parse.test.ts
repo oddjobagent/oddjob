@@ -83,7 +83,7 @@ json_schema = """
 `;
     const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
     expect(b.outputSchema?.type).toBe("json-schema");
-    expect((b.outputSchema?.schema as Record<string, unknown>).type).toBe("object");
+    expect((b.outputSchema!.schema as Record<string, unknown>).type).toBe("object");
   });
 
   test("with json_schema_file leaves outputSchemaFile pending", () => {

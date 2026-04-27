@@ -26,7 +26,7 @@ describe("composeOutputSchemaWithChannels", () => {
   test("one channel + no original schema synthesizes a wrapper", () => {
     const result = composeOutputSchemaWithChannels(undefined, [EMAIL_DESC]);
     expect(result?.type).toBe("json-schema");
-    const props = (result?.schema as { properties: Record<string, unknown> }).properties;
+    const props = (result!.schema as { properties: Record<string, unknown> }).properties;
     expect(props.channels).toBeDefined();
     expect((props.channels as { properties: Record<string, unknown> }).properties.email).toEqual(
       EMAIL_DESC.contract!,

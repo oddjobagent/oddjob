@@ -274,6 +274,7 @@ export class WorkerPool {
         auth: this.rt.auth,
         engine: this.rt.engine,
         engineLlm,
+        plugins: this.rt.plugins,
         input: mergedInput,
         runId,
         deploymentId: dep.id,
@@ -541,7 +542,7 @@ function mergeDynamicOverrides(
     const next = { ...resolved };
     if (typeof dyn.url === "string") next.url = dyn.url;
     if (dyn.headers && typeof dyn.headers === "object" && !Array.isArray(dyn.headers)) {
-      next.headers = { ...(resolved.headers ?? {}), ...(dyn.headers as Record<string, string>) };
+      next.headers = { ...resolved.headers, ...(dyn.headers as Record<string, string>) };
     }
     return next;
   }

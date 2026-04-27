@@ -146,6 +146,19 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
       await reconcileConfigToDb(state, fresh);
       engineRoleSnapshot = await loadEngineRoles(state);
       credentialSnapshot = await loadProviderCredentials(state);
+      // Rebuild EngineConfig (builtin_tools may have changed), apply
+      // [plugins].disabled to the in-process registry, and drop the channel
+      // cache so a re-enabled channel-type rebuilds with current secrets.
+      runtime.engine = await buildEngineConfig(fresh, secrets);
+      const nowDisabled = new Set<string>(fresh.plugins?.disabled ?? []);
+      for (const reg of plugins.list()) {
+        const shouldEnable = !nowDisabled.has(reg.record.slug);
+        if (reg.record.enabled !== shouldEnable) {
+          plugins.setEnabled(reg.record.slug, shouldEnable);
+          await state.setPluginEnabled(reg.record.slug, shouldEnable);
+        }
+      }
+      channelCache.clear();
     },
     persistEngine: async (next) => {
       const fresh = await loadConfig();

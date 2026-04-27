@@ -60,7 +60,16 @@ export const push =
     } else {
       return badRequest("body.toml or body.blueprint required");
     }
-    validateBlueprint(bp, { checkFs: false });
+    // Plugin tools registered + enabled in this server become valid blueprint
+    // tool names alongside the bundled built-ins.
+    const pluginToolNames = new Set<string>();
+    for (const reg of rt.plugins.list()) {
+      if (!reg.record.enabled) continue;
+      for (const svc of reg.plugin.services) {
+        if (svc.kind === "tool") pluginToolNames.add(svc.name);
+      }
+    }
+    validateBlueprint(bp, { checkFs: false, pluginToolNames });
     try {
       await rt.state.upsertBlueprint(bp, { force, tags: promoteTags });
     } catch (err) {

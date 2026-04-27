@@ -3,6 +3,7 @@ import { parse as parseToml } from "smol-toml";
 import { BlueprintParseError } from "../blueprint/errors.ts";
 import type { ChannelConfig } from "../types/channel.ts";
 import type { DeploymentInput } from "../types/deployment.ts";
+import type { EnvironmentConfig } from "../types/environment.ts";
 import type { Limits } from "../types/limits.ts";
 import type { Trigger, WebhookAuth } from "../types/trigger.ts";
 import { type DeploymentRaw, DeploymentRawSchema } from "./schema.ts";
@@ -53,13 +54,51 @@ function normalizeDeployment(raw: DeploymentRaw, options: ParseDeploymentOptions
     warnThresholdPct: raw.limits.warn_threshold_pct,
   };
 
+  const environmentInline = raw.environment_inline
+    ? normalizeEnvironmentInline(raw.environment_inline)
+    : undefined;
+
   return {
     name: raw.name ?? options.defaultName,
     blueprintId: options.blueprintId,
     triggers,
     channels,
     limits,
+    environmentId: raw.environment,
+    environmentInline,
   };
+}
+
+type RawInline = NonNullable<DeploymentRaw["environment_inline"]>;
+
+function normalizeEnvironmentInline(raw: RawInline): Partial<EnvironmentConfig> {
+  const networking = raw.networking
+    ? raw.networking.type === "unrestricted"
+      ? { type: "unrestricted" as const }
+      : {
+          type: "limited" as const,
+          allowedHosts: raw.networking.allowed_hosts,
+          allowMcpServers: raw.networking.allow_mcp_servers,
+          allowPackageManagers: raw.networking.allow_package_managers,
+        }
+    : undefined;
+  const resources = raw.resources
+    ? {
+        cpu: raw.resources.cpu,
+        memMb: raw.resources.mem_mb,
+        diskMb: raw.resources.disk_mb,
+      }
+    : undefined;
+  const out: Partial<EnvironmentConfig> = {};
+  if (raw.type !== undefined) out.type = raw.type;
+  if (raw.packages !== undefined) out.packages = raw.packages;
+  if (networking !== undefined) out.networking = networking;
+  if (raw.image !== undefined) out.image = raw.image;
+  if (raw.working_dir !== undefined) out.workingDir = raw.working_dir;
+  if (raw.provider !== undefined) out.provider = raw.provider;
+  if (resources !== undefined) out.resources = resources;
+  if (raw.template !== undefined) out.template = raw.template;
+  return out;
 }
 
 function normalizeTrigger(raw: DeploymentRaw["trigger"][number]): Trigger {

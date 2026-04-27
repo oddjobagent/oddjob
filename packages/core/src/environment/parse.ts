@@ -25,12 +25,26 @@ const NetworkingSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const ProviderRefSchema = z.strictObject({
+  service: z.string().min(1),
+  credential: z.string().min(1).optional(),
+});
+
+const ResourcesSchema = z.strictObject({
+  cpu: z.number().positive().optional(),
+  mem_mb: z.number().int().positive().optional(),
+  disk_mb: z.number().int().positive().optional(),
+});
+
 const ConfigSchema = z.strictObject({
   type: z.enum(["cloud", "local"]).default("local"),
   packages: PackageManifestSchema.optional(),
   networking: NetworkingSchema.optional(),
   image: z.string().min(1).optional(),
   working_dir: z.string().min(1).optional(),
+  provider: ProviderRefSchema.optional(),
+  resources: ResourcesSchema.optional(),
+  template: z.string().min(1).optional(),
 });
 
 const EnvironmentRawSchema = z.strictObject({
@@ -71,6 +85,13 @@ export function parseEnvironment(source: string): EnvironmentInput {
         }
     : undefined;
 
+  const resources = raw.config.resources
+    ? {
+        cpu: raw.config.resources.cpu,
+        memMb: raw.config.resources.mem_mb,
+        diskMb: raw.config.resources.disk_mb,
+      }
+    : undefined;
   return {
     id: raw.id,
     name: raw.name,
@@ -81,6 +102,9 @@ export function parseEnvironment(source: string): EnvironmentInput {
       networking,
       image: raw.config.image,
       workingDir: raw.config.working_dir,
+      provider: raw.config.provider,
+      resources,
+      template: raw.config.template,
     },
   };
 }

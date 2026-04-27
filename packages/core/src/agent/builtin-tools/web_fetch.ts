@@ -34,7 +34,6 @@ export interface WebFetchToolOptions {
 }
 
 const MAX_REDIRECTS = 3;
-const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
 export function createWebFetchTool(opts: WebFetchToolOptions = {}): AgentTool<typeof schema> {
   const cfg = opts.config ?? {};

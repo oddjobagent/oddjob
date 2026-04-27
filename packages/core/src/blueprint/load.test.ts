@@ -39,7 +39,7 @@ describe("loadBlueprint sidecar resolution", () => {
       );
       const b = await loadBlueprint(dir, { validate: true, checkFs: false });
       expect(b.outputSchema?.type).toBe("json-schema");
-      expect((b.outputSchema?.schema as { required: string[] }).required).toEqual(["foo"]);
+      expect((b.outputSchema!.schema as { required: string[] }).required).toEqual(["foo"]);
       expect(b.outputSchemaFile).toBeUndefined();
     });
   });
@@ -55,7 +55,7 @@ describe("loadBlueprint sidecar resolution", () => {
         `export default { type: "object", properties: { count: { type: "integer" } } };\n`,
       );
       const b = await loadBlueprint(dir, { validate: true, checkFs: false });
-      expect((b.outputSchema?.schema as { type: string }).type).toBe("object");
+      expect((b.outputSchema!.schema as { type: string }).type).toBe("object");
     });
   });
 

@@ -1,5 +1,6 @@
 import type { BlueprintId } from "./blueprint.ts";
 import type { ChannelConfig } from "./channel.ts";
+import type { EnvironmentConfig } from "./environment.ts";
 import type { Limits } from "./limits.ts";
 import type { Trigger } from "./trigger.ts";
 
@@ -25,6 +26,17 @@ export interface Deployment {
    */
   modelRoleOverrides?: Record<string, ModelRoleOverride>;
   defaultInput?: unknown;
+  /**
+   * Reference to a stored Environment record by id. Resolved at dispatch
+   * with `environmentInline` merged on top per the cascade resolver.
+   */
+  environmentId?: string;
+  /**
+   * Inline EnvironmentConfig override (or full inline config when
+   * environmentId is unset). Merge semantics: values replace referenced
+   * fields key-by-key; `networking.allowedHosts` is concat-merged.
+   */
+  environmentInline?: Partial<EnvironmentConfig>;
   createdAt: number;
   updatedAt: number;
 }
@@ -46,6 +58,8 @@ export interface DeploymentInput {
   modelOverride?: string;
   modelRoleOverrides?: Record<string, ModelRoleOverride>;
   defaultInput?: unknown;
+  environmentId?: string;
+  environmentInline?: Partial<EnvironmentConfig>;
 }
 
 export interface DeploymentListFilter {

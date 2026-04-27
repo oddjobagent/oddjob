@@ -955,7 +955,10 @@ function rowToProviderCred(row: ProviderCredRow): ProviderCredentialRecord {
     credentialName: row.credential_name,
     apiKeySecret: row.api_key_secret ?? undefined,
     optionsJson: row.options_json ?? undefined,
-    source: row.source === "config" ? "config" : "dashboard",
+    source: assertConfigSource(
+      row.source,
+      `provider_credentials(${row.provider_slug}/${row.credential_name})`,
+    ),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -968,9 +971,16 @@ function rowToEngineRole(row: EngineRoleRow): EngineModelRoleRecord {
     modelId: row.model_id,
     credentialName: row.credential_name,
     optionsJson: row.options_json ?? undefined,
-    source: row.source === "config" ? "config" : "dashboard",
+    source: assertConfigSource(row.source, `engine_model_roles(${row.role})`),
     updatedAt: row.updated_at,
   };
+}
+
+function assertConfigSource(value: string, where: string): "config" | "dashboard" {
+  if (value === "config" || value === "dashboard") return value;
+  throw new Error(
+    `state-sqlite: invalid source='${value}' in ${where} (expected 'config' or 'dashboard')`,
+  );
 }
 
 function rowToCatalog(row: ModelCatalogRow): ModelCatalogRecord {

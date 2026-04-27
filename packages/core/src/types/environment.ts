@@ -24,6 +24,29 @@ export interface EnvironmentConfig {
   image?: string;
   /** Working directory inside the sandbox; defaults to /work. */
   workingDir?: string;
+  /**
+   * Which EnvironmentService implements this environment. When omitted the
+   * runtime falls back to engine.default_environment_id's provider, then to
+   * the platform-appropriate hard default ("seatbelt" / "bwrap" / "process").
+   */
+  provider?: EnvironmentProviderRef;
+  /** Resource caps. Honored by container/remote backends; ignored by local. */
+  resources?: EnvironmentResources;
+  /** Optional template name (cloud backends with a snapshot/template registry). */
+  template?: string;
+}
+
+export interface EnvironmentProviderRef {
+  /** EnvironmentService.id, e.g. "process" / "seatbelt" / "docker" / "daytona". */
+  service: string;
+  /** Provider-credential name in the provider_credentials table. Default "default". */
+  credential?: string;
+}
+
+export interface EnvironmentResources {
+  cpu?: number;
+  memMb?: number;
+  diskMb?: number;
 }
 
 export interface PackageManifest {
