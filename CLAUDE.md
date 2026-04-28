@@ -1,6 +1,6 @@
 # oddjob/ workspace
 
-Bun monorepo. 20 packages (`core`, `server`, `sdk`, `api-client`, 16 providers) + 2 apps (`apps/cli`, `apps/dashboard`).
+Bun monorepo. 5 packages (`core`, `agent`, `server`, `api-client`, `sdk`) + 18 plugins (tools, channels, envs, sqlite stores, llm) + 2 apps (`apps/cli`, `apps/dashboard`). After April 2026 re-arch the agent runtime lives in its own package; concrete providers/tools/channels all live under `plugins/`.
 
 ## Stack invariants
 
@@ -15,7 +15,7 @@ Bun monorepo. 20 packages (`core`, `server`, `sdk`, `api-client`, 16 providers) 
 
 ```bash
 bun install
-bun test                  # 99 tests
+bun test                  # 479 tests
 bun run typecheck         # tsgo + dashboard tsgo
 bun run lint              # oxlint
 bun run format            # oxfmt
@@ -43,3 +43,6 @@ bun build --compile --outfile=./dist/oddjob ./apps/cli/src/index.ts
 - **citty boolean flags:** `"no-ui"` doesn't bind to `args["no-ui"]` cleanly — citty parses `--no-ui` as the negation of `ui`. Pattern: `args: { ui: { type: "boolean", default: true } }`, then check `args.ui`.
 - **Dashboard auth gap (live):** the server doesn't inject a bearer-token meta tag. Localhost no-token mode works fine; non-loopback bearer mode would 401 every request. See STATUS.md for plan.
 - **Lazy Proxy in `apps/cli/src/lib/api.ts`** for `api.<ns>.<method>(...)` works for direct calls but breaks on reflection (`Object.keys(api.runs)`, `"list" in api.runs`). Don't reflect on it.
+- **typebox + Ajv schemas (post-G).** All TOML schemas in `packages/core/src/{blueprint,deployment,environment}/schema.ts` plus `apps/cli/src/lib/config.ts` use typebox. Cross-field XOR rules go in a second-pass `validateXRefinements` function (Ajv handles structure; refines run on the validated shape). Defaults inside `Type.Union` arms don't propagate via Ajv's `useDefaults` — make those Optional + nullish-coalesce in parse. For Records with key patterns, use `Type.Unsafe<...>({ patternProperties, additionalProperties: false })` since `Type.Record(Type.String({pattern}), V)` doesn't enforce strict keys. See memory `project_typebox_patterns`.
+- **Plugin registry is the source of truth for tools (post-H).** Agent loop calls `plugins.toolFor(name)` first, falls back to `buildSingleBuiltinTool` only when `plugins.hasTool(name)` is false. Disabled plugins honor disable (no fallback). Last-wins registration so local plugins override bundled.
+- **pi-ai cost is per-million tokens, not per-token.** `Model.cost.input = 15` means $15/M. Don't multiply by 1_000_000 when converting to ModelInfo. The deleted plugin-anthropic divided because pi-ai's old API was per-token; today's API is per-million.
