@@ -16,8 +16,10 @@ function mockFetch(handlers: Record<string, () => Response>): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
-describe("web-fetch-core plugin", () => {
-  test("registers raw + 3 paid backends", () => {
+describe("tools-web-fetch plugin", () => {
+  test("registers web_fetch tool + 4 backends", () => {
+    const tools = plugin.services.filter((s) => s.kind === "tool");
+    expect(tools.map((t) => t.kind === "tool" && t.name)).toEqual(["web_fetch"]);
     const ids = plugin.services
       .filter((s) => s.kind === "web-fetch")
       .map((s) => (s.kind === "web-fetch" ? s.id : ""))

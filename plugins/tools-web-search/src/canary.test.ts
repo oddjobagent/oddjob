@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import plugin from "./index.ts";
 
-describe("web-search-core canary", () => {
-  test("registers 5 web-search services", () => {
+describe("tools-web-search canary", () => {
+  test("registers web_search tool + 5 search providers", () => {
+    const tools = plugin.services.filter((s) => s.kind === "tool");
+    expect(tools.map((t) => t.kind === "tool" && t.name)).toEqual(["web_search"]);
     const services = plugin.services.filter((s) => s.kind === "web-search");
     const ids = services.map((s) => (s.kind === "web-search" ? s.id : "")).sort();
     expect(ids).toEqual(["brave", "exa", "searxng", "serpapi", "tavily"]);
