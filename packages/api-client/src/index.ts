@@ -24,9 +24,22 @@ export interface DeploymentListOptions {
 
 export interface ModelOption {
   id: string;
+  modelId: string;
   provider: string;
+  displayName: string;
+  api: string;
+  reasoning: boolean;
+  input: ReadonlyArray<"text" | "image">;
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  contextWindow: number;
+  maxTokens: number;
   requiresSecret: string;
   available: boolean;
+}
+
+export interface ModelProviderInfo {
+  slug: string;
+  modelCount: number;
 }
 
 export interface ChannelTypeFieldDescriptor {
@@ -186,7 +199,7 @@ export interface OddjobApi {
   };
 
   models: {
-    list: () => Promise<{ models: ModelOption[] }>;
+    list: () => Promise<{ models: ModelOption[]; providers: ModelProviderInfo[] }>;
   };
 
   environments: {

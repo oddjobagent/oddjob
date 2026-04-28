@@ -87,8 +87,10 @@ export function DeploymentForm({ state, onChange, lockIdentity }: Props): React.
             onChange={(v) => set("modelOverride", v)}
             options={(models.data?.models ?? []).map((m) => ({
               value: m.id,
-              label: m.id,
-              hint: m.available ? "available" : "secret missing",
+              label: m.displayName ? `${m.displayName} (${m.id})` : m.id,
+              hint: m.available
+                ? `${(m.contextWindow / 1000).toFixed(0)}K ctx · $${m.cost.input.toFixed(2)}/M in${m.reasoning ? " · reasoning" : ""}`
+                : "secret missing",
               disabled: !m.available,
             }))}
             allowCustom

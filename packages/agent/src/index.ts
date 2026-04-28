@@ -43,3 +43,10 @@ export {
 } from "./engine.ts";
 
 export { parseSkillFile, resolveSkillPath, loadSkills, blueprintDirOf } from "./skills.ts";
+
+export {
+  listAllModels,
+  listProviders,
+  type ModelDescriptor,
+  type ProviderDescriptor,
+} from "./model-registry.ts";

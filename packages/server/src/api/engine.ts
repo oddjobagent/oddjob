@@ -1,4 +1,11 @@
-import { BUILTIN_TOOL_NAMES, type BuiltinToolsConfig, type EngineConfig } from "@oddjob/agent";
+import {
+  BUILTIN_TOOL_NAMES,
+  listAllModels,
+  listProviders,
+  type BuiltinToolsConfig,
+  type EngineConfig,
+  type ModelDescriptor,
+} from "@oddjob/agent";
 
 import type { Runtime } from "../runtime.ts";
 import { type Handler, badRequest, json, readJson } from "../middleware/index.ts";
@@ -131,54 +138,52 @@ export const update =
     });
   };
 
+// Maps provider slug → secret name the user must configure to use this provider.
+// (Sourced from pi-ai's auth conventions; covers all providers in pi-ai's registry.)
+const PROVIDER_SECRET: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GEMINI_API_KEY",
+  "google-vertex": "GOOGLE_APPLICATION_CREDENTIALS",
+  "google-gemini-cli": "",
+  openrouter: "OPENROUTER_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  bedrock: "AWS_ACCESS_KEY_ID",
+  deepseek: "DEEPSEEK_API_KEY",
+  groq: "GROQ_API_KEY",
+  cerebras: "CEREBRAS_API_KEY",
+  xai: "XAI_API_KEY",
+  kimi: "KIMI_API_KEY",
+  vercel: "AI_GATEWAY_API_KEY",
+  "github-copilot": "GITHUB_TOKEN",
+  huggingface: "HF_TOKEN",
+  fireworks: "FIREWORKS_API_KEY",
+  faux: "",
+};
+
 export const models =
   (rt: Runtime): Handler =>
   async () => {
-    // Models aren't enumerable from pi-ai's public API at runtime without
-    // pulling in the registry directly, so we surface a curated, conservative
-    // list keyed off which secrets the user has configured. Dashboard's
-    // combobox lets the user fall back to free-text for anything else.
     const secretNames = new Set(await rt.secrets.list());
-
-    const candidates: Array<{ id: string; provider: string; requiresSecret: string }> = [
-      // Anthropic
-      { id: "anthropic/claude-opus-4", provider: "anthropic", requiresSecret: "ANTHROPIC_API_KEY" },
-      {
-        id: "anthropic/claude-sonnet-4",
-        provider: "anthropic",
-        requiresSecret: "ANTHROPIC_API_KEY",
-      },
-      {
-        id: "anthropic/claude-haiku-4-5",
-        provider: "anthropic",
-        requiresSecret: "ANTHROPIC_API_KEY",
-      },
-      // OpenAI
-      { id: "openai/gpt-4o", provider: "openai", requiresSecret: "OPENAI_API_KEY" },
-      { id: "openai/gpt-4o-mini", provider: "openai", requiresSecret: "OPENAI_API_KEY" },
-      // Google
-      { id: "google/gemini-2.5-flash", provider: "google", requiresSecret: "GOOGLE_API_KEY" },
-      { id: "google/gemini-2.5-pro", provider: "google", requiresSecret: "GOOGLE_API_KEY" },
-      // OpenRouter — works with any vendor through one key
-      {
-        id: "openrouter/anthropic/claude-sonnet-4",
-        provider: "openrouter",
-        requiresSecret: "OPENROUTER_API_KEY",
-      },
-      {
-        id: "openrouter/openai/gpt-4o",
-        provider: "openrouter",
-        requiresSecret: "OPENROUTER_API_KEY",
-      },
-      // Test
-      { id: "faux/test", provider: "faux", requiresSecret: "" },
-    ];
-
-    const out = candidates.map((c) => ({
-      ...c,
-      available: c.requiresSecret === "" || secretNames.has(c.requiresSecret),
-    }));
-    return json({ models: out });
+    const all = listAllModels();
+    const out = all.map((m: ModelDescriptor) => {
+      const requiresSecret = PROVIDER_SECRET[m.provider] ?? "";
+      return {
+        id: m.id,
+        modelId: m.modelId,
+        provider: m.provider,
+        displayName: m.displayName,
+        api: m.api,
+        reasoning: m.reasoning,
+        input: m.input,
+        cost: m.cost,
+        contextWindow: m.contextWindow,
+        maxTokens: m.maxTokens,
+        requiresSecret,
+        available: requiresSecret === "" || secretNames.has(requiresSecret),
+      };
+    });
+    return json({ models: out, providers: listProviders() });
   };
 
 function mergeEngine(current: EngineConfig | undefined, patch: EnginePatchBody): EngineConfig {

@@ -16,6 +16,7 @@ import { Route as engineRoute } from "./routes/engine.tsx";
 import { Route as environmentsRoute } from "./routes/environments.tsx";
 import { Route as environmentProvidersRoute } from "./routes/environments.providers.tsx";
 import { Route as deploymentEnvironmentRoute } from "./routes/deployments.$id.environment.tsx";
+import { Route as mcpRoute } from "./routes/mcp.tsx";
 import { Route as pluginsRoute } from "./routes/plugins.tsx";
 import { Route as providersRoute } from "./routes/providers.tsx";
 import { Route as secretsRoute } from "./routes/secrets.tsx";
@@ -36,6 +37,7 @@ const routeTree = rootRoute.addChildren([
   engineRoute,
   environmentsRoute,
   environmentProvidersRoute,
+  mcpRoute,
   pluginsRoute,
   providersRoute,
   secretsRoute,

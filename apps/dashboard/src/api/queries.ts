@@ -16,6 +16,7 @@ import type {
   DeploymentEnvironmentPatch,
   EnvironmentProviderDescriptor,
   ModelOption,
+  ModelProviderInfo,
   PluginSummary,
   ProviderDetail,
   ProviderSummary,
@@ -252,7 +253,7 @@ export function useUpdateEngine() {
 }
 
 export function useModels() {
-  return useQuery<{ models: ModelOption[] }>({
+  return useQuery<{ models: ModelOption[]; providers: ModelProviderInfo[] }>({
     queryKey: ["models"],
     queryFn: () => api.models.list(),
     staleTime: 5 * 60 * 1000,
@@ -459,6 +460,57 @@ export function useSecretMutations() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["secrets"] }),
   });
   return { set, remove };
+}
+
+// ── MCP / OAuth connectors ────────────────────────────────────────────
+
+export interface AuthConnectorRow {
+  connectorId: string;
+  deploymentId: string;
+  connectorName: string;
+  status: string;
+  expiresAt?: number;
+  scopes?: string;
+  updatedAt: number;
+}
+
+export function useAuthConnectors() {
+  return useQuery<{ tokens: AuthConnectorRow[] }>({
+    queryKey: ["auth", "connectors"],
+    queryFn: () => api.auth.list(),
+    refetchInterval: slow,
+  });
+}
+
+export function useAuthStatus(connectorId: string | undefined, enabled: boolean) {
+  return useQuery<{ connectorId: string; status: string }>({
+    queryKey: ["auth", "connectors", connectorId, "status"],
+    queryFn: () => api.auth.status(connectorId!),
+    enabled: Boolean(connectorId) && enabled,
+    refetchInterval: fast,
+  });
+}
+
+export function useInitiateAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      deploymentId,
+      connectorName,
+    }: {
+      deploymentId: string;
+      connectorName: string;
+    }) => api.auth.initiate(deploymentId, connectorName),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth", "connectors"] }),
+  });
+}
+
+export function useRevokeAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (connectorId: string) => api.auth.revoke(connectorId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth", "connectors"] }),
+  });
 }
 
 // ── Environments ──────────────────────────────────────────────────────
