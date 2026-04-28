@@ -79,7 +79,7 @@ function normalizeEnvironmentInline(
       ? { type: "unrestricted" as const }
       : {
           type: "limited" as const,
-          allowedHosts: raw.networking.allowed_hosts,
+          allowedHosts: raw.networking.allowed_hosts ?? [],
           allowMcpServers: raw.networking.allow_mcp_servers,
           allowPackageManagers: raw.networking.allow_package_managers,
         }

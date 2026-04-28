@@ -223,6 +223,30 @@ auth = "api_key"
     expect(() => parseBlueprint(toml, { path: "/tmp/x" })).toThrow(/api_key.*secret_ref/);
   });
 
+  test("rejects connector key that doesn't match NAME_PATTERN (uppercase)", () => {
+    const toml = `${MIN_VALID}
+[connectors.Bad]
+server = "https://example.com"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/x" })).toThrow();
+  });
+
+  test("rejects script key that doesn't match TOOL_NAME_PATTERN (hyphen)", () => {
+    const toml = `${MIN_VALID}
+[scripts]
+"bad-name" = "echo hi"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/x" })).toThrow();
+  });
+
+  test("accepts tools = [{name=\"bash\"}] without explicit confirm", () => {
+    const toml = `${MIN_VALID}
+[[tools]]
+name = "bash"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/x" })).not.toThrow();
+  });
+
   test("invalid memory retention", () => {
     const toml = `${MIN_VALID}
 [memory]

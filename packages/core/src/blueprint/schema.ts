@@ -52,25 +52,18 @@ export const ConnectorAuthSchema = Type.Union([
   ),
 ]);
 
-export const StdioConnectorSchema = Type.Object(
-  {
-    transport: Type.Optional(Type.Literal("stdio")),
-    command: Type.String({ minLength: 1 }),
-    args: Type.Optional(Type.Array(Type.String())),
-    auth: Type.Optional(ConnectorAuthSchema),
-    scopes: Type.Optional(Type.Array(Type.String())),
-    tools: Type.Optional(Type.Array(Type.String())),
-    env: Type.Optional(Type.Record(Type.String(), Type.String())),
-  },
-  STRICT,
-);
-
-export const HttpConnectorSchema = Type.Object(
+// Single permissive connector schema — both `command` (stdio) and `server`
+// (http/sse) are optional. The exactly-one-of XOR rule is enforced by the
+// refinement pass (validateBlueprintRefinements) so users see a targeted
+// error instead of a noisy `must match a schema in anyOf`.
+export const ConnectorSchema = Type.Object(
   {
     transport: Type.Optional(
-      Type.Union([Type.Literal("http"), Type.Literal("sse")], { default: "http" }),
+      Type.Union([Type.Literal("stdio"), Type.Literal("http"), Type.Literal("sse")]),
     ),
-    server: Type.String({ format: "uri" }),
+    command: Type.Optional(Type.String({ minLength: 1 })),
+    args: Type.Optional(Type.Array(Type.String())),
+    server: Type.Optional(Type.String({ format: "uri" })),
     auth: Type.Optional(ConnectorAuthSchema),
     scopes: Type.Optional(Type.Array(Type.String())),
     tools: Type.Optional(Type.Array(Type.String())),
@@ -79,7 +72,9 @@ export const HttpConnectorSchema = Type.Object(
   STRICT,
 );
 
-export const ConnectorSchema = Type.Union([StdioConnectorSchema, HttpConnectorSchema]);
+// Backward-compat aliases (still consumed by some tests / imports).
+export const StdioConnectorSchema = ConnectorSchema;
+export const HttpConnectorSchema = ConnectorSchema;
 
 export const MemorySchema = Type.Object(
   {
@@ -164,7 +159,10 @@ export const BlueprintRawSchema = Type.Object(
         Type.Object(
           {
             name: Type.String({ minLength: 1 }),
-            confirm: Type.Boolean({ default: false }),
+            // Optional + default so `tools = [{ name = "bash" }]` is accepted.
+            // Ajv's useDefaults doesn't propagate into anyOf union arms reliably,
+            // so we normalize at parse time (entry.confirm undefined → false).
+            confirm: Type.Optional(Type.Boolean({ default: false })),
           },
           STRICT,
         ),
@@ -173,10 +171,19 @@ export const BlueprintRawSchema = Type.Object(
     ),
     skills: Type.Array(Type.String(), { default: [] }),
 
-    connectors: Type.Record(Type.String({ pattern: NAME_PATTERN }), ConnectorSchema, {
+    // Use raw patternProperties + additionalProperties:false so non-matching
+    // keys are rejected (typebox's Type.Record-with-pattern only adds
+    // patternProperties without strict-key enforcement).
+    connectors: Type.Unsafe<Record<string, ConnectorRaw>>({
+      type: "object",
+      patternProperties: { [NAME_PATTERN]: ConnectorSchema },
+      additionalProperties: false,
       default: {},
     }),
-    scripts: Type.Record(Type.String({ pattern: TOOL_NAME_PATTERN }), Type.String({ minLength: 1 }), {
+    scripts: Type.Unsafe<Record<string, string>>({
+      type: "object",
+      patternProperties: { [TOOL_NAME_PATTERN]: { type: "string", minLength: 1 } },
+      additionalProperties: false,
       default: {},
     }),
 

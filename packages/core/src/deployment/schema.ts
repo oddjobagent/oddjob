@@ -124,7 +124,7 @@ const NetworkingOverrideSchema = Type.Union([
   Type.Object(
     {
       type: Type.Literal("limited"),
-      allowed_hosts: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+      allowed_hosts: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { default: [] })),
       allow_mcp_servers: Type.Optional(Type.Boolean()),
       allow_package_managers: Type.Optional(Type.Boolean()),
     },

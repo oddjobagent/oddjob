@@ -26,7 +26,9 @@ const NetworkingSchema = Type.Union([
   Type.Object(
     {
       type: Type.Literal("limited"),
-      allowed_hosts: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+      // Optional + default; useDefaults inside anyOf isn't reliable, so
+      // parseEnvironment coalesces below.
+      allowed_hosts: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { default: [] })),
       allow_mcp_servers: Type.Optional(Type.Boolean()),
       allow_package_managers: Type.Optional(Type.Boolean()),
     },
@@ -116,7 +118,7 @@ export function parseEnvironment(source: string): EnvironmentInput {
       ? { type: "unrestricted" as const }
       : {
           type: "limited" as const,
-          allowedHosts: raw.config.networking.allowed_hosts,
+          allowedHosts: raw.config.networking.allowed_hosts ?? [],
           allowMcpServers: raw.config.networking.allow_mcp_servers,
           allowPackageManagers: raw.config.networking.allow_package_managers,
         }

@@ -107,10 +107,22 @@ const ProviderCredentialSchema = Type.Object(
   STRICT,
 );
 
-const ProvidersSchema = Type.Record(
-  Type.String({ pattern: SLUG_PATTERN }),
-  Type.Record(Type.String({ pattern: CRED_NAME_PATTERN }), ProviderCredentialSchema),
-);
+// Use raw patternProperties + additionalProperties:false so non-matching
+// slugs/credential names are rejected (typebox's Type.Record-with-pattern
+// only adds patternProperties without strict-key enforcement).
+const ProvidersSchema = Type.Unsafe<
+  Record<string, Record<string, ProviderCredentialFileConfig>>
+>({
+  type: "object",
+  patternProperties: {
+    [SLUG_PATTERN]: {
+      type: "object",
+      patternProperties: { [CRED_NAME_PATTERN]: ProviderCredentialSchema },
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+});
 
 const RoleSchema = Type.Object(
   {
@@ -122,7 +134,11 @@ const RoleSchema = Type.Object(
   STRICT,
 );
 
-const RolesSchema = Type.Record(Type.String({ pattern: ROLE_PATTERN }), RoleSchema);
+const RolesSchema = Type.Unsafe<Record<string, RoleFileConfig>>({
+  type: "object",
+  patternProperties: { [ROLE_PATTERN]: RoleSchema },
+  additionalProperties: false,
+});
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validatePlugins: ValidateFunction = ajv.compile(PluginsSchema);
