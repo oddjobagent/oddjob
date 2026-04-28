@@ -313,13 +313,6 @@
         "@oddjob/sdk": "workspace:*",
       },
     },
-    "plugins/llm-anthropic": {
-      "name": "@oddjob/llm-anthropic",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
     "plugins/llm-pi": {
       "name": "@oddjob/llm-pi",
       "version": "0.0.0",
@@ -694,8 +687,6 @@
     "@oddjob/core": ["@oddjob/core@workspace:packages/core"],
 
     "@oddjob/dashboard": ["@oddjob/dashboard@workspace:apps/dashboard"],
-
-    "@oddjob/llm-anthropic": ["@oddjob/llm-anthropic@workspace:plugins/llm-anthropic"],
 
     "@oddjob/llm-pi": ["@oddjob/llm-pi@workspace:plugins/llm-pi"],
 
