@@ -1,7 +1,7 @@
 {
-  "name": "@oddjob/plugin-openrouter",
+  "name": "@oddjob/plugin-pi-models",
   "version": "0.0.0",
-  "description": "Oddjob plugin: OpenRouter model provider (multi-vendor)",
+  "description": "Oddjob plugin: registers a ModelProviderService for every pi-ai built-in provider (Anthropic, OpenAI, OpenRouter, Google, Mistral, Bedrock, Groq, Cerebras, X.AI, Kimi, Vercel AI Gateway, ...). Replaces the per-provider plugins.",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {

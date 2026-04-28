@@ -263,4 +263,13 @@ export class PluginRegistry {
     }
     return undefined;
   }
+
+  /**
+   * Public owner lookup for model-provider services. Used by /api/v1/providers
+   * to find the plugin that contributes a given provider id — needed because
+   * one plugin (e.g. plugin-pi-models) can register many ModelProviderServices.
+   */
+  ownerOfProvider(id: string): string | undefined {
+    return this.findOwner("provider", id);
+  }
 }

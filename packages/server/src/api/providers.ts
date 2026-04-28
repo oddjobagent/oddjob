@@ -23,7 +23,11 @@ export const list =
       credBySlug.set(c.providerSlug, (credBySlug.get(c.providerSlug) ?? 0) + 1);
     const out: ProviderSummary[] = [];
     for (const p of rt.plugins.listProviders()) {
-      const reg = rt.plugins.get(p.id);
+      // p.id is the provider slug (e.g. "anthropic"); the plugin that
+      // registered it may use a different slug (e.g. "pi-models" registers
+      // many provider ids). Walk owner→plugin to honor the enable flag.
+      const ownerSlug = rt.plugins.ownerOfProvider(p.id);
+      const reg = ownerSlug ? rt.plugins.get(ownerSlug) : undefined;
       if (!reg?.record.enabled) continue;
       out.push({
         slug: p.id,

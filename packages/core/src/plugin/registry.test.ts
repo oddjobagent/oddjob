@@ -140,11 +140,15 @@ describe("PluginRegistry environment services", () => {
 
 describe("PluginRegistry tool services", () => {
   const fakeTool = {
+    label: "test",
     name: "test-tool",
     description: "fake",
     parameters: { type: "object", properties: {} } as const,
     async execute() {
-      return { kind: "text" as const, text: "ok" };
+      return {
+        content: [{ type: "text" as const, text: "ok" }],
+        details: { kind: "text" as const, text: "ok" },
+      };
     },
   };
 

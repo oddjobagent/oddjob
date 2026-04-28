@@ -1,0 +1,9 @@
+slug = "pi-models"
+name = "Pi-AI Models"
+description = "Registers a ModelProviderService for every pi-ai built-in provider."
+version = "0.1.0"
+author = "Oddjob"
+entry = "src/index.ts"
+
+[oddjob]
+engine = "*"

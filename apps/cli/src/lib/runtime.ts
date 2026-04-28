@@ -14,9 +14,7 @@ import { loadLocalPlugins, PluginRegistry, registerBundled, RoleResolver } from 
 import type { EngineConfig } from "@oddjob/agent";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 
-import openaiPlugin from "@oddjob/plugin-openai";
-import anthropicPlugin from "@oddjob/plugin-anthropic";
-import openrouterPlugin from "@oddjob/plugin-openrouter";
+import piModelsPlugin from "@oddjob/plugin-pi-models";
 import llamaLocalPlugin from "@oddjob/plugin-llama-local";
 import channelsCorePlugin from "@oddjob/plugin-channels-core";
 import toolsCodingPlugin from "@oddjob/plugin-tools-coding";
@@ -72,9 +70,7 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
   const plugins = new PluginRegistry();
   const disabledSlugs = new Set<string>(cfg.plugins?.disabled ?? []);
   for (const p of [
-    openaiPlugin,
-    anthropicPlugin,
-    openrouterPlugin,
+    piModelsPlugin,
     llamaLocalPlugin,
     channelsCorePlugin,
     toolsCorePlugin,
