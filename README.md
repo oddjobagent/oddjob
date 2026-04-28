@@ -358,27 +358,35 @@ Repo layout:
 
 ```
 packages/
-├── core/                  types, blueprint pipeline, agent loop, skills
+├── core/                  types, blueprint/deployment/env parsers, plugin system, security utils
+├── agent/                 agent loop, tool registry, system-prompt, output validation, grader
 ├── server/                Bun.serve API + worker pool + webhook ingress
-├── cli/                   oddjob CLI (citty)
+├── api-client/            typed HTTP client (browser-safe)
 ├── sdk/                   re-exports for plugin authors
-└── providers/
-    ├── llm-pi             pi-ai wrapper (OpenRouter + native providers)
-    ├── llm-anthropic      (stub)
-    ├── sandbox-process    Bun.spawn + tempdir
-    ├── state-sqlite       blueprints, deployments, runs, KV memory
-    ├── queue-sqlite       leased queue with crash recovery
-    ├── queue-memory       in-process queue for tests
-    ├── secrets-sqlite     AES-256-GCM with name-as-AAD + keyring
-    ├── logging-sqlite     run logs
-    ├── scheduler-croner   cron triggers
-    ├── mcp-client         stdio + Streamable HTTP + SSE
-    ├── channel-console    stdout
-    ├── channel-slack      Slack webhooks + bot tokens
-    ├── channel-email      Resend
-    ├── channel-webhook    generic POST + HMAC
-    ├── storage-local      (stub)
-    └── auth-local         (stub — OAuth lifecycle Phase 9b)
+
+apps/
+├── cli/                   oddjob CLI (citty)
+└── dashboard/             React 19 + TanStack Query/Router + Tailwind v4
+
+plugins/
+    ├── tools-core              bash, read, write, edit, grep, find, ls, datetime
+    ├── tools-coding            python_repl, javascript_repl
+    ├── tools-web-fetch         web_fetch tool + raw/browserbase/firecrawl/scrapingbee
+    ├── tools-web-search        web_search tool + brave/tavily/searxng/exa/serpapi
+    ├── channels-core           console/slack/email/webhook bundle
+    ├── env-{process,docker,daytona,local-strict}  sandbox providers
+    ├── llm-pi                  pi-ai wrapper (OpenRouter + Anthropic + OpenAI + ...)
+    ├── llm-anthropic           (stub — redundant; pi-ai covers)
+    ├── state-sqlite            blueprints, deployments, runs, KV memory
+    ├── queue-sqlite            leased queue with crash recovery
+    ├── queue-memory            in-process queue for tests
+    ├── secrets-sqlite          AES-256-GCM with name-as-AAD + keyring
+    ├── logging-sqlite          run logs
+    ├── scheduler-croner        cron triggers
+    ├── mcp-client              stdio + Streamable HTTP + SSE
+    ├── channel-{console,slack,email,webhook}  individual channel providers
+    ├── storage-local           (stub)
+    └── auth-local              OAuth lifecycle (MCP reauth)
 ```
 
 ---
