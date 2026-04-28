@@ -19,7 +19,12 @@ import type { Limits } from "@oddjob/core";
 import type { Run, RunId } from "@oddjob/core";
 import type { RunOutput } from "@oddjob/core";
 
-import { buildBuiltinTools, isBuiltinToolName, type EngineConfig } from "./builtin-tools/index.ts";
+import {
+  buildBuiltinTools,
+  buildSingleBuiltinTool as buildSingleBuiltinToolDirect,
+  type EngineConfig,
+} from "./builtin-tools/index.ts";
+import { isBuiltinToolName } from "@oddjob/core";
 import type { EngineLLM } from "./engine.ts";
 import type { PluginRegistry } from "@oddjob/core";
 import { startEgressProxy } from "@oddjob/core";
@@ -278,13 +283,17 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       deploymentId,
       onReauthNeeded: opts.onMcpReauthNeeded,
     });
-    const builtinTools = buildBuiltinTools({
-      allowlist: blueprint.tools,
+    // Tool resolution: ask the plugin registry FIRST for every name in the
+    // allowlist; fall back to buildSingleBuiltinTool only if no plugin claims
+    // it. This makes the plugin extraction in Phase C end-to-end: disabling
+    // tools-core actually disables bash/read/write/etc, and a local plugin
+    // can override `bash` by registering its own tool with that name.
+    //
+    // Builtin tools operate inside the sandbox session — use the SESSION-side
+    // workdir (e.g. "/work" in docker) so cwd values passed to `docker exec
+    // -w …` resolve inside the container, not on the host filesystem.
+    const toolBuildCtx = {
       environment: session,
-      // Builtin tools (bash/read/write/etc) operate inside the session. Use
-      // the SESSION-side workdir (e.g. "/work" inside docker) so cwd values
-      // passed to `docker exec -w …` resolve inside the container, not on the
-      // host filesystem.
       blueprintDir: session.sessionWorkdir,
       engine: opts.engine,
       onLog: append,
@@ -293,35 +302,40 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       state: opts.state,
       envAllowedHosts,
       engineRequiredHosts: engineHosts,
-    });
-    // Plugin-supplied tools: any name in the allowlist that isn't a builtin
-    // and IS registered in the plugin registry.
-    const pluginTools = (() => {
-      if (!opts.plugins) return [];
-      const out: ReturnType<typeof buildBuiltinTools> = [];
-      for (const name of blueprint.tools) {
-        if (isBuiltinToolName(name)) continue;
-        const svc = opts.plugins.toolFor(name);
-        if (!svc) continue;
-        try {
-          out.push(
-            svc.build({
-              environment: session,
-              blueprintDir: session.sessionWorkdir,
-              engine: opts.engine,
-              onLog: append,
-            }) as (typeof out)[number],
+    };
+    const resolvedTools: ReturnType<typeof buildBuiltinTools> = [];
+    const toolNames = new Set<string>();
+    for (const entry of blueprint.tools) {
+      const name = typeof entry === "string" ? entry : entry;
+      if (toolNames.has(name)) continue;
+      toolNames.add(name);
+      const svc = opts.plugins?.toolFor(name);
+      try {
+        if (svc) {
+          resolvedTools.push(
+            svc.build(toolBuildCtx) as (typeof resolvedTools)[number],
           );
-        } catch (err) {
-          append({
-            timestamp: Date.now(),
-            level: "error",
-            message: `plugin tool '${name}' failed to build: ${(err as Error).message}`,
-          });
+          continue;
         }
+        if (isBuiltinToolName(name)) {
+          // Fallback for setups without a plugin registry (tests, embedded use).
+          const built = buildSingleBuiltinToolDirect(name, toolBuildCtx);
+          if (built) resolvedTools.push(built as (typeof resolvedTools)[number]);
+          continue;
+        }
+        append({
+          timestamp: Date.now(),
+          level: "warn",
+          message: `tool '${name}' not registered in plugin registry and not a known builtin — skipping`,
+        });
+      } catch (err) {
+        append({
+          timestamp: Date.now(),
+          level: "error",
+          message: `tool '${name}' failed to build: ${(err as Error).message}`,
+        });
       }
-      return out;
-    })();
+    }
     // Register report_status when [outcomes] is declared so the agent knows
     // the harness expects an authoritative verdict.
     const reportStatusTool = blueprint.outcomes
@@ -337,8 +351,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         })
       : undefined;
     const tools = [
-      ...builtinTools,
-      ...pluginTools,
+      ...resolvedTools,
       ...scriptTools,
       ...mcpRuntime.tools,
       ...(skillTool ? [skillTool] : []),

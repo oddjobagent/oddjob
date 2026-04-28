@@ -184,6 +184,32 @@ export interface ToolBuildContext {
   blueprintDir: string;
   engine?: import("../types/builtin-tools.ts").EngineConfig;
   onLog?: (entry: import("../providers/logging.ts").LogEntry) => void;
+  /**
+   * Plugin registry — passed so a plugin-built tool (e.g. web_fetch) can
+   * dispatch through registered WebFetchService / WebSearchService backends
+   * instead of the legacy embedded providers.
+   */
+  plugins?: import("./registry.ts").PluginRegistry;
+  /**
+   * Secrets provider — used by web_search / web_fetch dispatchers to resolve
+   * `provider_credentials` rows for the configured backend plugin. Optional;
+   * tests omit it.
+   */
+  secrets?: import("../providers/secrets.ts").SecretsProvider;
+  /** State provider — used to look up current `provider_credentials` rows. */
+  state?: import("../providers/state.ts").StateProvider;
+  /**
+   * Hosts the surrounding environment permits egress to. Set when the env's
+   * networking is `"limited"`; left undefined for unrestricted envs. When
+   * defined, web_fetch + web_search refuse to dispatch to hosts outside the
+   * union of `envAllowedHosts ∪ engineRequiredHosts`.
+   */
+  envAllowedHosts?: readonly string[];
+  /**
+   * Hosts the engine itself must reach (LLM provider base URL + declared MCP
+   * server hostnames). Always permitted alongside `envAllowedHosts`.
+   */
+  engineRequiredHosts?: readonly string[];
 }
 
 // EnvironmentService -------------------------------------------------------

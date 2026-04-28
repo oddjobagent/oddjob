@@ -83,11 +83,14 @@ export class PluginRegistry {
         case "model-provider":
           this.providers.set(svc.id, svc);
           break;
+        // tool / channel / web-* services use last-wins so local plugins can
+        // override bundled ones. CLI registers bundled plugins first, then
+        // local — so a user's local `bash` tool replaces the bundled one.
         case "channel":
-          if (!this.channels.has(svc.type)) this.channels.set(svc.type, svc);
+          this.channels.set(svc.type, svc);
           break;
         case "tool":
-          if (!this.tools.has(svc.name)) this.tools.set(svc.name, svc);
+          this.tools.set(svc.name, svc);
           break;
         case "mcp-bundle":
           this.mcpBundles.set(slug, svc);
@@ -99,10 +102,10 @@ export class PluginRegistry {
           this.environments.set(svc.id, svc);
           break;
         case "web-search":
-          if (!this.webSearches.has(svc.id)) this.webSearches.set(svc.id, svc);
+          this.webSearches.set(svc.id, svc);
           break;
         case "web-fetch":
-          if (!this.webFetches.has(svc.id)) this.webFetches.set(svc.id, svc);
+          this.webFetches.set(svc.id, svc);
           break;
       }
     }
