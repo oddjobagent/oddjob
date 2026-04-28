@@ -101,13 +101,19 @@ Worker pool invariant: `worker.processRun()` does these steps in order, with fin
         (engine_required = LLM provider baseUrl host + HTTP MCP server hosts)
      b. startEgressProxy({ allowedHosts, secrets, blockTokenShapes: true, log })
      c. Receive { url, caPem, stop } — caPem is empty in v1, reserved for v1.1 MITM
-4. provider.spawn({ config: env.config, workdir, env: filteredEnv,
-                    timeoutMs, signal, egressProxy: { url, caPem } })
-   - filteredEnv passes through SecretsProvider lookups for blueprint.secrets refs
-   - provider injects HTTPS_PROXY / HTTP_PROXY / NO_PROXY="" / NODE_USE_ENV_PROXY=1 /
-     NODE_EXTRA_CA_CERTS into the spawned shell when egressProxy is set
-5. Build harness tools (built-ins routed through EnvironmentSession.exec/writeFile/readFile;
-   web_fetch/web_search proxied; MCP tools dispatched to mcp-client)
+4. provider.spawn({ config: env.config, hostWorkdir, timeoutMs,
+                    signal, egressProxy: { url, caPem } })
+   - The agent loop does NOT pass per-blueprint secrets in `env`. Resolved
+     secret values reach upstream services only via (a) MCP-client header
+     injection at call time and (b) the proxy's plain-HTTP `${secret:...}`
+     rewrite. v1.1 ships TLS-terminating MITM for full HTTPS coverage.
+   - provider injects HTTPS_PROXY / HTTP_PROXY / NO_PROXY="" /
+     NODE_USE_ENV_PROXY=1 / NODE_EXTRA_CA_CERTS into the spawned shell
+     when egressProxy is set
+5. Build harness tools (built-ins routed through EnvironmentSession.exec/
+   writeFile/readFile; web_fetch + web_search run on the host process but
+   honour the env's allowed_hosts via a dispatcher-level gate; MCP tools
+   dispatched to mcp-client)
 6. runAgentLoop(messages, systemPrompt, tools, signal)
 7. Persist Run row with environmentSnapshot = { id?, source, serviceId, trustTier }
    (immutable provenance — survives later env edits or deletions)

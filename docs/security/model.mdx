@@ -138,6 +138,21 @@ The token-shape catalog covers OpenAI (`sk-...`), Anthropic
   `--network=oddjob-egress` with iptables-level filtering for hard
   enforcement parity with local-strict.
 
+- **HTTPS DNS-rebinding from the host-side `web_fetch`.** The dispatcher
+  validates the URL host against the env allowlist and SSRF guard at gate
+  time; the raw fetcher then re-resolves at connect time and re-validates
+  the resolved IP (via the shared `isPrivateV4`/`isPrivateV6` table) so
+  an attacker who controls the hostname's DNS can't rebind to RFC1918 /
+  loopback / cloud-metadata between the gate and our connect. For HTTP,
+  fetch then connects to the validated IP literal (Host header preserved
+  for vhost routing). For HTTPS we deliberately don't rewrite the
+  hostname (would break SNI + cert verification) — fetch re-resolves a
+  third time. Residual rebind window: between our re-validate and
+  fetch's third resolve, the DNS could swap to a private IP. Closing
+  this fully requires a custom fetch dispatcher Bun doesn't expose yet
+  (v1.1). The proxy CONNECT path doesn't have this gap because it
+  connects to the pinned IP itself.
+
 ### Sandbox env vars
 
 The agent loop does **not** inject blueprint secrets into the sandbox
