@@ -49,6 +49,7 @@ describe("pi-models canary", () => {
     const r = svc.createClient("acme-labs/totally-fake-model-2026", { apiKey: "k" });
     expect(r.model.provider).toBe("openrouter");
     expect(r.model.id).toBe("acme-labs/totally-fake-model-2026");
+    // OpenRouter is openai-completions per pi-ai's exemplar.
     expect(r.model.api).toBe("openai-completions");
   });
 
@@ -58,15 +59,28 @@ describe("pi-models canary", () => {
     expect(() => svc.createClient("totally-unknown-claude", { apiKey: "k" })).toThrow(/no model/);
   });
 
-  test("custom baseUrl synthesises the model rather than using registry baseUrl", () => {
-    const svc = plugin.services.find((s) => s.kind === "model-provider" && s.id === "openai");
-    if (!svc || svc.kind !== "model-provider") throw new Error("openai missing");
+  test("custom baseUrl on a known model preserves api + overrides baseUrl", () => {
+    const svc = plugin.services.find((s) => s.kind === "model-provider" && s.id === "anthropic");
+    if (!svc || svc.kind !== "model-provider") throw new Error("anthropic missing");
     const known = svc.listModels()[0];
-    if (!known) throw new Error("no openai models");
+    if (!known) throw new Error("no anthropic models");
     const r = svc.createClient(known.id, {
       apiKey: "k",
-      options: { baseUrl: "https://my-azure-proxy.example.com/v1" },
+      options: { baseUrl: "https://my-anthropic-proxy.example.com" },
     });
-    expect(r.model.baseUrl).toBe("https://my-azure-proxy.example.com/v1");
+    expect(r.model.baseUrl).toBe("https://my-anthropic-proxy.example.com");
+    // Critical: anthropic stays anthropic-messages, not openai-completions.
+    expect(r.model.api).toBe("anthropic-messages");
+  });
+
+  test("cost conversion preserves pi-ai's per-million values verbatim", () => {
+    const svc = plugin.services.find((s) => s.kind === "model-provider" && s.id === "anthropic");
+    if (!svc || svc.kind !== "model-provider") throw new Error("anthropic missing");
+    const opus = svc.listModels().find((m) => m.id.includes("opus-4-1"));
+    if (!opus) throw new Error("expected an opus-4 model");
+    // pi-ai bundles claude-opus-4-1 at $15/M input — assert we don't
+    // accidentally multiply by 1M (the codex-flagged regression).
+    expect(opus.inputCostPerMillion).toBeLessThan(1000);
+    expect(opus.inputCostPerMillion).toBeGreaterThan(0);
   });
 });

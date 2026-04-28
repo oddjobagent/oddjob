@@ -78,29 +78,23 @@ function tryRegistry<TApi extends Api>(
 
 /**
  * Synthesise a Model for a passthrough provider when pi-ai doesn't have the
- * exact id. Uses sensible defaults; the agent loop tolerates 0-cost models.
+ * exact id. Borrows api+baseUrl from another model in the same provider so
+ * Anthropic-style passthroughs (Fireworks, Vercel) stay anthropic-messages
+ * and OpenAI-style ones stay openai-completions.
  */
-function synthesiseModel(provider: string, modelId: string, baseUrl: string): Model<Api> {
+function synthesiseModel(provider: string, modelId: string, exemplar: Model<Api>): Model<Api> {
   return {
     id: modelId,
     name: `${modelId} (${provider})`,
-    api: "openai-completions" as Api,
+    api: exemplar.api,
     provider,
-    baseUrl,
+    baseUrl: exemplar.baseUrl,
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 200_000,
     maxTokens: 16_384,
   };
-}
-
-function defaultBaseUrlFor(provider: string): string {
-  // Use any pi-ai model from this provider as a baseUrl source — every model
-  // in a provider shares the same baseUrl. Fallback to an empty string only
-  // for providers with no models (shouldn't happen in practice).
-  const models = piGetModels(provider as never);
-  return (models[0]?.baseUrl as string | undefined) ?? "";
 }
 
 export default definePlugin(
@@ -120,10 +114,9 @@ export default definePlugin(
         authHint: `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY.`,
       };
       const isPassthrough = PASSTHROUGH_PROVIDERS.has(provider);
-      const defaultBase = defaultBaseUrlFor(provider);
-      const models: readonly ModelInfo[] = piGetModels(provider as never).map((m) =>
-        toModelInfo(m as Model<Api>),
-      );
+      const piModels = piGetModels(provider as never) as Model<Api>[];
+      const exemplar: Model<Api> | undefined = piModels[0];
+      const models: readonly ModelInfo[] = piModels.map((m) => toModelInfo(m));
       b.modelProvider({
         id: provider,
         displayName: meta.displayName,
@@ -132,19 +125,21 @@ export default definePlugin(
         listModels: () => models,
         createClient: (modelId: string, credential: ProviderCredential): ResolvedRoleModel => {
           const customBase = readCustomBaseUrl(credential.options, credential.baseUrl);
-          const baseUrl = customBase ?? defaultBase;
-          // When a custom baseUrl is in play, never use pi-ai's registry
-          // entry directly — its baseUrl would mask the user's proxy/Azure
-          // endpoint.
-          const registryModel = customBase ? undefined : tryRegistry<Api>(provider, modelId);
+          // Always prefer pi-ai's registry entry (it carries the correct
+          // api kind, default baseUrl, accurate context/cost). Then layer
+          // a custom baseUrl on top if supplied.
+          const registryModel = tryRegistry<Api>(provider, modelId);
           let model: Model<Api>;
           if (registryModel) {
             model = applyCustomBaseUrl(registryModel, customBase);
-          } else if (isPassthrough || customBase) {
-            model = synthesiseModel(provider, modelId, baseUrl);
+          } else if (isPassthrough && exemplar) {
+            // Passthrough provider with an unknown id (e.g. OpenRouter
+            // `acme/foo`) — synthesise using the provider's exemplar api +
+            // baseUrl so Anthropic-style passthroughs stay anthropic-messages.
+            model = applyCustomBaseUrl(synthesiseModel(provider, modelId, exemplar), customBase);
           } else {
-            // Strict provider: pi-ai's registry is authoritative. Surface a
-            // useful error rather than silently calling an unknown id.
+            // Strict provider, unknown id — surface a useful error rather
+            // than silently calling something we can't dispatch.
             throw new Error(
               `pi-models: provider '${provider}' has no model '${modelId}' in pi-ai's registry`,
             );

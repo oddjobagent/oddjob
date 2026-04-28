@@ -11,14 +11,18 @@ export function toModelInfo<TApi extends Api>(m: Model<TApi>): ModelInfo {
     vision: m.input.includes("image"),
     reasoning: m.reasoning,
   };
+  // pi-ai's `cost.{input,output,cacheRead,cacheWrite}` are already per-million
+  // tokens (e.g. claude-opus-4 has cost.input = 15, meaning $15/M). No
+  // conversion needed; the multiply-by-1M in the deleted plugin-anthropic
+  // was actually converting per-million → per-token for pi-ai's Model type.
   return {
     id: m.id,
     displayName: m.name,
     contextWindow: m.contextWindow,
     maxOutput: m.maxTokens,
-    inputCostPerMillion: m.cost.input * 1_000_000,
-    outputCostPerMillion: m.cost.output * 1_000_000,
-    cachedInputCostPerMillion: m.cost.cacheRead * 1_000_000,
+    inputCostPerMillion: m.cost.input,
+    outputCostPerMillion: m.cost.output,
+    cachedInputCostPerMillion: m.cost.cacheRead,
     supports,
   };
 }
