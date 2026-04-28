@@ -8,12 +8,40 @@
 // following, otherwise an allowed origin can 302 us at a private IP /
 // disallowed host.
 
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 import TurndownService from "turndown";
 
 import type { ProviderCredential, WebFetchOptions, WebFetchResult } from "@oddjob/sdk";
 
 const MAX_REDIRECTS = 3;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * DNS rebinding mitigation. Resolves the hostname once and returns a URL
+ * that points the host portion at the resolved IP, so `fetch()` connects
+ * to that exact IP instead of re-resolving (which could land on a private
+ * IP between the dispatcher's SSRF/allowlist check and the actual connect).
+ *
+ * Also returns the original hostname for use as the `Host` request header
+ * — upstream virtual-host routing + TLS SNI both rely on it. For TLS,
+ * Bun's fetch uses the URL's hostname for SNI; passing an IP defeats SNI.
+ * That's an acceptable v1 tradeoff for plain HTTP and HTTPS to an
+ * IP-addressable host. Sites that strictly require SNI may break under
+ * limited-networking egress; this is documented in SECURITY.md.
+ */
+async function pinUrl(rawUrl: string): Promise<{ pinnedUrl: URL; originalHost: string }> {
+  const u = new URL(rawUrl);
+  const original = u.hostname;
+  if (isIP(original)) {
+    return { pinnedUrl: u, originalHost: original };
+  }
+  const r = await lookup(original);
+  const pinned = new URL(rawUrl);
+  pinned.hostname = isIP(r.address) === 6 ? `[${r.address}]` : r.address;
+  return { pinnedUrl: pinned, originalHost: original };
+}
 
 async function readCapped(
   resp: Response,
@@ -59,11 +87,17 @@ export async function rawFetch(
   let redirects = 0;
   let resp: Response;
   while (true) {
-    resp = await fetchFn(target, {
+    // Pin the hostname to its resolved IP for the actual connect — closes
+    // DNS rebinding window between the dispatcher's allowlist + SSRF check
+    // and fetch's own resolver. Tests can opt out via fetchImpl override.
+    const { pinnedUrl, originalHost } = opts?.fetchImpl
+      ? { pinnedUrl: new URL(target), originalHost: new URL(target).hostname }
+      : await pinUrl(target);
+    resp = await fetchFn(pinnedUrl.toString(), {
       method: "GET",
       redirect: "manual",
       signal: opts?.signal,
-      headers: { "user-agent": "oddjob-web-fetch/0.1" },
+      headers: { "user-agent": "oddjob-web-fetch/0.1", host: originalHost },
     });
     if (resp.status >= 300 && resp.status < 400 && resp.headers.has("location")) {
       if (redirects >= MAX_REDIRECTS) {

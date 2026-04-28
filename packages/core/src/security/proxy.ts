@@ -718,9 +718,18 @@ async function handleHttp(
           rewrittenBody.byteOffset,
           rewrittenBody.byteOffset + rewrittenBody.byteLength,
         ) as ArrayBuffer);
-    const upstream = await fetch(targetUrl.toString(), {
+    // Build a pinned-IP URL: replace the hostname with the IP we resolved
+    // and validated above (line ~632). This is the actual DNS-rebinding
+    // mitigation — without it, fetch's own resolver would re-lookup the
+    // hostname on every call and could land on a private IP between our
+    // check and the connect. We preserve the original Host header so the
+    // upstream's virtual-host routing still works.
+    const pinnedTarget = new URL(targetUrl);
+    pinnedTarget.hostname = isIP(pinnedIp) === 6 ? `[${pinnedIp}]` : pinnedIp;
+    const pinnedHeaders = { ...rewrittenHeaders, host: gateHost };
+    const upstream = await fetch(pinnedTarget.toString(), {
       method: head.method,
-      headers: rewrittenHeaders,
+      headers: pinnedHeaders,
       body: fetchBody,
       redirect: "manual",
     });

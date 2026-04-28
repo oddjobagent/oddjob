@@ -195,7 +195,7 @@ The harness ships 12 built-in tools. **Opt-in per blueprint** — list them in `
 
 Read/write/edit/grep/find/ls/bash come from `@mariozechner/pi-coding-agent` — same shape Claude Code uses. The REPLs and web\_\* are oddjob-specific.
 
-**Sandbox posture:** v1 tools run as host processes — _not_ a security boundary. Same trust model as `bash`. Cloud sandboxes (E2B / Modal / Daytona / Vercel Sandbox) land in Phase 15 as a pluggable `SandboxProvider`.
+**Sandbox posture:** built-in tools (`bash`, file IO, `python_repl`, `javascript_repl`) execute through the per-Run `EnvironmentSession` of the deployment's Environment, not the host process. Tier matters — `process` (trusted) is host-shell; `local-strict` is OS-sandboxed (seatbelt / bwrap); `container` is Docker; `remote-vm` is Daytona Firecracker. See [`docs/security/model.mdx`](docs/security/model.mdx) and [`docs/security/architecture.mdx`](docs/security/architecture.mdx) for the full enforcement matrix and the v1 limitations (HTTPS body inspection, raw-socket bypass on Docker default bridge).
 
 Example:
 
@@ -279,9 +279,9 @@ table and are referenced by deployments via `environment = "<id>"` in
 (seatbelt on Mac, bwrap on Linux). Switch via:
 
 ```
-oddjob env set-default <env-id>
-oddjob env providers       # list registered services + available() status
-oddjob env credential add daytona --api-key dtn_...   # for remote providers
+oddjob environment set-default <env-id>
+oddjob environment providers       # list registered services + available() status
+oddjob environment credential add daytona --api-key dtn_...   # for remote providers
 ```
 
 ### Egress policy

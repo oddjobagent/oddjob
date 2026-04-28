@@ -28,9 +28,10 @@ export interface ScriptToolOptions {
    * For trusted / local-strict tiers `sessionScriptsRoot === blueprintDir`
    * and the rebase is a no-op. For env-docker the bind-mount makes the
    * blueprint dir visible at `/work` so `<host>/scripts/x.ts` becomes
-   * `/work/scripts/x.ts`. env-daytona has no bind-mount so absolute host
-   * paths still won't resolve there — caller should not invoke script tools
-   * on remote-vm tier without first uploading the script body (TODO v1.1).
+   * `/work/scripts/x.ts`. For env-daytona (no bind-mount) the script body
+   * is lazily uploaded via `environment.writeFile()` on first invocation
+   * (see `makeScriptTool`); subsequent calls within the same Run reuse
+   * the uploaded file.
    */
   sessionScriptsRoot: string;
   onLog?: (entry: LogEntry) => void;
@@ -102,6 +103,15 @@ function makeScriptTool(
 ): AgentTool<TSchema, ScriptToolDetails> {
   // Sidecar JSON schema is read at build time from the HOST filesystem.
   const { schema, description } = loadSchemaSidecar(hostAbsPath);
+  // Upload-on-first-invocation for environments that don't bind-mount the
+  // blueprint dir (env-daytona). When `hostAbsPath === sessionAbsPath` the
+  // session sees the host filesystem directly (env-process / local-strict
+  // pass-through; env-docker bind-mount); skip the upload entirely. When
+  // they differ, lazily read the script body and write it via
+  // environment.writeFile before the first invocation. Tracked per tool so
+  // subsequent calls skip it.
+  const needsUpload = hostAbsPath !== sessionAbsPath;
+  let uploaded = !needsUpload;
   const tool: AgentTool<TSchema, ScriptToolDetails> = {
     name: toolName,
     label: toolName,
@@ -114,6 +124,25 @@ function makeScriptTool(
           details: { exitCode: -1, durationMs: 0, truncated: false, stderr: "aborted" },
           terminate: true,
         };
+      }
+      if (!uploaded) {
+        try {
+          const body = readFileSync(hostAbsPath, "utf8");
+          await opts.environment.writeFile(sessionAbsPath, body);
+          uploaded = true;
+        } catch (err) {
+          return {
+            content: [
+              { type: "text", text: `script upload failed: ${(err as Error).message}` },
+            ],
+            details: {
+              exitCode: -1,
+              durationMs: 0,
+              truncated: false,
+              stderr: (err as Error).message,
+            },
+          };
+        }
       }
       const stdinJson = JSON.stringify((params ?? {}) as FreeFormParams);
       // 15i-3 codex follow-up: invoke against the SESSION-side abs path so

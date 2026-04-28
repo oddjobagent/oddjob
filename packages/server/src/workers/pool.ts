@@ -6,7 +6,7 @@ import type {
   ResolvedRoleModel,
   RoleAssignment,
 } from "@oddjob/core";
-import { resolveEnvironment } from "@oddjob/core";
+import { redactStringified, resolveEnvironment } from "@oddjob/core";
 import { createEngineLLM, runOnce } from "@oddjob/agent";
 
 import type { Runtime } from "../runtime.ts";
@@ -612,7 +612,12 @@ export class WorkerPool {
       `**Approval needed** for run \`${req.runId}\``,
       `deployment: \`${dep.name}\``,
       `tool: \`${req.toolName}\``,
-      `args: \`\`\`${JSON.stringify(req.args).slice(0, 400)}\`\`\``,
+      // Codex 15i final: tool args may contain `${secret:NAME}` placeholders
+      // OR raw vendor token shapes. Channel deliveries route through Slack /
+      // email / webhook etc., so we MUST redact at the source. The storage-
+      // layer redaction in logging-sqlite catches the run_logs path; this
+      // closes the parallel external-channel exfil path.
+      `args: \`\`\`${(redactStringified(req.args) ?? "null").slice(0, 400)}\`\`\``,
       "",
       `Approve: \`POST /api/v1/runs/${req.runId}/confirm\` { tool_use_id: "${req.toolUseId}", result: "allow" }`,
       `Deny:    \`POST /api/v1/runs/${req.runId}/confirm\` { tool_use_id: "${req.toolUseId}", result: "deny", deny_message: "..." }`,
