@@ -1,7 +1,7 @@
-// @oddjob/plugin-web-search-core — bundles 5 web-search providers.
-// Each is an independent WebSearchService keyed by id; the engine config
-// (`[builtin_tools.web_search] plugin = "..."`) selects which one the
-// `web_search` builtin tool dispatches through.
+// @oddjob/plugin-tools-web-search — registers the `web_search` agent tool plus
+// 5 search providers (Brave, Tavily, SearXNG, Exa, SerpAPI). Each provider is
+// a WebSearchService keyed by id; engine config selects which the tool uses
+// (`[builtin_tools.web_search] plugin = "..."`).
 
 import { definePlugin } from "@oddjob/sdk";
 
@@ -10,16 +10,18 @@ import { exaResolveHost, exaSearch } from "./exa.ts";
 import { searxngResolveHost, searxngSearch } from "./searxng.ts";
 import { serpapiResolveHost, serpapiSearch } from "./serpapi.ts";
 import { tavilyResolveHost, tavilySearch } from "./tavily.ts";
+import { webSearchTool } from "./web_search.ts";
 
 export default definePlugin(
   {
-    slug: "web-search-core",
-    name: "Web Search Providers",
-    description: "Bundled web-search providers: Brave, Tavily, SearXNG, Exa, SerpAPI.",
+    slug: "tools-web-search",
+    name: "Web Search Tool + Providers",
+    description: "web_search tool + bundled providers: Brave, Tavily, SearXNG, Exa, SerpAPI.",
     version: "0.1.0",
     author: "Oddjob",
   },
   (b) => {
+    b.tool(webSearchTool);
     b.webSearch({
       id: "brave",
       displayName: "Brave Search",

@@ -1,7 +1,7 @@
 {
-  "name": "@oddjob/plugin-web-search-core",
+  "name": "@oddjob/plugin-tools-web-search",
   "version": "0.0.0",
-  "description": "Oddjob plugin: bundled web-search providers (Brave, Tavily, SearXNG, Exa, SerpAPI)",
+  "description": "Oddjob plugin: web_search tool + bundled providers (Brave, Tavily, SearXNG, Exa, SerpAPI)",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -14,6 +14,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@oddjob/agent": "workspace:*",
     "@oddjob/core": "workspace:*",
     "@oddjob/sdk": "workspace:*"
   }

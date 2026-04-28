@@ -74,7 +74,7 @@ export interface BuildBuiltinToolsOptions {
 
 /**
  * Build a single built-in tool by name. Used by `buildBuiltinTools` directly
- * and by the `@oddjob/plugin-builtin-tools` ToolService entries (so the registry
+ * and by the `@oddjob/plugin-tools-*` ToolService entries (so the registry
  * can serve the same factories the legacy switch always did).
  */
 export function buildSingleBuiltinTool(

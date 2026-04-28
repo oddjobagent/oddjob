@@ -63,7 +63,7 @@ export class DaytonaEnvironmentProvider implements EnvironmentProvider {
         timestamp: Date.now(),
         level: "warn",
         message:
-          "egress proxy not applied: env-daytona (remote-vm tier) cannot reach operator localhost. Daytona networkBlockAll is in effect when `networking = \"limited\"`; the per-host allowlist gate the broker would otherwise enforce is therefore not active. v1.1 will introduce an Oddjob-managed relay.",
+          'egress proxy not applied: env-daytona (remote-vm tier) cannot reach operator localhost. Daytona networkBlockAll is in effect when `networking = "limited"`; the per-host allowlist gate the broker would otherwise enforce is therefore not active. v1.1 will introduce an Oddjob-managed relay.',
         meta,
       });
     }
@@ -71,10 +71,7 @@ export class DaytonaEnvironmentProvider implements EnvironmentProvider {
     // (sandbox.fs.uploadFile); sessionWorkdir is the in-VM path that tools
     // receive as their default cwd.
     const sessionWorkdir =
-      config.sessionWorkdir ??
-      config.config?.workingDir ??
-      config.workdir ??
-      "/home/daytona/work";
+      config.sessionWorkdir ?? config.config?.workingDir ?? config.workdir ?? "/home/daytona/work";
     const sandbox = await this.client.create(
       {
         image,

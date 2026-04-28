@@ -5,11 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import plugin from "./index.ts";
-import {
-  DockerEnvironmentProvider,
-  type RunDockerArgs,
-  type RunDockerResult,
-} from "./provider.ts";
+import { DockerEnvironmentProvider, type RunDockerArgs, type RunDockerResult } from "./provider.ts";
 
 describe("env-docker plugin (unit)", () => {
   test("manifest slug + service shape", () => {

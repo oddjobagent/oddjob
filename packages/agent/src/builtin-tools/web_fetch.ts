@@ -4,7 +4,7 @@
 // delegates the actual fetch.
 //
 // Defaults to plugin "raw" when registered. The "raw" backend is the
-// Bun-native fetch + HTML→markdown lifted into @oddjob/plugin-web-fetch-core.
+// Bun-native fetch + HTML→markdown lifted into @oddjob/plugin-tools-web-fetch.
 
 import type { Static } from "typebox";
 import { Type } from "typebox";

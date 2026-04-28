@@ -1,4 +1,6 @@
-// @oddjob/plugin-web-fetch-core — bundles 4 web-fetch backends.
+// @oddjob/plugin-tools-web-fetch — registers the `web_fetch` agent tool plus
+// 4 backends (raw, Browserbase, Firecrawl, ScrapingBee). The backend used is
+// selected by engine config `[builtin_tools.web_fetch] plugin = "..."`.
 
 import { definePlugin } from "@oddjob/sdk";
 
@@ -6,17 +8,19 @@ import { browserbaseFetch } from "./browserbase.ts";
 import { firecrawlFetch } from "./firecrawl.ts";
 import { rawFetch } from "./raw.ts";
 import { scrapingbeeFetch } from "./scrapingbee.ts";
+import { webFetchTool } from "./web_fetch.ts";
 
 export default definePlugin(
   {
-    slug: "web-fetch-core",
-    name: "Web Fetch Backends",
+    slug: "tools-web-fetch",
+    name: "Web Fetch Tool + Backends",
     description:
-      "Bundled web-fetch backends: raw (Bun-native), Browserbase, Firecrawl, ScrapingBee.",
+      "web_fetch tool + bundled backends: raw (Bun-native), Browserbase, Firecrawl, ScrapingBee.",
     version: "0.1.0",
     author: "Oddjob",
   },
   (b) => {
+    b.tool(webFetchTool);
     b.webFetch({
       id: "raw",
       displayName: "Raw (Bun-native)",

@@ -1,9 +1,0 @@
-slug = "builtin-tools"
-name = "Built-in Tools"
-description = "Bundled agent tools (bash, read/write/edit, grep/find/ls, web_fetch, web_search, python_repl, javascript_repl, datetime)."
-version = "0.1.0"
-author = "Oddjob"
-entry = "src/index.ts"
-
-[oddjob]
-engine = "*"

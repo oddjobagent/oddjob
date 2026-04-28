@@ -19,11 +19,10 @@ import anthropicPlugin from "@oddjob/plugin-anthropic";
 import openrouterPlugin from "@oddjob/plugin-openrouter";
 import llamaLocalPlugin from "@oddjob/plugin-llama-local";
 import channelsCorePlugin from "@oddjob/plugin-channels-core";
-import builtinToolsPlugin from "@oddjob/plugin-builtin-tools";
 import toolsCodingPlugin from "@oddjob/plugin-tools-coding";
 import toolsCorePlugin from "@oddjob/plugin-tools-core";
-import webSearchCorePlugin from "@oddjob/plugin-web-search-core";
-import webFetchCorePlugin from "@oddjob/plugin-web-fetch-core";
+import toolsWebFetchPlugin from "@oddjob/plugin-tools-web-fetch";
+import toolsWebSearchPlugin from "@oddjob/plugin-tools-web-search";
 import envProcessPlugin from "@oddjob/plugin-env-process";
 import envLocalStrictPlugin from "@oddjob/plugin-env-local-strict";
 import envDockerPlugin from "@oddjob/plugin-env-docker";
@@ -80,9 +79,8 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     channelsCorePlugin,
     toolsCorePlugin,
     toolsCodingPlugin,
-    builtinToolsPlugin,
-    webSearchCorePlugin,
-    webFetchCorePlugin,
+    toolsWebFetchPlugin,
+    toolsWebSearchPlugin,
     envProcessPlugin,
     envLocalStrictPlugin,
     envDockerPlugin,

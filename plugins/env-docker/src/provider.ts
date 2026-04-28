@@ -201,8 +201,7 @@ export class DockerEnvironmentProvider implements EnvironmentProvider {
       config.hostWorkdir ??
       config.workdir
     );
-    const sessionWorkdir =
-      config.sessionWorkdir ?? config.config?.workingDir ?? "/work";
+    const sessionWorkdir = config.sessionWorkdir ?? config.config?.workingDir ?? "/work";
 
     // Build env file so secrets don't leak via `ps auxe`. Track every host
     // path we materialise inside the (possibly caller-owned) workdir so

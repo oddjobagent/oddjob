@@ -32,7 +32,6 @@
         "@oddjob/logging-sqlite": "workspace:*",
         "@oddjob/mcp-client": "workspace:*",
         "@oddjob/plugin-anthropic": "workspace:*",
-        "@oddjob/plugin-builtin-tools": "workspace:*",
         "@oddjob/plugin-channels-core": "workspace:*",
         "@oddjob/plugin-env-daytona": "workspace:*",
         "@oddjob/plugin-env-docker": "workspace:*",
@@ -43,8 +42,8 @@
         "@oddjob/plugin-openrouter": "workspace:*",
         "@oddjob/plugin-tools-coding": "workspace:*",
         "@oddjob/plugin-tools-core": "workspace:*",
-        "@oddjob/plugin-web-fetch-core": "workspace:*",
-        "@oddjob/plugin-web-search-core": "workspace:*",
+        "@oddjob/plugin-tools-web-fetch": "workspace:*",
+        "@oddjob/plugin-tools-web-search": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
         "@oddjob/scheduler-croner": "workspace:*",
         "@oddjob/sdk": "workspace:*",
@@ -333,15 +332,6 @@
         "@oddjob/sdk": "workspace:*",
       },
     },
-    "plugins/builtin-tools": {
-      "name": "@oddjob/plugin-builtin-tools",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/agent": "workspace:*",
-        "@oddjob/core": "workspace:*",
-        "@oddjob/sdk": "workspace:*",
-      },
-    },
     "plugins/channels-core": {
       "name": "@oddjob/plugin-channels-core",
       "version": "0.0.0",
@@ -433,10 +423,11 @@
         "@oddjob/sdk": "workspace:*",
       },
     },
-    "plugins/web-fetch-core": {
-      "name": "@oddjob/plugin-web-fetch-core",
+    "plugins/tools-web-fetch": {
+      "name": "@oddjob/plugin-tools-web-fetch",
       "version": "0.0.0",
       "dependencies": {
+        "@oddjob/agent": "workspace:*",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
         "turndown": "^7.2.0",
@@ -445,10 +436,11 @@
         "@types/turndown": "^5.0.5",
       },
     },
-    "plugins/web-search-core": {
-      "name": "@oddjob/plugin-web-search-core",
+    "plugins/tools-web-search": {
+      "name": "@oddjob/plugin-tools-web-search",
       "version": "0.0.0",
       "dependencies": {
+        "@oddjob/agent": "workspace:*",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
       },
@@ -713,8 +705,6 @@
 
     "@oddjob/plugin-anthropic": ["@oddjob/plugin-anthropic@workspace:plugins/anthropic"],
 
-    "@oddjob/plugin-builtin-tools": ["@oddjob/plugin-builtin-tools@workspace:plugins/builtin-tools"],
-
     "@oddjob/plugin-channels-core": ["@oddjob/plugin-channels-core@workspace:plugins/channels-core"],
 
     "@oddjob/plugin-env-daytona": ["@oddjob/plugin-env-daytona@workspace:plugins/env-daytona"],
@@ -735,9 +725,9 @@
 
     "@oddjob/plugin-tools-core": ["@oddjob/plugin-tools-core@workspace:plugins/tools-core"],
 
-    "@oddjob/plugin-web-fetch-core": ["@oddjob/plugin-web-fetch-core@workspace:plugins/web-fetch-core"],
+    "@oddjob/plugin-tools-web-fetch": ["@oddjob/plugin-tools-web-fetch@workspace:plugins/tools-web-fetch"],
 
-    "@oddjob/plugin-web-search-core": ["@oddjob/plugin-web-search-core@workspace:plugins/web-search-core"],
+    "@oddjob/plugin-tools-web-search": ["@oddjob/plugin-tools-web-search@workspace:plugins/tools-web-search"],
 
     "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:packages/providers/queue-memory"],
 

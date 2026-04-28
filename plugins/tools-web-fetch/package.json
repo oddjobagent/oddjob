@@ -1,7 +1,7 @@
 {
-  "name": "@oddjob/plugin-builtin-tools",
+  "name": "@oddjob/plugin-tools-web-fetch",
   "version": "0.0.0",
-  "description": "Oddjob plugin: 12 bundled built-in tools (bash, read, write, edit, grep, find, ls, web_fetch, web_search, python_repl, javascript_repl, datetime)",
+  "description": "Oddjob plugin: web_fetch tool + bundled backends (raw, Browserbase, Firecrawl, ScrapingBee)",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -16,6 +16,10 @@
   "dependencies": {
     "@oddjob/agent": "workspace:*",
     "@oddjob/core": "workspace:*",
-    "@oddjob/sdk": "workspace:*"
+    "@oddjob/sdk": "workspace:*",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/turndown": "^5.0.5"
   }
 }

@@ -64,14 +64,13 @@ describe("DaytonaEnvironmentProvider egress proxy honest doc (15i-2)", () => {
     // Hot-swap the private client with a stub. This is an internal test
     // contract: the constructor reads `opts.apiKey` to build a Daytona client,
     // and we replace that client wholesale here.
-    (
-      provider as unknown as { client: { create: (args: CreateArgs) => Promise<unknown> } }
-    ).client = {
-      create: async (args: CreateArgs) => {
-        captured.push(args);
-        return fakeSandbox;
-      },
-    };
+    (provider as unknown as { client: { create: (args: CreateArgs) => Promise<unknown> } }).client =
+      {
+        create: async (args: CreateArgs) => {
+          captured.push(args);
+          return fakeSandbox;
+        },
+      };
 
     const logs: LogEntry[] = [];
     await provider.spawn({
@@ -108,9 +107,7 @@ describe("DaytonaEnvironmentProvider egress proxy honest doc (15i-2)", () => {
 
   test("spawn without egressProxy emits no warn log", async () => {
     const provider = new DaytonaEnvironmentProvider({ apiKey: "dtn_" + "x".repeat(60) });
-    (
-      provider as unknown as { client: { create: () => Promise<unknown> } }
-    ).client = {
+    (provider as unknown as { client: { create: () => Promise<unknown> } }).client = {
       create: async () => ({
         process: { executeCommand: async () => ({ exitCode: 0, result: "" }) },
         fs: { uploadFile: async () => undefined, downloadFile: async () => Buffer.from("") },

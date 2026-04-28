@@ -221,10 +221,7 @@ export async function newWrapperContext(
   //   3. Legacy `workdir` alias.
   //   4. Fresh tempdir.
   const callerSuppliedWorkdir =
-    config.config?.workingDir ??
-    config.hostWorkdir ??
-    config.sessionWorkdir ??
-    config.workdir;
+    config.config?.workingDir ?? config.hostWorkdir ?? config.sessionWorkdir ?? config.workdir;
   let root: string;
   if (callerSuppliedWorkdir) {
     await validateStrictWorkdir(callerSuppliedWorkdir);
