@@ -46,7 +46,31 @@ const PRIVATE_HOST_PATTERNS: Array<(h: string) => boolean> = [
   },
   (h) => /^f[cd][0-9a-f]{2}:/.test(h),
   (h) => /^fe[89ab][0-9a-f]:/.test(h),
+  (h) => {
+    const v4 = ipv4FromMapped(h);
+    if (!v4) return false;
+    if (v4.startsWith("127.")) return true;
+    if (v4 === "0.0.0.0") return true;
+    if (v4.startsWith("10.") || v4.startsWith("192.168.")) return true;
+    const t = v4.match(/^172\.([0-9]+)\./);
+    if (t) {
+      const n = Number(t[1]);
+      if (n >= 16 && n <= 31) return true;
+    }
+    return false;
+  },
 ];
+
+function ipv4FromMapped(host: string): string | undefined {
+  const dotted = host.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return dotted[1];
+  const hex = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!hex) return undefined;
+  const hi = parseInt(hex[1] ?? "0", 16);
+  const lo = parseInt(hex[2] ?? "0", 16);
+  if (Number.isNaN(hi) || Number.isNaN(lo)) return undefined;
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
 
 function rejectIfPrivateHost(rawUrl: string): void {
   let parsed: URL;
@@ -179,6 +203,14 @@ export class AuthLocalProvider implements AuthProvider {
     if (connector.auth.kind !== "oauth2") {
       return { status: "not_configured", message: "connector is not oauth2" };
     }
+    const prior = this.pending.get(connectorId);
+    if (prior) {
+      try {
+        prior.reject(new Error("oauth flow superseded by new initiateFlow"));
+      } catch {}
+      this.teardownEntry(prior);
+      this.pending.delete(connectorId);
+    }
     const auth = connector.auth;
     if (!auth.authorizationUrl || !auth.tokenUrl) {
       return {
@@ -231,6 +263,16 @@ export class AuthLocalProvider implements AuthProvider {
       rejectFlow = reject;
     });
 
+    let registered: PendingFlow | undefined;
+    const tearDownThisFlow = (): void => {
+      if (!registered) return;
+      this.teardownEntry(registered);
+      if (this.pending.get(connectorId) === registered) {
+        this.pending.delete(connectorId);
+      }
+      registered = undefined;
+    };
+
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
       if (url.pathname !== "/oauth/callback") {
@@ -242,7 +284,7 @@ export class AuthLocalProvider implements AuthProvider {
       if (!code || returnedState !== state) {
         res.writeHead(400).end("bad request");
         rejectFlow(new Error("oauth callback missing code or state mismatch"));
-        this.teardownFlow(connectorId);
+        tearDownThisFlow();
         return;
       }
       void (async () => {
@@ -278,20 +320,20 @@ export class AuthLocalProvider implements AuthProvider {
           res.writeHead(500).end((e as Error).message);
           rejectFlow(e as Error);
         } finally {
-          this.teardownFlow(connectorId);
+          tearDownThisFlow();
         }
       })();
     });
     server.listen(port, "127.0.0.1");
 
     const hardTimeout = setTimeout(() => {
-      if (this.pending.has(connectorId)) {
+      if (registered) {
         rejectFlow(new Error("oauth flow timed out"));
-        this.teardownFlow(connectorId);
+        tearDownThisFlow();
       }
     }, 5 * 60_000);
 
-    this.pending.set(connectorId, {
+    registered = {
       state,
       codeVerifier,
       codeChallenge,
@@ -306,20 +348,25 @@ export class AuthLocalProvider implements AuthProvider {
       port,
       promise: flowPromise,
       hardTimeout,
-    });
+    };
+    this.pending.set(connectorId, registered);
 
     // Caller awaits the redirect URL; flow resolves out-of-band on consent.
     void flowPromise.catch(() => undefined);
     return { status: "authenticated", redirectUrl: authorizeUrl };
   }
 
-  private teardownFlow(connectorId: string): void {
-    const entry = this.pending.get(connectorId);
-    if (!entry) return;
+  private teardownEntry(entry: PendingFlow): void {
     clearTimeout(entry.hardTimeout);
     try {
       entry.server.close();
     } catch {}
+  }
+
+  private teardownFlow(connectorId: string): void {
+    const entry = this.pending.get(connectorId);
+    if (!entry) return;
+    this.teardownEntry(entry);
     this.pending.delete(connectorId);
   }
 

@@ -1,0 +1,53 @@
+---
+title: "Channels"
+description: "Output destinations for run results: console, Slack, email, generic webhook."
+group: "channels"
+order: 1
+---
+
+Channels are output destinations for run results. Configure them in
+`deploy.toml`:
+
+```toml
+[[channel]]
+type = "console"
+
+[[channel]]
+type = "slack"
+target = "#alerts"
+webhook_url_secret_ref = "SLACK_WEBHOOK_URL"
+
+[[channel]]
+type = "email"
+to = "you@example.com"
+resend_api_key_secret_ref = "RESEND_API_KEY"
+
+[[channel]]
+type = "webhook"
+url = "https://your.app/oddjob-callback"
+hmac_secret_ref = "CALLBACK_HMAC"
+```
+
+## Supported channels
+
+| Type      | What it does                                                               |
+| --------- | -------------------------------------------------------------------------- |
+| `console` | Writes the run's `finalText` (and optionally `structured`) to stdout.      |
+| `slack`   | Slack webhook URLs or bot tokens. Posts the result with optional template. |
+| `email`   | Resend API by default. (SMTP via nodemailer is TBD.)                       |
+| `webhook` | Generic POST. HMAC signature in `x-signature` header.                      |
+
+## Static vs dynamic mode
+
+Channels declare an `outputContract`. Blueprints can target a channel in
+two modes:
+
+- **Static** — `template` field with `{{input.X}}` placeholders, rendered
+  on the server with run data.
+- **Dynamic** — the agent fills `output.structured.channels.<name>` with
+  channel-specific fields (Slack blocks, email subject + body, etc.) at
+  runtime. The runtime validates against the channel's contract before
+  emit.
+
+Most blueprints start in static mode. Switch to dynamic when the channel
+output depends on the agent's reasoning.

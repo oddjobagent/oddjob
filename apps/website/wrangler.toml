@@ -1,0 +1,24 @@
+# Oddjob marketing site + docs.
+# Build with `NITRO_PRESET=cloudflare-module bun run build` first; produces
+# .output/{server,public}. Then `bunx wrangler deploy` (or `--dry-run` to validate).
+name = "oddjob-website"
+main = ".output/server/index.mjs"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".output/public"
+binding = "ASSETS"
+
+# Custom domain — requires the zone to be on Cloudflare before the first
+# real `wrangler deploy`. Until DNS is wired, use --dry-run only.
+[[routes]]
+pattern = "oddjobagent.com"
+custom_domain = true
+
+[[routes]]
+pattern = "www.oddjobagent.com"
+custom_domain = true
+
+[observability]
+enabled = true

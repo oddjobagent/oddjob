@@ -1,0 +1,52 @@
+---
+title: "Blueprint overview"
+description: "Anatomy of a blueprint directory and the TOML fields that define an agent."
+group: "blueprints"
+order: 1
+---
+
+A blueprint is a directory containing the declarative definition of one
+agent. At minimum it has a `blueprint.toml` and optionally a `deploy.toml`
+plus auxiliary scripts and skill packs.
+
+## Directory layout
+
+```
+my-agent/
+├── blueprint.toml         agent definition: model, prompt, tools, connectors, skills, secrets
+├── deploy.toml            optional: triggers, channels, limits
+├── scripts/               .ts/.sh/.py scripts the agent can call as tools
+│   ├── parse.ts
+│   └── parse.schema.json  optional sidecar schema (much better LLM tool-use)
+└── skills/
+    └── my-skill/
+        └── SKILL.md       YAML frontmatter (name, description) + body
+```
+
+## Authoring
+
+```bash
+oddjob init my-agent --author yourname
+cd my-agent
+# edit blueprint.toml: prompt, model, scripts, connectors, skills
+oddjob validate .
+oddjob push .
+oddjob deploy . --name my-agent-prod
+oddjob run my-agent-prod --input "..."
+```
+
+## Key fields
+
+- **`namespace`** + **`name`** — globally identify the blueprint version
+- **`model`** — provider/model spec, e.g. `anthropic/claude-sonnet-4`
+- **`tools`** — opt-in allowlist of built-in harness tools
+- **`prompt`** — the system prompt for the agent loop
+- **`output_schema`** — optional JSON Schema for structured output
+- **`[[connectors]]`** — MCP servers (stdio / HTTP / SSE)
+- **`[[scripts]]`** — script-as-tool entries with optional sidecar schemas
+- **`[skills]`** — packs the agent can `skill_load` at runtime
+- **`secrets`** — references resolved by the secrets vault at runtime
+
+The full TOML schema reference lives in `plans/SPEC.md` §4. Tutorial-style
+docs for each section are coming. For now treat the demo blueprints in
+`jobs/` as the primary reference — they exercise every shape.

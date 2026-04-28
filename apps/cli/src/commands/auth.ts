@@ -1,6 +1,21 @@
 import { defineCommand } from "citty";
 
 import { api } from "../lib/api.ts";
+import { runOAuthFlow } from "./mcp.ts";
+
+const login = defineCommand({
+  meta: {
+    name: "login",
+    description: "Start OAuth flow for a connector (alias for `oddjob mcp auth`).",
+  },
+  args: {
+    deployment: { type: "positional", required: true, description: "Deployment id or name" },
+    connector: { type: "positional", required: true, description: "Connector name from blueprint" },
+  },
+  async run({ args }) {
+    await runOAuthFlow({ deploymentRef: args.deployment, connectorName: args.connector });
+  },
+});
 
 const status = defineCommand({
   meta: { name: "status", description: "Show OAuth status for all connectors." },
@@ -31,6 +46,7 @@ const revoke = defineCommand({
 export default defineCommand({
   meta: { name: "auth", description: "OAuth lifecycle for MCP connectors." },
   subCommands: {
+    login: () => Promise.resolve(login),
     status: () => Promise.resolve(status),
     revoke: () => Promise.resolve(revoke),
   },

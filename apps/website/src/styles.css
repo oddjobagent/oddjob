@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@import "@oddjob/ui/styles.css";
+
+@source "../../../packages/ui/src";
+
+@custom-variant dark (&:is(.dark *));

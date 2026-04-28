@@ -1,0 +1,42 @@
+{
+  "name": "@oddjob/website",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Oddjob marketing site + docs (TanStack Start + Tailwind v4 + MDX). Deploys to Cloudflare.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 7701",
+    "build": "vite build",
+    "build:cloudflare": "NITRO_PRESET=cloudflare-module vite build",
+    "preview": "vite preview",
+    "typecheck": "bunx tsgo --noEmit",
+    "deploy": "bun run build:cloudflare && bunx wrangler deploy",
+    "deploy:dry": "bun run build:cloudflare && bunx wrangler deploy --dry-run",
+    "clean": "rm -rf dist .output .vite *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@mdx-js/react": "^3.1.1",
+    "@oddjob/ui": "workspace:*",
+    "@tanstack/react-router": "^1.168.25",
+    "@tanstack/react-router-devtools": "^1.166.13",
+    "@tanstack/react-start": "^1.167.50",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@mdx-js/rollup": "^3.1.1",
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/mdx": "^2.0.13",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "nitro": "^3.0.260415-beta",
+    "rehype-pretty-code": "^0.14.3",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx-frontmatter": "^5.2.0",
+    "shiki": "^4.0.2",
+    "tailwindcss": "^4.2.4",
+    "vite": "^8.0.0"
+  }
+}

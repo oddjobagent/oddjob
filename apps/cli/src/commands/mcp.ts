@@ -1,6 +1,54 @@
+import { openBrowser } from "@oddjob/core";
 import { defineCommand } from "citty";
 
 import { api } from "../lib/api.ts";
+
+export interface RunOAuthFlowOptions {
+  deploymentRef: string;
+  connectorName: string;
+}
+
+export async function runOAuthFlow(opts: RunOAuthFlowOptions): Promise<void> {
+  const list = await api.deployments.list({ includeArchived: true });
+  const dep = list.deployments.find(
+    (d) => d.id === opts.deploymentRef || d.name === opts.deploymentRef,
+  );
+  if (!dep) throw new Error(`deployment '${opts.deploymentRef}' not found`);
+
+  const result = await api.auth.initiate(dep.id, opts.connectorName);
+  if (!result.redirectUrl) {
+    process.stdout.write(`status: ${result.status}\n`);
+    if (result.message) process.stdout.write(`${result.message}\n`);
+    process.exit(1);
+  }
+
+  await openBrowser(result.redirectUrl);
+  process.stdout.write("Opened browser. Waiting for authorization (max 5 minutes)...\n");
+
+  const maxPolls = 300;
+  let last = "pending";
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    let s: { status: string };
+    try {
+      s = await api.auth.status(result.connectorId);
+    } catch (e) {
+      process.stdout.write(`✗ Authorization failed: ${(e as Error).message}\n`);
+      process.exit(1);
+    }
+    last = s.status;
+    if (last === "authenticated") {
+      process.stdout.write("✓ Authorized.\n");
+      return;
+    }
+    if (last === "failed" || last === "expired" || last === "reauth_needed") {
+      process.stdout.write(`✗ Authorization failed: ${last}\n`);
+      process.exit(1);
+    }
+  }
+  process.stdout.write(`✗ Authorization failed: timeout (last status: ${last})\n`);
+  process.exit(1);
+}
 
 const auth = defineCommand({
   meta: { name: "auth", description: "Initiate OAuth flow for a connector on a deployment." },
@@ -9,23 +57,7 @@ const auth = defineCommand({
     connector: { type: "positional", required: true, description: "Connector name from blueprint" },
   },
   async run({ args }) {
-    // Resolve deployment by id or name.
-    const list = await api.deployments.list({ includeArchived: true });
-    const dep = list.deployments.find(
-      (d) => d.id === args.deployment || d.name === args.deployment,
-    );
-    if (!dep) throw new Error(`deployment '${args.deployment}' not found`);
-
-    const result = await api.auth.initiate(dep.id, args.connector);
-    if (result.redirectUrl) {
-      process.stdout.write(`Open in your browser to authorize:\n  ${result.redirectUrl}\n`);
-      process.stdout.write(
-        `\nA local callback server is listening. After you grant access, the token will be persisted.\n`,
-      );
-    } else {
-      process.stdout.write(`status: ${result.status}\n`);
-      if (result.message) process.stdout.write(`${result.message}\n`);
-    }
+    await runOAuthFlow({ deploymentRef: args.deployment, connectorName: args.connector });
   },
 });
 

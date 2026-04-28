@@ -1,0 +1,65 @@
+---
+title: "Built-in tools"
+description: "12 built-in harness tools — opt-in per blueprint via the tools allowlist."
+group: "tools"
+order: 1
+---
+
+The harness ships 12 built-in tools. **Opt-in per blueprint** — list them
+in `tools = [...]`. Empty or omitted means none.
+
+| Tool              | What it does                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `bash`            | Shell command (subprocess in cwd of blueprint dir)                                              |
+| `read`            | Read a file (text + image) with truncation                                                      |
+| `write`           | Create / overwrite a file                                                                       |
+| `edit`            | Surgical string replacement in a file                                                           |
+| `grep`            | Pattern search via ripgrep                                                                      |
+| `find`            | Glob respecting `.gitignore`                                                                    |
+| `ls`              | Directory listing                                                                               |
+| `web_fetch`       | HTTPS GET → markdown (HTML auto-converted). SSRF guard on private IPs. 5 MB body cap.           |
+| `web_search`      | Top-N results via configured provider (brave / tavily / searxng). Engine config, not blueprint. |
+| `javascript_repl` | `bun -e <code>` subprocess. Top-level await supported. 10 s default timeout.                    |
+| `python_repl`     | `python3 -c <code>` subprocess. Requires python3 on PATH. 30 s default timeout.                 |
+| `datetime`        | Current date/time. Optional IANA timezone + format (`iso` / `rfc2822` / `unix` / `human`).      |
+
+Read/write/edit/grep/find/ls/bash come from `@mariozechner/pi-coding-agent`
+— the same shape Claude Code uses. The REPLs and `web_*` tools are
+oddjob-specific.
+
+**Sandbox posture:** v1 tools run as host processes — _not_ a security
+boundary. Same trust model as `bash`. Cloud sandboxes (E2B / Modal /
+Daytona / Vercel Sandbox) land in Phase 15 as a pluggable
+`SandboxProvider`.
+
+## Example
+
+```toml
+# blueprint.toml
+tools = ["bash", "web_fetch", "python_repl"]
+prompt = """
+Fetch the URL the user gives you, then count its length in Python and
+report.
+"""
+```
+
+Configure `web_search` (optional) in `~/.oddjob/config.toml`:
+
+```toml
+[builtin_tools.web_search]
+provider = "brave"           # or "tavily" or "searxng"
+api_key_secret = "BRAVE_API_KEY"   # name of secret in the vault
+# or: api_key = "literal-key"
+
+[builtin_tools.web_fetch]
+max_body_mb = 5
+private_ips_allowed = false  # set true to allow 127.0.0.1 etc.
+```
+
+Try the demo:
+
+```bash
+oddjob push jobs/builtin-demo
+oddjob deploy jobs/builtin-demo
+oddjob run builtin-demo --input "https://example.com" --follow
+```

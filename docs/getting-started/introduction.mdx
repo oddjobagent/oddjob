@@ -1,0 +1,43 @@
+---
+title: "Introduction"
+description: "What Oddjob is, who it's for, and how it differs from a generic AI agent framework."
+group: "getting-started"
+order: 1
+---
+
+Oddjob is a task-specific AI agent runtime — "Docker for AI agents". You
+define an agent declaratively in a TOML "Blueprint", and the
+`oddjob serve` daemon executes it on a schedule, webhook, or manual
+trigger. Observability comes via a CLI **and** a React dashboard mounted
+on the same port.
+
+## What you get
+
+- **One file per agent.** Model, prompt, tools, connectors, schemas,
+  triggers — all in `blueprint.toml`.
+- **Single-binary deploy.** `bun build --compile` produces one ~65 MB
+  executable that contains the daemon, scheduler, queue, dashboard, and
+  every bundled plugin.
+- **Four trust tiers.** `process` for dev, `local-strict` (seatbelt /
+  bwrap) by default, `docker` for self-hosting, `daytona` for hosted
+  Oddjob with untrusted blueprints.
+- **MCP first-class.** stdio, Streamable HTTP, and SSE transports. OAuth
+  lifecycle handled.
+- **Multi-channel output.** Console, Slack, email (Resend), or generic
+  HMAC-signed webhook. Configured in `deploy.toml`, structured-output
+  aware.
+
+## Status
+
+v0.0.0 — pre-alpha. Trusted local blueprints today; full security
+posture (sandboxing, egress allowlist, credential broker) in active
+development. See the [security model](/docs/security/model) for details
+on what each trust tier actually enforces.
+
+## Who it's for
+
+Operators who want to run a small constellation of single-purpose AI
+agents on their own infrastructure, without standing up Kubernetes or
+writing a bespoke orchestration layer. If you'd reach for a cron job
+plus a Bash script today and you'd like an LLM-shaped tool in the
+middle, this is for you.

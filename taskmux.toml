@@ -1,4 +1,18 @@
-name = "taskmux"
+name = "oddjob"
+
+# Daemon is managed externally (sudo, for :443):
+#   sudo taskmux daemon
+# (or run as a launchd / systemd service so it starts at login)
 
 [tasks.server]
-command = "bun apps/cli/src/index.ts serve --port 7777"
+command = "bun apps/cli/src/index.ts serve --port $PORT"
+host = "api"
+# No health_check / health_url — taskmux TCP-probes the assigned $PORT.
+# (macOS system curl uses LibreSSL which can't TLS-handshake mkcert certs;
+# use brew curl or `bun -e 'await fetch(...)'` if you want an HTTP probe.)
+
+[tasks.website]
+# Trailing `--port $PORT` passes through to vite which uses the last --port flag,
+# overriding the 7701 baked into apps/website/package.json's `dev` script.
+command = "bun run --cwd apps/website dev --port $PORT"
+host = "www"

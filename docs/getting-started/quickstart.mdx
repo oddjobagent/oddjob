@@ -1,0 +1,112 @@
+---
+title: "Quickstart"
+description: "From clone to scheduled run in five commands."
+group: "getting-started"
+order: 3
+---
+
+## 1. First-time setup
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...    # or ANTHROPIC_API_KEY
+oddjob setup
+```
+
+Creates `~/.oddjob/`, generates a 256-bit master key, writes
+`~/.oddjob/config.toml`. The master key is stored in macOS Keychain or
+Linux libsecret if available, otherwise via the `ODDJOB_MASTER_KEY` env
+var.
+
+## 2. Start the server
+
+In a separate terminal:
+
+```bash
+oddjob serve
+# oddjob serving on http://127.0.0.1:7777
+```
+
+Server binds to localhost by default. To bind to `0.0.0.0` you must
+configure a bearer token in `~/.oddjob/config.toml` first — the server
+refuses to start non-loopback without one.
+
+## 3. Run a demo blueprint
+
+```bash
+oddjob validate jobs/echo
+oddjob push jobs/echo
+oddjob deploy jobs/echo --name echo-prod
+oddjob run echo-prod --input "Reply with one word: aye"
+```
+
+You should see something like:
+
+```
+status: complete
+aye
+```
+
+## 4. Inspect runs
+
+```bash
+oddjob list runs --limit 5
+oddjob logs <RUN_ID>
+oddjob output <RUN_ID>
+oddjob status
+```
+
+## 5. Try the other demo blueprints
+
+| Job                      | Demonstrates                                       | Live needs      |
+| ------------------------ | -------------------------------------------------- | --------------- |
+| `jobs/echo`              | Minimal blueprint, manual trigger, console channel | LLM key         |
+| `jobs/word-count`        | Script-as-tool with sidecar JSON Schema            | LLM key         |
+| `jobs/research`          | Pure LLM Q&A, console channel                      | LLM key         |
+| `jobs/structured-output` | `output_schema` JSON Schema extraction             | LLM key         |
+| `jobs/file-lister`       | Real stdio MCP filesystem connector                | LLM key + `npx` |
+| `jobs/with-skill`        | SKILL.md progressive disclosure via `skill_load`   | LLM key         |
+
+Push and run any of them the same way:
+
+```bash
+oddjob push jobs/file-lister
+oddjob deploy jobs/file-lister --name fs-demo
+oddjob run fs-demo --input "List the first 5 files in /tmp."
+```
+
+## 6. Cron triggers
+
+Edit a `deploy.toml` to add a cron trigger before deploying:
+
+```toml
+[[trigger]]
+type = "cron"
+schedule = "0 8 * * *"
+timezone = "Australia/Sydney"
+```
+
+Cron schedules survive server restart; the worker pool reclaims any
+leases left by a previous crashed worker.
+
+## 7. Webhook triggers
+
+```toml
+[[trigger]]
+type = "webhook"
+[trigger.auth]
+kind = "hmac"
+secret_ref = "MY_HMAC_SECRET"
+header = "x-signature"
+```
+
+Then:
+
+```bash
+oddjob secrets set MY_HMAC_SECRET 'long-random-string'
+curl -X POST http://127.0.0.1:7777/webhooks/<namespace>/<name> \
+  -H 'x-signature: <hex-sha256-of-body>' \
+  -d '{"key":"value"}'
+```
+
+The webhook handler enqueues a run; the body becomes `input` for the
+agent.

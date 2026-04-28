@@ -1,0 +1,47 @@
+---
+title: "Installation"
+description: "Install Oddjob from source. Single-binary build available via bun --compile."
+group: "getting-started"
+order: 2
+---
+
+## Requirements
+
+- [Bun](https://bun.sh) ≥ 1.3
+- An LLM API key (one of):
+  - `OPENROUTER_API_KEY` — recommended; gateway to Anthropic/OpenAI/Google.
+  - `ANTHROPIC_API_KEY`
+- macOS or Linux (Windows untested).
+- Optional: `npx` on `PATH` for stdio MCP connectors like
+  `@modelcontextprotocol/server-filesystem`.
+
+## From source
+
+```bash
+git clone <this-repo> oddjob && cd oddjob
+bun install
+```
+
+Run the CLI directly via Bun while iterating:
+
+```bash
+bun apps/cli/src/index.ts --help
+```
+
+## Single-binary build
+
+```bash
+bun build --compile --outfile=./dist/oddjob ./apps/cli/src/index.ts
+./dist/oddjob --help
+```
+
+Produces a standalone ~65 MB executable. The dashboard, scheduler,
+queue, all bundled plugins are included.
+
+For convenience, alias the CLI in your shell:
+
+```bash
+alias oddjob='bun /absolute/path/to/oddjob/apps/cli/src/index.ts'
+```
+
+The remaining docs assume `oddjob` resolves to the CLI.

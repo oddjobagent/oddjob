@@ -15,3 +15,8 @@ coverage/
 *.db-journal
 *.db-wal
 *.db-shm
+plans/
+.output/
+.tanstack/
+.wrangler/
+.vite/

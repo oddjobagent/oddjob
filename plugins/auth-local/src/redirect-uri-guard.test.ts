@@ -45,6 +45,10 @@ describe("private-host guard in initiateFlow", () => {
     "http://[fd00::1]/auth",
     "http://[fc00::abcd]/auth",
     "http://[fe80::1]/auth",
+    "http://[::ffff:127.0.0.1]/auth",
+    "http://[::ffff:10.0.0.1]/auth",
+    "http://[::ffff:192.168.1.1]/auth",
+    "http://[::ffff:172.20.0.1]/auth",
   ];
   for (const authUrl of cases) {
     test(`refuses ${authUrl}`, async () => {

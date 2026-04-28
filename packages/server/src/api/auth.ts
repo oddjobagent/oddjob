@@ -6,21 +6,62 @@ interface InitiateBody {
   connectorName: string;
 }
 
+interface AuthListRow {
+  connectorId: string;
+  deploymentId: string;
+  connectorName: string;
+  status: string;
+  expiresAt?: number;
+  scopes?: string;
+  updatedAt: number;
+}
+
 export const list =
   (rt: Runtime): Handler =>
   async () => {
-    const tokens = await rt.state.listConnectorTokens();
-    // Never return token plaintext or ciphertext to the client.
-    const safe = tokens.map((t) => ({
-      connectorId: t.connectorId,
-      deploymentId: t.deploymentId,
-      connectorName: t.connectorName,
-      status: t.status,
-      expiresAt: t.expiresAt,
-      scopes: t.scopes,
-      updatedAt: t.updatedAt,
-    }));
-    return json({ tokens: safe });
+    const [tokens, deployments] = await Promise.all([
+      rt.state.listConnectorTokens(),
+      rt.state.listDeployments(),
+    ]);
+    const tokenById = new Map(tokens.map((t) => [t.connectorId, t]));
+    const rows: AuthListRow[] = [];
+    const seen = new Set<string>();
+    for (const dep of deployments) {
+      const bp = await rt.state.getBlueprint(dep.blueprintId);
+      if (!bp?.connectors) continue;
+      for (const [name, conn] of Object.entries(bp.connectors)) {
+        if (conn.auth?.kind !== "oauth2") continue;
+        const connectorId = `${dep.id}:${name}`;
+        seen.add(connectorId);
+        const tok = tokenById.get(connectorId);
+        const liveStatus = rt.auth
+          ? await rt.auth.status(connectorId)
+          : tok?.status ?? "not_configured";
+        rows.push({
+          connectorId,
+          deploymentId: dep.id,
+          connectorName: name,
+          status: liveStatus,
+          expiresAt: tok?.expiresAt,
+          scopes: tok?.scopes,
+          updatedAt: tok?.updatedAt ?? 0,
+        });
+      }
+    }
+    for (const t of tokens) {
+      if (seen.has(t.connectorId)) continue;
+      const liveStatus = rt.auth ? await rt.auth.status(t.connectorId) : t.status;
+      rows.push({
+        connectorId: t.connectorId,
+        deploymentId: t.deploymentId,
+        connectorName: t.connectorName,
+        status: liveStatus,
+        expiresAt: t.expiresAt,
+        scopes: t.scopes,
+        updatedAt: t.updatedAt,
+      });
+    }
+    return json({ tokens: rows });
   };
 
 export const status =

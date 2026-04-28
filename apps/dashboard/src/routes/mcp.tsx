@@ -73,23 +73,52 @@ function McpPage(): React.JSX.Element {
   const list = useAuthConnectors();
   const initiate = useInitiateAuth();
   const revoke = useRevokeAuth();
-  const [pendingIds, setPendingIds] = useState<Record<string, true>>({});
+  const [pendingIds, setPendingIds] = useState<Record<string, number>>({});
 
   const tokens = list.data?.tokens ?? [];
+  const PENDING_TIMEOUT_MS = 5 * 60_000;
 
   useEffect(() => {
     setPendingIds((prev) => {
       let changed = false;
-      const next: Record<string, true> = { ...prev };
+      const next: Record<string, number> = { ...prev };
+      const now = Date.now();
       for (const t of tokens) {
-        if (t.status === "active" && next[t.connectorId]) {
+        if (next[t.connectorId] !== undefined && t.status === "active") {
           delete next[t.connectorId];
+          changed = true;
+        }
+      }
+      for (const id of Object.keys(next)) {
+        const startedAt = next[id];
+        if (startedAt !== undefined && now - startedAt > PENDING_TIMEOUT_MS) {
+          delete next[id];
           changed = true;
         }
       }
       return changed ? next : prev;
     });
   }, [tokens]);
+
+  useEffect(() => {
+    if (Object.keys(pendingIds).length === 0) return;
+    const timer = window.setTimeout(() => {
+      setPendingIds((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next: Record<string, number> = { ...prev };
+        for (const id of Object.keys(next)) {
+          const startedAt = next[id];
+          if (startedAt !== undefined && now - startedAt > PENDING_TIMEOUT_MS) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, PENDING_TIMEOUT_MS + 1000);
+    return () => window.clearTimeout(timer);
+  }, [pendingIds]);
 
   const handleAuthenticate = (row: AuthConnectorRow) => {
     initiate.mutate(
@@ -98,8 +127,17 @@ function McpPage(): React.JSX.Element {
         onSuccess: (res) => {
           if (res.redirectUrl && typeof window !== "undefined") {
             window.open(res.redirectUrl, "_blank", "noopener,noreferrer");
+            setPendingIds((p) => ({ ...p, [row.connectorId]: Date.now() }));
+          } else if (typeof window !== "undefined" && res.message) {
+            window.alert(`Cannot start auth flow: ${res.message}`);
           }
-          setPendingIds((p) => ({ ...p, [row.connectorId]: true }));
+        },
+        onError: () => {
+          setPendingIds((p) => {
+            const next = { ...p };
+            delete next[row.connectorId];
+            return next;
+          });
         },
       },
     );
@@ -152,7 +190,7 @@ function McpPage(): React.JSX.Element {
               <TableBody>
                 {tokens.map((row) => {
                   const raw = row.status as DisplayStatus;
-                  const isPending = pendingIds[row.connectorId] === true && raw !== "active";
+                  const isPending = pendingIds[row.connectorId] !== undefined && raw !== "active";
                   const display: DisplayStatus = isPending ? "pending" : raw;
                   const isActive = raw === "active";
                   const actionLabel =
