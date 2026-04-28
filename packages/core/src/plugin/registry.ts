@@ -188,6 +188,16 @@ export class PluginRegistry {
     return svc && this.isEnabled(svc) ? svc : undefined;
   }
 
+  /**
+   * Whether ANY plugin (enabled or not) has claimed this tool name. Used by
+   * the agent loop to distinguish "no plugin ever owned this name" from
+   * "plugin owns this but is disabled" — only the former should fall back
+   * to a direct builtin build.
+   */
+  hasTool(name: string): boolean {
+    return this.tools.has(name);
+  }
+
   environmentFor(id: string): EnvironmentService | undefined {
     const svc = this.environments.get(id);
     return svc && this.isEnabled(svc) ? svc : undefined;

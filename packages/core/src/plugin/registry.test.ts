@@ -137,3 +137,54 @@ describe("PluginRegistry environment services", () => {
     expect(reg.listEnvironments()).toHaveLength(0);
   });
 });
+
+describe("PluginRegistry tool services", () => {
+  const fakeTool = {
+    name: "test-tool",
+    description: "fake",
+    parameters: { type: "object", properties: {} } as const,
+    async execute() {
+      return { kind: "text" as const, text: "ok" };
+    },
+  };
+
+  test("toolFor returns enabled tool, hasTool true", () => {
+    const reg = new PluginRegistry();
+    const plugin = definePlugin({ slug: "p1", version: "0.0.1" }, (b) =>
+      b.tool({ name: "bash", build: () => fakeTool }),
+    );
+    reg.register(plugin, "bundled");
+    expect(reg.hasTool("bash")).toBe(true);
+    expect(reg.toolFor("bash")).toBeDefined();
+  });
+
+  test("disabled plugin: hasTool true, toolFor undefined (so loop honors disable)", () => {
+    const reg = new PluginRegistry();
+    const plugin = definePlugin({ slug: "p1", version: "0.0.1" }, (b) =>
+      b.tool({ name: "bash", build: () => fakeTool }),
+    );
+    reg.register(plugin, "bundled");
+    reg.setEnabled("p1", false);
+    expect(reg.hasTool("bash")).toBe(true);
+    expect(reg.toolFor("bash")).toBeUndefined();
+  });
+
+  test("last-wins: second plugin overrides first for same tool name", () => {
+    const reg = new PluginRegistry();
+    const a = definePlugin({ slug: "a", version: "0.0.1" }, (b) =>
+      b.tool({ name: "bash", build: () => ({ ...fakeTool, name: "from-a" }) }),
+    );
+    const b2 = definePlugin({ slug: "b", version: "0.0.1" }, (b) =>
+      b.tool({ name: "bash", build: () => ({ ...fakeTool, name: "from-b" }) }),
+    );
+    reg.register(a, "bundled");
+    reg.register(b2, "local");
+    const winning = reg.toolFor("bash");
+    expect(winning).toBeDefined();
+    const built = winning!.build({
+      environment: fakeSession,
+      blueprintDir: "/tmp",
+    });
+    expect(built.name).toBe("from-b");
+  });
+});

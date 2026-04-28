@@ -317,8 +317,20 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           );
           continue;
         }
+        // Plugin registry has the name but the owning plugin is disabled —
+        // honor the disable: skip rather than falling back to the direct
+        // builtin. (registry.hasTool returns true even for disabled svcs.)
+        if (opts.plugins?.hasTool(name)) {
+          append({
+            timestamp: Date.now(),
+            level: "warn",
+            message: `tool '${name}' is registered but its plugin is disabled — skipping`,
+          });
+          continue;
+        }
         if (isBuiltinToolName(name)) {
-          // Fallback for setups without a plugin registry (tests, embedded use).
+          // Fallback for setups without a plugin registry (tests, embedded use)
+          // OR builtins not yet claimed by any plugin.
           const built = buildSingleBuiltinToolDirect(name, toolBuildCtx);
           if (built) resolvedTools.push(built as (typeof resolvedTools)[number]);
           continue;
