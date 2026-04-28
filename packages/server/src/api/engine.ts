@@ -138,27 +138,36 @@ export const update =
     });
   };
 
-// Maps provider slug → secret name the user must configure to use this provider.
-// (Sourced from pi-ai's auth conventions; covers all providers in pi-ai's registry.)
+// Maps pi-ai provider slug → secret name the user must configure. Slugs taken
+// verbatim from pi-ai's KnownProvider union (types.d.ts:5). Unmapped providers
+// fall through to "UNKNOWN_PROVIDER_SECRET" so the dashboard marks them as
+// needing creds rather than silently presenting them as available.
 const PROVIDER_SECRET: Record<string, string> = {
+  "amazon-bedrock": "AWS_ACCESS_KEY_ID",
   anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
   google: "GEMINI_API_KEY",
-  "google-vertex": "GOOGLE_APPLICATION_CREDENTIALS",
   "google-gemini-cli": "",
-  openrouter: "OPENROUTER_API_KEY",
-  mistral: "MISTRAL_API_KEY",
-  bedrock: "AWS_ACCESS_KEY_ID",
+  "google-antigravity": "GOOGLE_API_KEY",
+  "google-vertex": "GOOGLE_APPLICATION_CREDENTIALS",
+  openai: "OPENAI_API_KEY",
+  "azure-openai-responses": "AZURE_OPENAI_API_KEY",
+  "openai-codex": "OPENAI_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
+  "github-copilot": "GITHUB_TOKEN",
+  xai: "XAI_API_KEY",
   groq: "GROQ_API_KEY",
   cerebras: "CEREBRAS_API_KEY",
-  xai: "XAI_API_KEY",
-  kimi: "KIMI_API_KEY",
-  vercel: "AI_GATEWAY_API_KEY",
-  "github-copilot": "GITHUB_TOKEN",
+  openrouter: "OPENROUTER_API_KEY",
+  "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
+  zai: "ZAI_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+  "minimax-cn": "MINIMAX_API_KEY",
   huggingface: "HF_TOKEN",
   fireworks: "FIREWORKS_API_KEY",
-  faux: "",
+  opencode: "OPENCODE_API_KEY",
+  "opencode-go": "OPENCODE_API_KEY",
+  "kimi-coding": "KIMI_API_KEY",
 };
 
 export const models =
@@ -167,7 +176,13 @@ export const models =
     const secretNames = new Set(await rt.secrets.list());
     const all = listAllModels();
     const out = all.map((m: ModelDescriptor) => {
-      const requiresSecret = PROVIDER_SECRET[m.provider] ?? "";
+      // Default to a provider-derived placeholder when we don't have an
+      // explicit map entry, so the dashboard treats unknown providers as
+      // needing creds rather than auto-available.
+      const requiresSecret =
+        m.provider in PROVIDER_SECRET
+          ? PROVIDER_SECRET[m.provider]!
+          : `${m.provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
       return {
         id: m.id,
         modelId: m.modelId,
