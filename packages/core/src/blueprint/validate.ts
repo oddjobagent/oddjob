@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { BUILTIN_TOOL_NAMES } from "../agent/builtin-tools/index.ts";
+import { BUILTIN_TOOL_NAMES } from "../types/builtin-tools.ts";
 import type { Blueprint } from "../types/blueprint.ts";
 import { type BlueprintIssue, BlueprintValidationError } from "./errors.ts";
 

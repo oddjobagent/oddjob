@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.2",
+    "@oddjob/agent": "workspace:*",
     "@oddjob/channel-console": "workspace:*",
     "@oddjob/core": "workspace:*",
     "@oddjob/llm-pi": "workspace:*",

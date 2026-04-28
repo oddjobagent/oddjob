@@ -5,7 +5,7 @@
 // Each ToolService entry delegates into core's `buildSingleBuiltinTool` so the
 // legacy switch-statement path and the registry path share one implementation.
 
-import { BUILTIN_TOOL_NAMES, buildSingleBuiltinTool } from "@oddjob/core";
+import { BUILTIN_TOOL_NAMES, buildSingleBuiltinTool } from "@oddjob/agent";
 import { definePlugin, type ToolBuildContext } from "@oddjob/sdk";
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {

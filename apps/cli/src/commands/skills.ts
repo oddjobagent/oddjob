@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { defineCommand } from "citty";
 
-import { parseSkillFile } from "@oddjob/core";
+import { parseSkillFile } from "@oddjob/agent";
 
 interface SidecarMeta {
   name: string;

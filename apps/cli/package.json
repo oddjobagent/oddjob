@@ -15,6 +15,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@oddjob/agent": "workspace:*",
     "@oddjob/api-client": "workspace:*",
     "@oddjob/auth-local": "workspace:*",
     "@oddjob/channel-console": "workspace:*",

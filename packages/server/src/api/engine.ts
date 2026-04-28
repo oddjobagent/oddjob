@@ -1,4 +1,4 @@
-import { BUILTIN_TOOL_NAMES, type BuiltinToolsConfig, type EngineConfig } from "@oddjob/core";
+import { BUILTIN_TOOL_NAMES, type BuiltinToolsConfig, type EngineConfig } from "@oddjob/agent";
 
 import type { Runtime } from "../runtime.ts";
 import { type Handler, badRequest, json, readJson } from "../middleware/index.ts";

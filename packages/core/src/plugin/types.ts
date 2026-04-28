@@ -182,7 +182,7 @@ export interface ChannelService {
 export interface ToolBuildContext {
   environment: import("../providers/environment.ts").EnvironmentSession;
   blueprintDir: string;
-  engine?: import("../agent/builtin-tools/index.ts").EngineConfig;
+  engine?: import("../types/builtin-tools.ts").EngineConfig;
   onLog?: (entry: import("../providers/logging.ts").LogEntry) => void;
 }
 

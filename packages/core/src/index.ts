@@ -3,8 +3,12 @@ export * from "./providers/index.ts";
 export * from "./blueprint/index.ts";
 export * from "./deployment/index.ts";
 export * from "./environment/index.ts";
-export * from "./agent/index.ts";
-export * from "./skills/index.ts";
 export * from "./plugin/index.ts";
-export * from "./engine/index.ts";
-export { redactString, deepRedact, redactStringified } from "./security/redact.ts";
+export {
+  redactString,
+  deepRedact,
+  redactStringified,
+  hostMatches,
+  startEgressProxy,
+} from "./security/index.ts";
+export { openBrowser, type OpenBrowserOptions } from "./utils/open-browser.ts";

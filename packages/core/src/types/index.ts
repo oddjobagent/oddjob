@@ -12,3 +12,12 @@ export type * from "./memory.ts";
 export type * from "./message.ts";
 export type * from "./environment.ts";
 export * from "./limits.ts";
+export {
+  BUILTIN_TOOL_NAMES,
+  isBuiltinToolName,
+  type BuiltinToolName,
+  type EngineConfig,
+  type BuiltinToolsConfig,
+  type WebSearchConfig,
+  type WebFetchConfig,
+} from "./builtin-tools.ts";

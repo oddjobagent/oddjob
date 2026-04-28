@@ -19,3 +19,7 @@ export interface SkillFrontmatter {
   description: string;
   [key: string]: unknown;
 }
+
+export interface LoadedSkill extends Skill {
+  blueprintLocal: boolean;
+}

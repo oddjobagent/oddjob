@@ -1,7 +1,6 @@
 import type {
   AuthProvider,
   ChannelProvider,
-  EngineConfig,
   LogProvider,
   McpProvider,
   PluginRegistry,
@@ -11,6 +10,7 @@ import type {
   SecretsProvider,
   StateProvider,
 } from "@oddjob/core";
+import type { EngineConfig } from "@oddjob/agent";
 import type { LlmPiProvider } from "@oddjob/llm-pi";
 
 export interface Runtime {

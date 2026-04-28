@@ -6,7 +6,8 @@ import type {
   ResolvedRoleModel,
   RoleAssignment,
 } from "@oddjob/core";
-import { createEngineLLM, resolveEnvironment, runOnce } from "@oddjob/core";
+import { resolveEnvironment } from "@oddjob/core";
+import { createEngineLLM, runOnce } from "@oddjob/agent";
 
 import type { Runtime } from "../runtime.ts";
 import { renderTemplate, type TemplateContext } from "./template.ts";

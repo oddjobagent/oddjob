@@ -1,0 +1,33 @@
+{
+  "name": "@oddjob/agent",
+  "version": "0.0.0",
+  "description": "Oddjob agent loop, tool registry, system-prompt assembly, MCP+skill wiring",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsgo --noEmit",
+    "build": "bunx tsgo --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.70.2",
+    "@mariozechner/pi-ai": "^0.70.2",
+    "@mariozechner/pi-coding-agent": "^0.70.2",
+    "@oddjob/core": "workspace:*",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "js-yaml": "^4.1.1",
+    "smol-toml": "^1.6.1",
+    "turndown": "^7.2.0",
+    "typebox": "^1.1.33"
+  },
+  "devDependencies": {
+    "@oddjob/plugin-env-process": "workspace:*",
+    "@types/js-yaml": "^4.0.9",
+    "@types/turndown": "^5.0.5"
+  }
+}

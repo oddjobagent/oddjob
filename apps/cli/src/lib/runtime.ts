@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { AuthLocalProvider } from "@oddjob/auth-local";
 import type {
   ChannelProvider,
-  EngineConfig,
   EngineModelRoleRecord,
   LegacyResolver,
   ProviderCredentialRecord,
@@ -12,6 +11,7 @@ import type {
   SecretsProvider,
 } from "@oddjob/core";
 import { loadLocalPlugins, PluginRegistry, registerBundled, RoleResolver } from "@oddjob/core";
+import type { EngineConfig } from "@oddjob/agent";
 import { LlmPiProvider } from "@oddjob/llm-pi";
 
 import openaiPlugin from "@oddjob/plugin-openai";
