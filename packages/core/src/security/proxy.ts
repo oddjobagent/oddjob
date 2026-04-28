@@ -957,9 +957,7 @@ export function assertSafeBindAddress(addr: string): void {
     );
   }
   if (addr === "169.254.169.254") {
-    throw new Error(
-      "egress proxy: refusing to bind on the cloud-metadata IP (169.254.169.254)",
-    );
+    throw new Error("egress proxy: refusing to bind on the cloud-metadata IP (169.254.169.254)");
   }
   if (isIP(addr) === 0) {
     throw new Error(`egress proxy: bindAddress is not a valid IP: ${addr}`);

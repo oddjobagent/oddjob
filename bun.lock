@@ -160,123 +160,6 @@
         "@types/turndown": "^5.0.5",
       },
     },
-    "packages/providers/auth-local": {
-      "name": "@oddjob/auth-local",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-        "@oddjob/secrets-sqlite": "workspace:*",
-      },
-      "devDependencies": {
-        "@oddjob/state-sqlite": "workspace:*",
-      },
-    },
-    "packages/providers/channel-console": {
-      "name": "@oddjob/channel-console",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/channel-email": {
-      "name": "@oddjob/channel-email",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-        "nodemailer": "^6.9.16",
-      },
-      "devDependencies": {
-        "@types/nodemailer": "^6.4.17",
-      },
-    },
-    "packages/providers/channel-slack": {
-      "name": "@oddjob/channel-slack",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/channel-webhook": {
-      "name": "@oddjob/channel-webhook",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/llm-anthropic": {
-      "name": "@oddjob/llm-anthropic",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/llm-pi": {
-      "name": "@oddjob/llm-pi",
-      "version": "0.0.0",
-      "dependencies": {
-        "@mariozechner/pi-agent-core": "^0.70.2",
-        "@mariozechner/pi-ai": "^0.70.2",
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/logging-sqlite": {
-      "name": "@oddjob/logging-sqlite",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/mcp-client": {
-      "name": "@oddjob/mcp-client",
-      "version": "0.0.0",
-      "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0",
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/queue-memory": {
-      "name": "@oddjob/queue-memory",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/queue-sqlite": {
-      "name": "@oddjob/queue-sqlite",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/scheduler-croner": {
-      "name": "@oddjob/scheduler-croner",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-        "croner": "^10.0.1",
-      },
-    },
-    "packages/providers/secrets-sqlite": {
-      "name": "@oddjob/secrets-sqlite",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/state-sqlite": {
-      "name": "@oddjob/state-sqlite",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
-    "packages/providers/storage-local": {
-      "name": "@oddjob/storage-local",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/core": "workspace:*",
-      },
-    },
     "packages/sdk": {
       "name": "@oddjob/sdk",
       "version": "0.0.0",
@@ -330,6 +213,49 @@
         "@mariozechner/pi-ai": "^0.70.2",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/auth-local": {
+      "name": "@oddjob/auth-local",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "@oddjob/secrets-sqlite": "workspace:*",
+      },
+      "devDependencies": {
+        "@oddjob/state-sqlite": "workspace:*",
+      },
+    },
+    "plugins/channel-console": {
+      "name": "@oddjob/channel-console",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/channel-email": {
+      "name": "@oddjob/channel-email",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "nodemailer": "^6.9.16",
+      },
+      "devDependencies": {
+        "@types/nodemailer": "^6.4.17",
+      },
+    },
+    "plugins/channel-slack": {
+      "name": "@oddjob/channel-slack",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/channel-webhook": {
+      "name": "@oddjob/channel-webhook",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
       },
     },
     "plugins/channels-core": {
@@ -387,6 +313,37 @@
         "@oddjob/sdk": "workspace:*",
       },
     },
+    "plugins/llm-anthropic": {
+      "name": "@oddjob/llm-anthropic",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/llm-pi": {
+      "name": "@oddjob/llm-pi",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mariozechner/pi-agent-core": "^0.70.2",
+        "@mariozechner/pi-ai": "^0.70.2",
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/logging-sqlite": {
+      "name": "@oddjob/logging-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/mcp-client": {
+      "name": "@oddjob/mcp-client",
+      "version": "0.0.0",
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "@oddjob/core": "workspace:*",
+      },
+    },
     "plugins/openai": {
       "name": "@oddjob/plugin-openai",
       "version": "0.0.0",
@@ -403,6 +360,49 @@
         "@mariozechner/pi-ai": "^0.70.2",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "plugins/queue-memory": {
+      "name": "@oddjob/queue-memory",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/queue-sqlite": {
+      "name": "@oddjob/queue-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/scheduler-croner": {
+      "name": "@oddjob/scheduler-croner",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+        "croner": "^10.0.1",
+      },
+    },
+    "plugins/secrets-sqlite": {
+      "name": "@oddjob/secrets-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/state-sqlite": {
+      "name": "@oddjob/state-sqlite",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
+      },
+    },
+    "plugins/storage-local": {
+      "name": "@oddjob/storage-local",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/core": "workspace:*",
       },
     },
     "plugins/tools-coding": {
@@ -679,15 +679,15 @@
 
     "@oddjob/api-client": ["@oddjob/api-client@workspace:packages/api-client"],
 
-    "@oddjob/auth-local": ["@oddjob/auth-local@workspace:packages/providers/auth-local"],
+    "@oddjob/auth-local": ["@oddjob/auth-local@workspace:plugins/auth-local"],
 
-    "@oddjob/channel-console": ["@oddjob/channel-console@workspace:packages/providers/channel-console"],
+    "@oddjob/channel-console": ["@oddjob/channel-console@workspace:plugins/channel-console"],
 
-    "@oddjob/channel-email": ["@oddjob/channel-email@workspace:packages/providers/channel-email"],
+    "@oddjob/channel-email": ["@oddjob/channel-email@workspace:plugins/channel-email"],
 
-    "@oddjob/channel-slack": ["@oddjob/channel-slack@workspace:packages/providers/channel-slack"],
+    "@oddjob/channel-slack": ["@oddjob/channel-slack@workspace:plugins/channel-slack"],
 
-    "@oddjob/channel-webhook": ["@oddjob/channel-webhook@workspace:packages/providers/channel-webhook"],
+    "@oddjob/channel-webhook": ["@oddjob/channel-webhook@workspace:plugins/channel-webhook"],
 
     "@oddjob/cli": ["@oddjob/cli@workspace:apps/cli"],
 
@@ -695,13 +695,13 @@
 
     "@oddjob/dashboard": ["@oddjob/dashboard@workspace:apps/dashboard"],
 
-    "@oddjob/llm-anthropic": ["@oddjob/llm-anthropic@workspace:packages/providers/llm-anthropic"],
+    "@oddjob/llm-anthropic": ["@oddjob/llm-anthropic@workspace:plugins/llm-anthropic"],
 
-    "@oddjob/llm-pi": ["@oddjob/llm-pi@workspace:packages/providers/llm-pi"],
+    "@oddjob/llm-pi": ["@oddjob/llm-pi@workspace:plugins/llm-pi"],
 
-    "@oddjob/logging-sqlite": ["@oddjob/logging-sqlite@workspace:packages/providers/logging-sqlite"],
+    "@oddjob/logging-sqlite": ["@oddjob/logging-sqlite@workspace:plugins/logging-sqlite"],
 
-    "@oddjob/mcp-client": ["@oddjob/mcp-client@workspace:packages/providers/mcp-client"],
+    "@oddjob/mcp-client": ["@oddjob/mcp-client@workspace:plugins/mcp-client"],
 
     "@oddjob/plugin-anthropic": ["@oddjob/plugin-anthropic@workspace:plugins/anthropic"],
 
@@ -729,21 +729,21 @@
 
     "@oddjob/plugin-tools-web-search": ["@oddjob/plugin-tools-web-search@workspace:plugins/tools-web-search"],
 
-    "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:packages/providers/queue-memory"],
+    "@oddjob/queue-memory": ["@oddjob/queue-memory@workspace:plugins/queue-memory"],
 
-    "@oddjob/queue-sqlite": ["@oddjob/queue-sqlite@workspace:packages/providers/queue-sqlite"],
+    "@oddjob/queue-sqlite": ["@oddjob/queue-sqlite@workspace:plugins/queue-sqlite"],
 
-    "@oddjob/scheduler-croner": ["@oddjob/scheduler-croner@workspace:packages/providers/scheduler-croner"],
+    "@oddjob/scheduler-croner": ["@oddjob/scheduler-croner@workspace:plugins/scheduler-croner"],
 
     "@oddjob/sdk": ["@oddjob/sdk@workspace:packages/sdk"],
 
-    "@oddjob/secrets-sqlite": ["@oddjob/secrets-sqlite@workspace:packages/providers/secrets-sqlite"],
+    "@oddjob/secrets-sqlite": ["@oddjob/secrets-sqlite@workspace:plugins/secrets-sqlite"],
 
     "@oddjob/server": ["@oddjob/server@workspace:packages/server"],
 
-    "@oddjob/state-sqlite": ["@oddjob/state-sqlite@workspace:packages/providers/state-sqlite"],
+    "@oddjob/state-sqlite": ["@oddjob/state-sqlite@workspace:plugins/state-sqlite"],
 
-    "@oddjob/storage-local": ["@oddjob/storage-local@workspace:packages/providers/storage-local"],
+    "@oddjob/storage-local": ["@oddjob/storage-local@workspace:plugins/storage-local"],
 
     "@oddjob/ui": ["@oddjob/ui@workspace:packages/ui"],
 

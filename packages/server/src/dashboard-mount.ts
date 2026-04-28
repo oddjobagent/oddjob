@@ -34,6 +34,7 @@ const SPA_PATHS: readonly string[] = [
   "/deployments/:id/environment",
   "/plugins",
   "/providers",
+  "/mcp",
   "/secrets",
 ];
 

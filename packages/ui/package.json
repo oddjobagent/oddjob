@@ -1,0 +1,32 @@
+{
+  "name": "@oddjob/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared design tokens + React primitives for Oddjob apps (website, dashboard).",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles/tokens.css",
+    "./cn": "./src/lib/cn.ts"
+  },
+  "scripts": {
+    "typecheck": "bunx tsgo --noEmit",
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

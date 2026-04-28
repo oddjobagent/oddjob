@@ -25,6 +25,43 @@ interface PendingFlow {
   reject: (err: Error) => void;
   server: Server;
   port: number;
+  promise: Promise<ConnectorTokenRecord>;
+  hardTimeout: ReturnType<typeof setTimeout>;
+}
+
+const PRIVATE_HOST_PATTERNS: Array<(h: string) => boolean> = [
+  (h) => h === "localhost",
+  (h) => h === "127.0.0.1",
+  (h) => h === "::1",
+  (h) => h === "host.docker.internal",
+  (h) => h.endsWith(".local"),
+  (h) => h.endsWith(".internal"),
+  (h) => h.startsWith("10."),
+  (h) => h.startsWith("192.168."),
+  (h) => {
+    const m = /^172\.([0-9]+)\./.exec(h);
+    if (!m) return false;
+    const n = Number(m[1]);
+    return n >= 16 && n <= 31;
+  },
+  (h) => /^f[cd][0-9a-f]{2}:/.test(h),
+  (h) => /^fe[89ab][0-9a-f]:/.test(h),
+];
+
+function rejectIfPrivateHost(rawUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`invalid URL: ${rawUrl}`);
+  }
+  let host = parsed.hostname.toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+  for (const pat of PRIVATE_HOST_PATTERNS) {
+    if (pat(host)) {
+      throw new Error(`refusing to authorize against private IP/hostname: ${host}`);
+    }
+  }
 }
 
 export interface AuthLocalOptions {
@@ -34,6 +71,8 @@ export interface AuthLocalOptions {
   masterKey: Buffer;
   /** ms before expiry to consider a token expired (default 60s). */
   refreshSkewMs?: number;
+  /** Test seam: bypass private-host guard. Never set this in production. */
+  allowPrivateHosts?: boolean;
 }
 
 const REFRESH_SKEW_DEFAULT = 60_000;
@@ -44,6 +83,7 @@ export class AuthLocalProvider implements AuthProvider {
   private readonly secrets: SecretsProvider;
   private readonly masterKey: Buffer;
   private readonly refreshSkewMs: number;
+  private readonly allowPrivateHosts: boolean;
   private pending = new Map<string, PendingFlow>();
 
   constructor(opts: AuthLocalOptions) {
@@ -51,12 +91,13 @@ export class AuthLocalProvider implements AuthProvider {
     this.secrets = opts.secrets;
     this.masterKey = opts.masterKey;
     this.refreshSkewMs = opts.refreshSkewMs ?? REFRESH_SKEW_DEFAULT;
+    this.allowPrivateHosts = opts.allowPrivateHosts === true;
   }
 
   async connect(): Promise<void> {}
   async disconnect(): Promise<void> {
-    for (const p of this.pending.values()) p.server.close();
-    this.pending.clear();
+    const ids = Array.from(this.pending.keys());
+    for (const id of ids) this.teardownFlow(id);
   }
   async healthy(): Promise<boolean> {
     return true;
@@ -145,6 +186,10 @@ export class AuthLocalProvider implements AuthProvider {
         message: "oauth2 connector requires authorizationUrl + tokenUrl",
       };
     }
+    if (!this.allowPrivateHosts) {
+      rejectIfPrivateHost(auth.authorizationUrl);
+      rejectIfPrivateHost(auth.tokenUrl);
+    }
     if (!auth.clientIdRef) {
       return { status: "not_configured", message: "oauth2 connector requires clientIdRef" };
     }
@@ -179,90 +224,103 @@ export class AuthLocalProvider implements AuthProvider {
     }
     const authorizeUrl = `${auth.authorizationUrl}?${params.toString()}`;
 
+    let resolveFlow!: (rec: ConnectorTokenRecord) => void;
+    let rejectFlow!: (err: Error) => void;
     const flowPromise = new Promise<ConnectorTokenRecord>((resolve, reject) => {
-      const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-        const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
-        if (url.pathname !== "/oauth/callback") {
-          res.writeHead(404).end("not found");
-          return;
-        }
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-        if (!code || returnedState !== state) {
-          res.writeHead(400).end("bad request");
-          reject(new Error("oauth callback missing code or state mismatch"));
-          server.close();
-          this.pending.delete(connectorId);
-          return;
-        }
-        // Exchange code for token.
-        (async () => {
-          try {
-            const body = new URLSearchParams({
-              grant_type: "authorization_code",
-              code,
-              redirect_uri: redirectUri,
-              client_id: clientId,
-            });
-            if (clientSecret) body.set("client_secret", clientSecret);
-            if (auth.usePkce !== false) body.set("code_verifier", codeVerifier);
-            const resp = await fetch(auth.tokenUrl!, {
-              method: "POST",
-              headers: { "content-type": "application/x-www-form-urlencoded" },
-              body,
-            });
-            if (!resp.ok) throw new Error(`token exchange failed: ${resp.status}`);
-            const tokenJson = (await resp.json()) as TokenResponse;
-            const [deploymentId, connectorName] = splitConnectorId(connectorId);
-            const record = await this.persistToken(connectorId, deploymentId, connectorName, {
-              tokenUrl: auth.tokenUrl!,
-              clientId,
-              clientSecret: clientSecret ?? undefined,
-              tokenJson,
-              scopes: auth.scopes?.join(" "),
-            });
-            res
-              .writeHead(200, { "content-type": "text/html" })
-              .end("<h2>Oddjob: connector authorized.</h2><p>You can close this tab.</p>");
-            resolve(record);
-          } catch (e) {
-            res.writeHead(500).end((e as Error).message);
-            reject(e as Error);
-          } finally {
-            server.close();
-            this.pending.delete(connectorId);
-          }
-        })();
-      });
-      server.listen(port, "127.0.0.1");
-      this.pending.set(connectorId, {
-        state,
-        codeVerifier,
-        codeChallenge,
-        redirectUri,
-        authorizationUrl: auth.authorizationUrl!,
-        tokenUrl: auth.tokenUrl!,
-        clientId,
-        scopes: auth.scopes,
-        resolve,
-        reject,
-        server,
-        port,
-      });
-      // Hard-cancel after 5 minutes so a stuck flow doesn't leak the listener.
-      setTimeout(() => {
-        if (this.pending.has(connectorId)) {
-          server.close();
-          this.pending.delete(connectorId);
-          reject(new Error("oauth flow timed out"));
-        }
-      }, 5 * 60_000);
+      resolveFlow = resolve;
+      rejectFlow = reject;
     });
 
-    // Caller awaits the redirect URL; the flow resolves out-of-band when the
-    // user completes the consent screen.
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+      if (url.pathname !== "/oauth/callback") {
+        res.writeHead(404).end("not found");
+        return;
+      }
+      const code = url.searchParams.get("code");
+      const returnedState = url.searchParams.get("state");
+      if (!code || returnedState !== state) {
+        res.writeHead(400).end("bad request");
+        rejectFlow(new Error("oauth callback missing code or state mismatch"));
+        this.teardownFlow(connectorId);
+        return;
+      }
+      void (async () => {
+        try {
+          const body = new URLSearchParams({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: redirectUri,
+            client_id: clientId,
+          });
+          if (clientSecret) body.set("client_secret", clientSecret);
+          if (auth.usePkce !== false) body.set("code_verifier", codeVerifier);
+          const resp = await fetch(auth.tokenUrl!, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body,
+          });
+          if (!resp.ok) throw new Error(`token exchange failed: ${resp.status}`);
+          const tokenJson = (await resp.json()) as TokenResponse;
+          const [deploymentId, connectorName] = splitConnectorId(connectorId);
+          const record = await this.persistToken(connectorId, deploymentId, connectorName, {
+            tokenUrl: auth.tokenUrl!,
+            clientId,
+            clientSecret: clientSecret ?? undefined,
+            tokenJson,
+            scopes: auth.scopes?.join(" "),
+          });
+          res
+            .writeHead(200, { "content-type": "text/html" })
+            .end("<h2>Oddjob: connector authorized.</h2><p>You can close this tab.</p>");
+          resolveFlow(record);
+        } catch (e) {
+          res.writeHead(500).end((e as Error).message);
+          rejectFlow(e as Error);
+        } finally {
+          this.teardownFlow(connectorId);
+        }
+      })();
+    });
+    server.listen(port, "127.0.0.1");
+
+    const hardTimeout = setTimeout(() => {
+      if (this.pending.has(connectorId)) {
+        rejectFlow(new Error("oauth flow timed out"));
+        this.teardownFlow(connectorId);
+      }
+    }, 5 * 60_000);
+
+    this.pending.set(connectorId, {
+      state,
+      codeVerifier,
+      codeChallenge,
+      redirectUri,
+      authorizationUrl: auth.authorizationUrl,
+      tokenUrl: auth.tokenUrl,
+      clientId,
+      scopes: auth.scopes,
+      resolve: resolveFlow,
+      reject: rejectFlow,
+      server,
+      port,
+      promise: flowPromise,
+      hardTimeout,
+    });
+
+    // Caller awaits the redirect URL; flow resolves out-of-band on consent.
     void flowPromise.catch(() => undefined);
     return { status: "authenticated", redirectUrl: authorizeUrl };
+  }
+
+  private teardownFlow(connectorId: string): void {
+    const entry = this.pending.get(connectorId);
+    if (!entry) return;
+    clearTimeout(entry.hardTimeout);
+    try {
+      entry.server.close();
+    } catch {}
+    this.pending.delete(connectorId);
   }
 
   /** Wait for an in-flight initiateFlow to land. Useful for CLI commands. */
@@ -270,16 +328,24 @@ export class AuthLocalProvider implements AuthProvider {
     connectorId: string,
     timeoutMs = 5 * 60_000,
   ): Promise<ConnectorTokenRecord> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (!this.pending.has(connectorId)) {
-        const rec = await this.state.getConnectorToken(connectorId);
-        if (rec) return rec;
-        throw new Error(`auth flow ended without a token for ${connectorId}`);
-      }
-      await new Promise((r) => setTimeout(r, 250));
+    const entry = this.pending.get(connectorId);
+    if (!entry) {
+      const rec = await this.state.getConnectorToken(connectorId);
+      if (rec) return rec;
+      throw new Error(`no in-flight auth flow for ${connectorId}`);
     }
-    throw new Error(`auth flow timeout for ${connectorId}`);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        if (this.pending.has(connectorId)) this.teardownFlow(connectorId);
+        reject(new Error(`auth flow timeout for ${connectorId}`));
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([entry.promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private openToken(b64: string, aad: string): string {

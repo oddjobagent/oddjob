@@ -297,14 +297,14 @@ allowed_hosts = ["openrouter.ai", "api.github.com"]
 When set, the runtime starts a per-Run localhost proxy that gates outbound
 traffic to the allowlist (DNS-resolved + IP-pinned to defeat rebinding,
 RFC1918/loopback/cloud-metadata blocked) and rewrites `${secret:NAME}`
-placeholders before forwarding (plain HTTP only — see SECURITY.md for the
+placeholders before forwarding (plain HTTP only — see security docs for the
 HTTPS limitation deferred to v1.1).
 
 Engine-required hosts (the LLM provider's base URL + any HTTP MCP server
 URLs declared in the blueprint's connectors) are auto-merged into the
 allowlist so a deployment can't lock the agent out of its own model.
 
-See [`docs/SECURITY.md`](docs/SECURITY.md) for the full v1 threat model
+See [`docs/security/model.mdx`](docs/security/model.mdx) for the full v1 threat model
 and the explicit list of what the broker does and does not enforce.
 
 ---
@@ -351,7 +351,7 @@ bun run lint            # oxlint
 bun run format          # oxfmt
 
 # Live MCP integration tests (needs npx + network)
-ODDJOB_LIVE_MCP=1 bun test packages/providers/mcp-client
+ODDJOB_LIVE_MCP=1 bun test plugins/mcp-client
 ```
 
 Repo layout:

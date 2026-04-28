@@ -16,4 +16,4 @@ Backend packages. Each has its own `package.json`, `tsconfig.json`, `src/`. All 
 - **Providers depend ONLY on `@oddjob/core`** for types/interfaces — never on each other or on `server`.
 - **All four SQLite migration runners** (`state-sqlite`, `queue-sqlite`, `secrets-sqlite`, `logging-sqlite`) embed SQL via `import x from "./migrations/0001_*.sql" with { type: "text" }`. There's a near-duplicate runner in each — TODO to dedupe (see STATUS.md P4).
 - **`bun:sqlite` is server-only.** Anything that depends on a sqlite provider can't run in the browser. The dashboard depends on `@oddjob/core` for types — that's safe because `core` exports types only and tree-shaking keeps the runtime out.
-- **Tests:** `bun test` from any package; provider tests use `mkdtemp` for isolated DB files. The MCP test (`packages/providers/mcp-client/src/canary.test.ts`) is gated on `ODDJOB_LIVE_MCP=1` (needs `npx`).
+- **Tests:** `bun test` from any package; provider tests use `mkdtemp` for isolated DB files. The MCP test (`plugins/mcp-client/src/canary.test.ts`) is gated on `ODDJOB_LIVE_MCP=1` (needs `npx`).

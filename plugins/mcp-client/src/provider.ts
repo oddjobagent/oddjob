@@ -92,10 +92,7 @@ async function makeHttpTransport(
   });
 }
 
-export type McpClientFactory = (
-  connector: Connector,
-  getToken: McpGetTokenFn,
-) => Promise<Client>;
+export type McpClientFactory = (connector: Connector, getToken: McpGetTokenFn) => Promise<Client>;
 
 export class McpClientSession implements McpSession {
   private client: Client;

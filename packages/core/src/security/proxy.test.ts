@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { SecretsProvider } from "../providers/secrets.ts";
-import {
-  assertSafeBindAddress,
-  startEgressProxy,
-  type EgressProxyHandle,
-} from "./proxy.ts";
+import { assertSafeBindAddress, startEgressProxy, type EgressProxyHandle } from "./proxy.ts";
 
 // Tiny in-memory secrets provider for the rewriter test.
 function fakeSecrets(values: Record<string, string>): SecretsProvider {

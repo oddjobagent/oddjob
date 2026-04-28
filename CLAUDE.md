@@ -9,7 +9,7 @@ Bun monorepo. 20 packages (`core`, `server`, `sdk`, `api-client`, 16 providers) 
 - **Tests:** `bun:test` only. Unit tests live next to the file as `*.test.ts`.
 - **Type check:** `tsgo` (the native preview). Run `bun run typecheck` from root — it chains `tsgo --noEmit` for backend + `bun run --cwd apps/dashboard typecheck` for the dashboard, because the root tsconfig **does not include `apps/**`\*\* (different lib + paths).
 - **Lint/format:** `oxlint` + `oxfmt`. ~32 warnings remain by design (no-await-in-loop in sequential migration runners). 0 errors required.
-- **Workspaces:** `packages/*`, `packages/providers/*`, `apps/*`. Workspace deps use `"workspace:*"`.
+- **Workspaces:** `packages/*`, `plugins/*`, `apps/*`. Workspace deps use `"workspace:*"`.
 
 ## Dev workflow
 

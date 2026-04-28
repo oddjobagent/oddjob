@@ -5,7 +5,6 @@
   "description": "Task-specific AI agent runtime",
   "workspaces": [
     "packages/*",
-    "packages/providers/*",
     "plugins/*",
     "apps/*"
   ],
@@ -21,6 +20,7 @@
     "clean": "bun run --filter '*' clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@mdx-js/react": "^3.1.1",
     "@types/bun": "latest",
     "@typescript/native-preview": "latest",
     "oxfmt": "latest",

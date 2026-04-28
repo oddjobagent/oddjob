@@ -569,13 +569,13 @@ export class StateSqliteProvider implements StateProvider {
         record.connectorId,
         record.deploymentId,
         record.connectorName,
-        Buffer.from(record.accessTokenEncrypted, "base64"),
-        record.refreshTokenEncrypted ? Buffer.from(record.refreshTokenEncrypted, "base64") : null,
+        record.accessTokenEncrypted,
+        record.refreshTokenEncrypted ?? null,
         record.expiresAt ?? null,
         record.refreshExpiresAt ?? null,
         record.tokenUrl ?? null,
         record.clientId ?? null,
-        record.clientSecretEncrypted ? Buffer.from(record.clientSecretEncrypted, "base64") : null,
+        record.clientSecretEncrypted ?? null,
         record.scopes ?? null,
         record.status,
         record.updatedAt ?? now,
@@ -1120,13 +1120,13 @@ interface ConnectorTokenRow {
   connector_id: string;
   deployment_id: string;
   connector_name: string;
-  access_token_encrypted: Uint8Array;
-  refresh_token_encrypted: Uint8Array | null;
+  access_token_encrypted: string | Uint8Array;
+  refresh_token_encrypted: string | Uint8Array | null;
   expires_at: number | null;
   refresh_expires_at: number | null;
   token_url: string | null;
   client_id: string | null;
-  client_secret_encrypted: Uint8Array | null;
+  client_secret_encrypted: string | Uint8Array | null;
   scopes: string | null;
   status: string;
   updated_at: number;
@@ -1137,21 +1137,26 @@ function rowToConnectorToken(row: ConnectorTokenRow): ConnectorTokenRecord {
     connectorId: row.connector_id,
     deploymentId: row.deployment_id,
     connectorName: row.connector_name,
-    accessTokenEncrypted: Buffer.from(row.access_token_encrypted).toString("base64"),
+    accessTokenEncrypted: blobToString(row.access_token_encrypted),
     refreshTokenEncrypted: row.refresh_token_encrypted
-      ? Buffer.from(row.refresh_token_encrypted).toString("base64")
+      ? blobToString(row.refresh_token_encrypted)
       : undefined,
     expiresAt: row.expires_at ?? undefined,
     refreshExpiresAt: row.refresh_expires_at ?? undefined,
     tokenUrl: row.token_url ?? undefined,
     clientId: row.client_id ?? undefined,
     clientSecretEncrypted: row.client_secret_encrypted
-      ? Buffer.from(row.client_secret_encrypted).toString("base64")
+      ? blobToString(row.client_secret_encrypted)
       : undefined,
     scopes: row.scopes ?? undefined,
     status: row.status as ConnectorTokenRecord["status"],
     updatedAt: row.updated_at,
   };
+}
+
+function blobToString(v: string | Uint8Array | Buffer): string {
+  if (typeof v === "string") return v;
+  return Buffer.from(v).toString("utf8");
 }
 
 function rowToRun(row: RunRow): Run {

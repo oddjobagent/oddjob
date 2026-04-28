@@ -16,5 +16,8 @@
   "dependencies": {
     "@oddjob/core": "workspace:*",
     "@oddjob/secrets-sqlite": "workspace:*"
+  },
+  "devDependencies": {
+    "@oddjob/state-sqlite": "workspace:*"
   }
 }
