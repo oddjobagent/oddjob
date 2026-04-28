@@ -5,7 +5,7 @@ import type { ChannelConfig } from "../types/channel.ts";
 import type { DeploymentInput } from "../types/deployment.ts";
 import type { Limits } from "../types/limits.ts";
 import type { Trigger, WebhookAuth } from "../types/trigger.ts";
-import { type DeploymentRaw, DeploymentRawSchema } from "./schema.ts";
+import { type DeploymentRaw, validateDeploymentRaw } from "./schema.ts";
 
 export interface ParseDeploymentOptions {
   defaultName: string;
@@ -21,13 +21,13 @@ export function parseDeployment(source: string, options: ParseDeploymentOptions)
     throw new BlueprintParseError(`Failed to parse deploy.toml: ${(err as Error).message}`, err);
   }
 
-  const result = DeploymentRawSchema.safeParse(toml);
-  if (!result.success) {
+  const result = validateDeploymentRaw(toml);
+  if (!result.ok || !result.data) {
     throw new BlueprintParseError(
-      `deploy.toml schema invalid:\n${result.error.issues
-        .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+      `deploy.toml schema invalid:\n${result.issues
+        .map((i) => `  - ${i.path || "(root)"}: ${i.message}`)
         .join("\n")}`,
-      result.error,
+      result.issues,
     );
   }
 
@@ -47,11 +47,11 @@ function normalizeDeployment(raw: DeploymentRaw, options: ParseDeploymentOptions
   const triggers: Trigger[] = raw.trigger.map(normalizeTrigger);
   const channels: ChannelConfig[] = raw.channel.map(normalizeChannel);
   const limits: Partial<Limits> = {
-    durationMs: raw.limits.duration ? parseDuration(raw.limits.duration) : undefined,
-    toolCalls: raw.limits.tool_calls,
-    budgetUsd: raw.limits.budget,
-    warnThresholdPct: raw.limits.warn_threshold_pct,
-    enforce: raw.limits.enforce,
+    durationMs: raw.limits?.duration ? parseDuration(raw.limits.duration) : undefined,
+    toolCalls: raw.limits?.tool_calls,
+    budgetUsd: raw.limits?.budget,
+    warnThresholdPct: raw.limits?.warn_threshold_pct ?? 80,
+    enforce: raw.limits?.enforce ?? false,
   };
 
   const environmentInline = raw.environment_inline
@@ -119,7 +119,7 @@ function normalizeTrigger(raw: DeploymentRaw["trigger"][number]): Trigger {
       return {
         type: "webhook",
         path: raw.path,
-        auth: normalizeWebhookAuth(raw.auth),
+        auth: normalizeWebhookAuth(raw.auth ?? "none"),
       };
   }
 }
@@ -129,7 +129,7 @@ type WebhookAuthRaw =
   | "bearer"
   | { kind: "none" }
   | { kind: "bearer"; secret_ref: string }
-  | { kind: "hmac"; algorithm: "sha256"; secret_ref: string; header: string };
+  | { kind: "hmac"; algorithm?: "sha256"; secret_ref: string; header?: string };
 
 function normalizeWebhookAuth(raw: WebhookAuthRaw): WebhookAuth {
   if (raw === "none") return { kind: "none" };
@@ -146,9 +146,9 @@ function normalizeWebhookAuth(raw: WebhookAuthRaw): WebhookAuth {
     case "hmac":
       return {
         kind: "hmac",
-        algorithm: raw.algorithm,
+        algorithm: raw.algorithm ?? "sha256",
         secretRef: raw.secret_ref,
-        header: raw.header,
+        header: raw.header ?? "x-signature",
       };
   }
 }

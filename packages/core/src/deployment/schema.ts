@@ -1,143 +1,236 @@
-import { z } from "zod";
+// Deployment TOML schema, expressed in typebox.
 
-export const TriggerSchema = z.union([
-  z.strictObject({
-    type: z.literal("cron"),
-    schedule: z.string().min(1),
-    timezone: z.string().optional(),
-  }),
-  z.strictObject({
-    type: z.literal("webhook"),
-    path: z.string().optional(),
-    auth: z
-      .union([
-        z.literal("none"),
-        z.strictObject({
-          kind: z.literal("none"),
-        }),
-        z.strictObject({
-          kind: z.literal("bearer"),
-          secret_ref: z.string(),
-        }),
-        z.strictObject({
-          kind: z.literal("hmac"),
-          algorithm: z.literal("sha256").default("sha256"),
-          secret_ref: z.string(),
-          header: z.string().default("x-signature"),
-        }),
-      ])
-      .default("none"),
-  }),
-  z.strictObject({
-    type: z.literal("manual"),
-  }),
-  z.strictObject({
-    type: z.literal("event"),
-    source: z.string(),
-    filter: z.string().optional(),
-  }),
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
+import { type Static, Type } from "typebox";
+
+const STRICT = { additionalProperties: false } as const;
+const DURATION_PATTERN = "^\\d+[smh]$";
+
+export const TriggerSchema = Type.Union([
+  Type.Object(
+    {
+      type: Type.Literal("cron"),
+      schedule: Type.String({ minLength: 1 }),
+      timezone: Type.Optional(Type.String()),
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("webhook"),
+      path: Type.Optional(Type.String()),
+      auth: Type.Optional(
+        Type.Union(
+          [
+            Type.Literal("none"),
+            Type.Object({ kind: Type.Literal("none") }, STRICT),
+            Type.Object(
+              {
+                kind: Type.Literal("bearer"),
+                secret_ref: Type.String(),
+              },
+              STRICT,
+            ),
+            Type.Object(
+              {
+                kind: Type.Literal("hmac"),
+                algorithm: Type.Optional(Type.Literal("sha256", { default: "sha256" })),
+                secret_ref: Type.String(),
+                header: Type.Optional(Type.String({ default: "x-signature" })),
+              },
+              STRICT,
+            ),
+          ],
+          { default: "none" },
+        ),
+      ),
+    },
+    STRICT,
+  ),
+  Type.Object({ type: Type.Literal("manual") }, STRICT),
+  Type.Object(
+    {
+      type: Type.Literal("event"),
+      source: Type.String(),
+      filter: Type.Optional(Type.String()),
+    },
+    STRICT,
+  ),
 ]);
 
-const ChannelModeSchema = z.enum(["static", "dynamic"]).optional();
+const ChannelModeSchema = Type.Optional(
+  Type.Union([Type.Literal("static"), Type.Literal("dynamic")]),
+);
 
-export const ChannelConfigSchema = z.union([
-  z.strictObject({
-    type: z.literal("console"),
-    mode: ChannelModeSchema,
-  }),
-  z.strictObject({
-    type: z.literal("slack"),
-    mode: ChannelModeSchema,
-    target: z.string(),
-    webhook_url_secret_ref: z.string().optional(),
-    bot_token_secret_ref: z.string().optional(),
-  }),
-  z.strictObject({
-    type: z.literal("email"),
-    mode: ChannelModeSchema,
-    to: z.union([z.string(), z.array(z.string())]),
-    from: z.string().optional(),
-    subject: z.string().optional(),
-    smtp_url_secret_ref: z.string().optional(),
-    resend_api_key_secret_ref: z.string().optional(),
-  }),
-  z.strictObject({
-    type: z.literal("webhook"),
-    mode: ChannelModeSchema,
-    url: z.string().url(),
-    hmac_secret_ref: z.string().optional(),
-    headers: z.record(z.string(), z.string()).optional(),
-  }),
+export const ChannelConfigSchema = Type.Union([
+  Type.Object(
+    {
+      type: Type.Literal("console"),
+      mode: ChannelModeSchema,
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("slack"),
+      mode: ChannelModeSchema,
+      target: Type.String(),
+      webhook_url_secret_ref: Type.Optional(Type.String()),
+      bot_token_secret_ref: Type.Optional(Type.String()),
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("email"),
+      mode: ChannelModeSchema,
+      to: Type.Union([Type.String(), Type.Array(Type.String())]),
+      from: Type.Optional(Type.String()),
+      subject: Type.Optional(Type.String()),
+      smtp_url_secret_ref: Type.Optional(Type.String()),
+      resend_api_key_secret_ref: Type.Optional(Type.String()),
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("webhook"),
+      mode: ChannelModeSchema,
+      url: Type.String({ format: "uri" }),
+      hmac_secret_ref: Type.Optional(Type.String()),
+      headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+    },
+    STRICT,
+  ),
 ]);
 
-export const LimitsSchema = z.strictObject({
-  duration: z
-    .string()
-    .regex(/^\d+[smh]$/, "duration like 30s, 5m, 1h")
-    .optional(),
-  tool_calls: z.number().int().positive().optional(),
-  budget: z.number().positive().optional(),
-  warn_threshold_pct: z.number().int().min(1).max(100).default(80),
-  enforce: z.boolean().default(false),
-});
+export const LimitsSchema = Type.Object(
+  {
+    duration: Type.Optional(Type.String({ pattern: DURATION_PATTERN })),
+    tool_calls: Type.Optional(Type.Integer({ minimum: 1 })),
+    budget: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+    warn_threshold_pct: Type.Integer({ minimum: 1, maximum: 100, default: 80 }),
+    enforce: Type.Boolean({ default: false }),
+  },
+  STRICT,
+);
 
 // Inline / override block under `[environment]` in deploy.toml. All fields
 // optional — when no `environment = "<id>"` reference is given the inline
 // block must carry enough to construct a full EnvironmentConfig.
-const NetworkingOverrideSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("unrestricted") }),
-  z.strictObject({
-    type: z.literal("limited"),
-    allowed_hosts: z.array(z.string().min(1)).default([]),
-    allow_mcp_servers: z.boolean().optional(),
-    allow_package_managers: z.boolean().optional(),
-  }),
+const NetworkingOverrideSchema = Type.Union([
+  Type.Object({ type: Type.Literal("unrestricted") }, STRICT),
+  Type.Object(
+    {
+      type: Type.Literal("limited"),
+      allowed_hosts: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+      allow_mcp_servers: Type.Optional(Type.Boolean()),
+      allow_package_managers: Type.Optional(Type.Boolean()),
+    },
+    STRICT,
+  ),
 ]);
 
-const PackageManifestOverrideSchema = z.strictObject({
-  apt: z.array(z.string()).optional(),
-  cargo: z.array(z.string()).optional(),
-  gem: z.array(z.string()).optional(),
-  go: z.array(z.string()).optional(),
-  npm: z.array(z.string()).optional(),
-  pip: z.array(z.string()).optional(),
-});
+const PackageManifestOverrideSchema = Type.Object(
+  {
+    apt: Type.Optional(Type.Array(Type.String())),
+    cargo: Type.Optional(Type.Array(Type.String())),
+    gem: Type.Optional(Type.Array(Type.String())),
+    go: Type.Optional(Type.Array(Type.String())),
+    npm: Type.Optional(Type.Array(Type.String())),
+    pip: Type.Optional(Type.Array(Type.String())),
+  },
+  STRICT,
+);
 
-// Inline provider override allows partial: a deployment may set just the
-// credential to switch a referenced environment from "default" to a tenant-
-// specific row without restating the service.
-const ProviderRefOverrideSchema = z.strictObject({
-  service: z.string().min(1).optional(),
-  credential: z.string().min(1).optional(),
-});
+const ProviderRefOverrideSchema = Type.Object(
+  {
+    service: Type.Optional(Type.String({ minLength: 1 })),
+    credential: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
 
-const ResourcesOverrideSchema = z.strictObject({
-  cpu: z.number().positive().optional(),
-  mem_mb: z.number().int().positive().optional(),
-  disk_mb: z.number().int().positive().optional(),
-});
+const ResourcesOverrideSchema = Type.Object(
+  {
+    cpu: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+    mem_mb: Type.Optional(Type.Integer({ minimum: 1 })),
+    disk_mb: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  STRICT,
+);
 
-export const EnvironmentInlineSchema = z.strictObject({
-  type: z.enum(["cloud", "local"]).optional(),
-  packages: PackageManifestOverrideSchema.optional(),
-  networking: NetworkingOverrideSchema.optional(),
-  image: z.string().min(1).optional(),
-  working_dir: z.string().min(1).optional(),
-  provider: ProviderRefOverrideSchema.optional(),
-  resources: ResourcesOverrideSchema.optional(),
-  template: z.string().min(1).optional(),
-});
+export const EnvironmentInlineSchema = Type.Object(
+  {
+    type: Type.Optional(Type.Union([Type.Literal("cloud"), Type.Literal("local")])),
+    packages: Type.Optional(PackageManifestOverrideSchema),
+    networking: Type.Optional(NetworkingOverrideSchema),
+    image: Type.Optional(Type.String({ minLength: 1 })),
+    working_dir: Type.Optional(Type.String({ minLength: 1 })),
+    provider: Type.Optional(ProviderRefOverrideSchema),
+    resources: Type.Optional(ResourcesOverrideSchema),
+    template: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
 
-export const DeploymentRawSchema = z.strictObject({
-  blueprint: z.string().min(1),
-  name: z.string().optional(),
-  trigger: z.array(TriggerSchema).default([]),
-  channel: z.array(ChannelConfigSchema).default([]),
-  limits: LimitsSchema.default({ warn_threshold_pct: 80, enforce: false }),
-  /** Reference to a stored environment by id. */
-  environment: z.string().min(1).optional(),
-  /** Inline override (or full inline body when `environment` is unset). */
-  environment_inline: EnvironmentInlineSchema.optional(),
-});
+export const DeploymentRawSchema = Type.Object(
+  {
+    blueprint: Type.String({ minLength: 1 }),
+    name: Type.Optional(Type.String()),
+    trigger: Type.Array(TriggerSchema, { default: [] }),
+    channel: Type.Array(ChannelConfigSchema, { default: [] }),
+    limits: Type.Optional(LimitsSchema),
+    /** Reference to a stored environment by id. */
+    environment: Type.Optional(Type.String({ minLength: 1 })),
+    /** Inline override (or full inline body when `environment` is unset). */
+    environment_inline: Type.Optional(EnvironmentInlineSchema),
+  },
+  STRICT,
+);
 
-export type DeploymentRaw = z.infer<typeof DeploymentRawSchema>;
+export type DeploymentRaw = Static<typeof DeploymentRawSchema>;
+
+// ---------------------------------------------------------------------------
+// Compiled validator.
+// ---------------------------------------------------------------------------
+
+const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
+addFormats(ajv);
+
+const validateStructure: ValidateFunction = ajv.compile(DeploymentRawSchema);
+
+export interface DeploymentSchemaIssue {
+  path: string;
+  message: string;
+}
+
+function pointerToPath(pointer: string): string {
+  if (!pointer || pointer === "/") return "";
+  return pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((seg) => seg.replace(/~1/g, "/").replace(/~0/g, "~"))
+    .join(".");
+}
+
+export interface ValidateDeploymentResult {
+  ok: boolean;
+  data?: DeploymentRaw;
+  issues: DeploymentSchemaIssue[];
+}
+
+export function validateDeploymentRaw(input: unknown): ValidateDeploymentResult {
+  const data = input && typeof input === "object" ? structuredClone(input) : input;
+  const ok = validateStructure(data);
+  if (!ok) {
+    const issues: DeploymentSchemaIssue[] = (validateStructure.errors ?? []).map((e) => {
+      const extra = (e.params as { additionalProperty?: string } | undefined)?.additionalProperty;
+      const message = extra ? `Unrecognized key '${extra}'` : (e.message ?? "invalid");
+      return { path: pointerToPath(e.instancePath), message };
+    });
+    return { ok: false, issues };
+  }
+  return { ok: true, data: data as DeploymentRaw, issues: [] };
+}
