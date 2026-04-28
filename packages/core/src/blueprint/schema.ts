@@ -1,168 +1,323 @@
-import { z } from "zod";
+// Blueprint TOML schema, expressed in typebox.
+//
+// We compile to JSON Schema and validate with Ajv. Cross-field XOR rules
+// (e.g. exactly-one-of json_schema/json_schema_file) live in
+// `validateBlueprintRefinements` and run as a second pass after Ajv accepts
+// the structural shape, so error messages can stay informative.
 
-const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-const TOOL_NAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?$/;
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
+import { type Static, Type } from "typebox";
 
-export const ConnectorAuthSchema = z.union([
-  z.literal("none"),
-  z.literal("api_key"),
-  z.literal("bearer"),
-  z.literal("oauth2"),
-  z.strictObject({
-    kind: z.literal("none"),
-  }),
-  z.strictObject({
-    kind: z.literal("api_key"),
-    header_name: z.string().optional(),
-    secret_ref: z.string().min(1),
-  }),
-  z.strictObject({
-    kind: z.literal("bearer"),
-    secret_ref: z.string().min(1),
-  }),
-  z.strictObject({
-    kind: z.literal("oauth2"),
-    client_id_ref: z.string().optional(),
-    client_secret_ref: z.string().optional(),
-    authorization_url: z.string().url().optional(),
-    token_url: z.string().url().optional(),
-    scopes: z.array(z.string()).optional(),
-    use_pkce: z.boolean().optional(),
-  }),
+const NAME_PATTERN = "^[a-z0-9][a-z0-9-]*$";
+const TOOL_NAME_PATTERN = "^[a-z0-9][a-z0-9_]*$";
+const SEMVER_PATTERN = "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9.-]+)?(?:\\+[a-zA-Z0-9.-]+)?$";
+const RETENTION_PATTERN = "^\\d+[smhdw]$";
+
+const STRICT = { additionalProperties: false } as const;
+
+// Connector auth — discriminated union plus the legacy bare-string forms.
+export const ConnectorAuthSchema = Type.Union([
+  Type.Literal("none"),
+  Type.Literal("api_key"),
+  Type.Literal("bearer"),
+  Type.Literal("oauth2"),
+  Type.Object({ kind: Type.Literal("none") }, STRICT),
+  Type.Object(
+    {
+      kind: Type.Literal("api_key"),
+      header_name: Type.Optional(Type.String()),
+      secret_ref: Type.String({ minLength: 1 }),
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("bearer"),
+      secret_ref: Type.String({ minLength: 1 }),
+    },
+    STRICT,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("oauth2"),
+      client_id_ref: Type.Optional(Type.String()),
+      client_secret_ref: Type.Optional(Type.String()),
+      authorization_url: Type.Optional(Type.String({ format: "uri" })),
+      token_url: Type.Optional(Type.String({ format: "uri" })),
+      scopes: Type.Optional(Type.Array(Type.String())),
+      use_pkce: Type.Optional(Type.Boolean()),
+    },
+    STRICT,
+  ),
 ]);
 
-export const StdioConnectorSchema = z.strictObject({
-  transport: z.literal("stdio").optional(),
-  command: z.string().min(1),
-  args: z.array(z.string()).optional(),
-  auth: ConnectorAuthSchema.optional(),
-  scopes: z.array(z.string()).optional(),
-  tools: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-});
+export const StdioConnectorSchema = Type.Object(
+  {
+    transport: Type.Optional(Type.Literal("stdio")),
+    command: Type.String({ minLength: 1 }),
+    args: Type.Optional(Type.Array(Type.String())),
+    auth: Type.Optional(ConnectorAuthSchema),
+    scopes: Type.Optional(Type.Array(Type.String())),
+    tools: Type.Optional(Type.Array(Type.String())),
+    env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  },
+  STRICT,
+);
 
-export const HttpConnectorSchema = z.strictObject({
-  transport: z.enum(["http", "sse"]).default("http"),
-  server: z.string().url(),
-  auth: ConnectorAuthSchema.optional(),
-  scopes: z.array(z.string()).optional(),
-  tools: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-});
+export const HttpConnectorSchema = Type.Object(
+  {
+    transport: Type.Optional(
+      Type.Union([Type.Literal("http"), Type.Literal("sse")], { default: "http" }),
+    ),
+    server: Type.String({ format: "uri" }),
+    auth: Type.Optional(ConnectorAuthSchema),
+    scopes: Type.Optional(Type.Array(Type.String())),
+    tools: Type.Optional(Type.Array(Type.String())),
+    env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  },
+  STRICT,
+);
 
-export const ConnectorSchema = z
-  .union([StdioConnectorSchema, HttpConnectorSchema])
-  .superRefine((c, ctx) => {
-    const hasCommand = "command" in c && c.command !== undefined;
-    const hasServer = "server" in c && c.server !== undefined;
-    if (hasCommand && hasServer) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Connector must have exactly one of `server` (http/sse) or `command` (stdio)",
-      });
-    }
-    if (!hasCommand && !hasServer) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Connector must have `server` (http/sse) or `command` (stdio)",
-      });
-    }
-  });
+export const ConnectorSchema = Type.Union([StdioConnectorSchema, HttpConnectorSchema]);
 
-export const MemorySchema = z.strictObject({
-  store: z.enum(["kv", "vector", "both"]).default("kv"),
-  retention: z
-    .string()
-    .regex(/^\d+[smhdw]$/, "retention must be like 30d, 12h, 60m, 30s, 4w")
-    .default("30d"),
-});
+export const MemorySchema = Type.Object(
+  {
+    store: Type.Union([Type.Literal("kv"), Type.Literal("vector"), Type.Literal("both")], {
+      default: "kv",
+    }),
+    retention: Type.String({ pattern: RETENTION_PATTERN, default: "30d" }),
+  },
+  STRICT,
+);
 
-const SchemaSourceSchema = z
-  .strictObject({
-    json_schema: z.union([z.record(z.string(), z.unknown()), z.string()]).optional(),
-    json_schema_file: z.string().min(1).optional(),
-  })
-  .refine(
-    (v) => Boolean(v.json_schema) !== Boolean(v.json_schema_file),
-    "specify exactly one of json_schema or json_schema_file",
-  );
+const SchemaSourceSchema = Type.Object(
+  {
+    json_schema: Type.Optional(
+      Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.String()]),
+    ),
+    json_schema_file: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
 
 export const OutputSchemaSchema = SchemaSourceSchema;
 export const InputSchemaSchema = SchemaSourceSchema;
 
-export const GraderSchema = z
-  .strictObject({
-    rubric_text: z.string().min(1).optional(),
-    rubric_file: z.string().min(1).optional(),
-    model: z.string().min(1).optional(),
-    max_iterations: z.number().int().min(1).max(20).default(3),
-    on_verdict: z.enum(["feedback", "fail-only", "advisory"]).default("feedback"),
-  })
-  .refine((v) => Boolean(v.rubric_text) !== Boolean(v.rubric_file), {
-    message: "outcomes.grader: exactly one of rubric_text or rubric_file is required",
-  });
+export const GraderSchema = Type.Object(
+  {
+    rubric_text: Type.Optional(Type.String({ minLength: 1 })),
+    rubric_file: Type.Optional(Type.String({ minLength: 1 })),
+    model: Type.Optional(Type.String({ minLength: 1 })),
+    max_iterations: Type.Integer({ minimum: 1, maximum: 20, default: 3 }),
+    on_verdict: Type.Union(
+      [Type.Literal("feedback"), Type.Literal("fail-only"), Type.Literal("advisory")],
+      { default: "feedback" },
+    ),
+  },
+  STRICT,
+);
 
-export const OutcomesSchema = z.strictObject({
-  success: z.string().min(1).optional(),
-  warning: z.string().min(1).optional(),
-  error: z.string().min(1).optional(),
-  warning_tools: z.array(z.string()).default([]),
-  error_tools: z.array(z.string()).default([]),
-  max_retries: z.number().int().min(0).max(10).default(0),
-  retry_backoff_ms: z.number().int().min(0).default(30_000),
-  grader: GraderSchema.optional(),
-});
+export const OutcomesSchema = Type.Object(
+  {
+    success: Type.Optional(Type.String({ minLength: 1 })),
+    warning: Type.Optional(Type.String({ minLength: 1 })),
+    error: Type.Optional(Type.String({ minLength: 1 })),
+    warning_tools: Type.Array(Type.String(), { default: [] }),
+    error_tools: Type.Array(Type.String(), { default: [] }),
+    max_retries: Type.Integer({ minimum: 0, maximum: 10, default: 0 }),
+    retry_backoff_ms: Type.Integer({ minimum: 0, default: 30_000 }),
+    grader: Type.Optional(GraderSchema),
+  },
+  STRICT,
+);
 
-export const BlueprintRawSchema = z.strictObject({
-  name: z.string().regex(NAME_PATTERN, "name must be lowercase letters, digits, and hyphens"),
-  version: z.string().regex(SEMVER_PATTERN, "version must be semver"),
-  description: z.string().min(1).max(500),
-  author: z.string().regex(NAME_PATTERN, "author must be lowercase letters, digits, and hyphens"),
-  tags: z.array(z.string()).default([]),
-  license: z.string().default("MIT"),
-  schema_version: z.literal(1).default(1),
+export const BlueprintRawSchema = Type.Object(
+  {
+    name: Type.String({ pattern: NAME_PATTERN }),
+    version: Type.String({ pattern: SEMVER_PATTERN }),
+    description: Type.String({ minLength: 1, maxLength: 500 }),
+    author: Type.String({ pattern: NAME_PATTERN }),
+    tags: Type.Array(Type.String(), { default: [] }),
+    license: Type.String({ default: "MIT" }),
+    schema_version: Type.Literal(1, { default: 1 }),
 
-  /**
-   * @deprecated since 0.0.x — set engine model roles instead. Kept as a fallback
-   * for the "default" role; emits a warning when present.
-   */
-  model: z.string().min(1).optional(),
-  prompt: z.string().min(1),
-  /** Required engine roles a deployment must have configured. */
-  requires: z
-    .strictObject({
-      roles: z.array(z.string().min(1)).default([]),
-    })
-    .optional(),
+    /**
+     * @deprecated since 0.0.x — set engine model roles instead. Kept as a
+     * fallback for the "default" role; emits a warning when present.
+     */
+    model: Type.Optional(Type.String({ minLength: 1 })),
+    prompt: Type.String({ minLength: 1 }),
+    /** Required engine roles a deployment must have configured. */
+    requires: Type.Optional(
+      Type.Object(
+        {
+          roles: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+        },
+        STRICT,
+      ),
+    ),
 
-  tools: z
-    .array(
-      z.union([
-        z.string(),
-        z.strictObject({
-          name: z.string().min(1),
-          confirm: z.boolean().default(false),
-        }),
+    tools: Type.Array(
+      Type.Union([
+        Type.String(),
+        Type.Object(
+          {
+            name: Type.String({ minLength: 1 }),
+            confirm: Type.Boolean({ default: false }),
+          },
+          STRICT,
+        ),
       ]),
-    )
-    .default([]),
-  skills: z.array(z.string()).default([]),
+      { default: [] },
+    ),
+    skills: Type.Array(Type.String(), { default: [] }),
 
-  connectors: z.record(z.string().regex(NAME_PATTERN), ConnectorSchema).default({}),
-  scripts: z.record(z.string().regex(TOOL_NAME_PATTERN), z.string().min(1)).default({}),
+    connectors: Type.Record(Type.String({ pattern: NAME_PATTERN }), ConnectorSchema, {
+      default: {},
+    }),
+    scripts: Type.Record(Type.String({ pattern: TOOL_NAME_PATTERN }), Type.String({ minLength: 1 }), {
+      default: {},
+    }),
 
-  memory: MemorySchema.default({ store: "kv", retention: "30d" }),
-  secrets: z.record(z.string(), z.string()).default({}),
-  // Legacy. Default false (graceful). The new [outcomes] block supersedes
-  // this with proper soft/hard error classification.
-  fail_on_tool_error: z.boolean().default(false),
+    memory: Type.Optional(MemorySchema),
+    secrets: Type.Record(Type.String(), Type.String(), { default: {} }),
+    /**
+     * Legacy. Default false (graceful). The new [outcomes] block supersedes
+     * this with proper soft/hard error classification.
+     */
+    fail_on_tool_error: Type.Boolean({ default: false }),
 
-  output_schema: OutputSchemaSchema.optional(),
-  input_schema: InputSchemaSchema.optional(),
-  outcomes: OutcomesSchema.optional(),
-});
+    output_schema: Type.Optional(OutputSchemaSchema),
+    input_schema: Type.Optional(InputSchemaSchema),
+    outcomes: Type.Optional(OutcomesSchema),
+  },
+  STRICT,
+);
 
-export type BlueprintRaw = z.infer<typeof BlueprintRawSchema>;
-export type ConnectorRaw = z.infer<typeof ConnectorSchema>;
-export type ConnectorAuthRaw = z.infer<typeof ConnectorAuthSchema>;
+export type BlueprintRaw = Static<typeof BlueprintRawSchema>;
+export type ConnectorRaw = Static<typeof ConnectorSchema>;
+export type ConnectorAuthRaw = Static<typeof ConnectorAuthSchema>;
+
+// ---------------------------------------------------------------------------
+// Compiled validators + structural / cross-field validation.
+// ---------------------------------------------------------------------------
+
+const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
+addFormats(ajv);
+
+const validateStructure: ValidateFunction = ajv.compile(BlueprintRawSchema);
+
+export interface BlueprintSchemaIssue {
+  path: string;
+  message: string;
+}
+
+function pointerToPath(pointer: string): string {
+  if (!pointer || pointer === "/") return "";
+  return pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((seg) => seg.replace(/~1/g, "/").replace(/~0/g, "~"))
+    .join(".");
+}
+
+function refineConnector(
+  connectorName: string,
+  connector: unknown,
+  issues: BlueprintSchemaIssue[],
+): void {
+  if (!connector || typeof connector !== "object") return;
+  const c = connector as Record<string, unknown>;
+  const hasCommand = "command" in c && c.command !== undefined;
+  const hasServer = "server" in c && c.server !== undefined;
+  const base = `connectors.${connectorName}`;
+  if (hasCommand && hasServer) {
+    issues.push({
+      path: base,
+      message: "Connector must have exactly one of `server` (http/sse) or `command` (stdio)",
+    });
+  }
+  if (!hasCommand && !hasServer) {
+    issues.push({
+      path: base,
+      message: "Connector must have `server` (http/sse) or `command` (stdio)",
+    });
+  }
+}
+
+function refineSchemaSource(path: string, value: unknown, issues: BlueprintSchemaIssue[]): void {
+  if (!value || typeof value !== "object") return;
+  const v = value as Record<string, unknown>;
+  if (Boolean(v.json_schema) === Boolean(v.json_schema_file)) {
+    issues.push({
+      path,
+      message: "specify exactly one of json_schema or json_schema_file",
+    });
+  }
+}
+
+function refineGrader(value: unknown, issues: BlueprintSchemaIssue[]): void {
+  if (!value || typeof value !== "object") return;
+  const v = value as Record<string, unknown>;
+  if (Boolean(v.rubric_text) === Boolean(v.rubric_file)) {
+    issues.push({
+      path: "outcomes.grader",
+      message: "outcomes.grader: exactly one of rubric_text or rubric_file is required",
+    });
+  }
+}
+
+/**
+ * Run cross-field XOR refinements after Ajv accepts the structural shape.
+ * Returns an empty array on success; populated array on failure.
+ */
+export function validateBlueprintRefinements(raw: BlueprintRaw): BlueprintSchemaIssue[] {
+  const issues: BlueprintSchemaIssue[] = [];
+
+  if (raw.connectors) {
+    for (const [name, c] of Object.entries(raw.connectors)) {
+      refineConnector(name, c, issues);
+    }
+  }
+  if (raw.input_schema) refineSchemaSource("input_schema", raw.input_schema, issues);
+  if (raw.output_schema) refineSchemaSource("output_schema", raw.output_schema, issues);
+  if (raw.outcomes?.grader) refineGrader(raw.outcomes.grader, issues);
+
+  return issues;
+}
+
+export interface ValidateResult {
+  ok: boolean;
+  data?: BlueprintRaw;
+  issues: BlueprintSchemaIssue[];
+}
+
+/**
+ * Two-pass validate: Ajv structural check, then cross-field refines. Ajv
+ * mutates `data` to apply defaults via `useDefaults: true`, so the returned
+ * `data` is the populated object on success.
+ */
+export function validateBlueprintRaw(input: unknown): ValidateResult {
+  // Clone to avoid mutating caller's input when Ajv applies defaults.
+  const data = input && typeof input === "object" ? structuredClone(input) : input;
+  const ok = validateStructure(data);
+  if (!ok) {
+    const issues: BlueprintSchemaIssue[] = (validateStructure.errors ?? []).map((e) => {
+      // Ajv reports unknown-property errors with the offending key in
+      // params.additionalProperty; surface it in the message so users get a
+      // useful "Unrecognized key 'modelz'" instead of the generic Ajv text.
+      const extra = (e.params as { additionalProperty?: string } | undefined)?.additionalProperty;
+      const message = extra
+        ? `Unrecognized key '${extra}'`
+        : (e.message ?? "invalid");
+      return { path: pointerToPath(e.instancePath), message };
+    });
+    return { ok: false, issues };
+  }
+  const refined = validateBlueprintRefinements(data as BlueprintRaw);
+  if (refined.length > 0) {
+    return { ok: false, issues: refined };
+  }
+  return { ok: true, data: data as BlueprintRaw, issues: [] };
+}

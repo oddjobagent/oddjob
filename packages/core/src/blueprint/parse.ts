@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { parse as parseToml } from "smol-toml";
-import type { z } from "zod";
 
 import type {
   Blueprint,
@@ -19,9 +18,10 @@ import type {
 import { type BlueprintIssue, BlueprintParseError } from "./errors.ts";
 import {
   type BlueprintRaw,
-  BlueprintRawSchema,
+  type BlueprintSchemaIssue,
   type ConnectorAuthRaw,
   type ConnectorRaw,
+  validateBlueprintRaw,
 } from "./schema.ts";
 
 export interface ParseOptions {
@@ -36,11 +36,11 @@ export function parseBlueprint(source: string, options: ParseOptions): Blueprint
     throw new BlueprintParseError(`Failed to parse TOML: ${(err as Error).message}`, err);
   }
 
-  const result = BlueprintRawSchema.safeParse(toml);
-  if (!result.success) {
+  const result = validateBlueprintRaw(toml);
+  if (!result.ok || !result.data) {
     throw new BlueprintParseError(
-      `Blueprint schema invalid:\n${formatZodIssues(result.error)}`,
-      result.error,
+      `Blueprint schema invalid:\n${formatIssues(result.issues)}`,
+      result.issues,
     );
   }
 
@@ -60,8 +60,8 @@ function normalizeBlueprint(
   }
 
   const memory: BlueprintMemory = {
-    store: raw.memory.store,
-    retention: raw.memory.retention,
+    store: raw.memory?.store ?? "kv",
+    retention: raw.memory?.retention ?? "30d",
   };
 
   const out = resolveSchemaSource(raw.output_schema, "output_schema");
@@ -237,10 +237,6 @@ function parseJsonStrict(source: string, where: string): Record<string, unknown>
   return parsed as Record<string, unknown>;
 }
 
-function formatZodIssues(error: z.ZodError): string {
-  const issues: BlueprintIssue[] = error.issues.map((i) => ({
-    path: i.path.map(String).join("."),
-    message: i.message,
-  }));
+function formatIssues(issues: BlueprintSchemaIssue[]): string {
   return issues.map((i) => `  - ${i.path || "(root)"}: ${i.message}`).join("\n");
 }
