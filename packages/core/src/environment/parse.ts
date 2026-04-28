@@ -1,58 +1,94 @@
 import { parse as parseToml } from "smol-toml";
-import { z } from "zod";
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
+import { type Static, Type } from "typebox";
 
 import type { EnvironmentInput } from "../types/environment.ts";
 import { BlueprintParseError } from "../blueprint/errors.ts";
 
-const ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)?$/;
+const ID_PATTERN = "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)?$";
+const STRICT = { additionalProperties: false } as const;
 
-const PackageManifestSchema = z.strictObject({
-  apt: z.array(z.string()).optional(),
-  cargo: z.array(z.string()).optional(),
-  gem: z.array(z.string()).optional(),
-  go: z.array(z.string()).optional(),
-  npm: z.array(z.string()).optional(),
-  pip: z.array(z.string()).optional(),
-});
+const PackageManifestSchema = Type.Object(
+  {
+    apt: Type.Optional(Type.Array(Type.String())),
+    cargo: Type.Optional(Type.Array(Type.String())),
+    gem: Type.Optional(Type.Array(Type.String())),
+    go: Type.Optional(Type.Array(Type.String())),
+    npm: Type.Optional(Type.Array(Type.String())),
+    pip: Type.Optional(Type.Array(Type.String())),
+  },
+  STRICT,
+);
 
-const NetworkingSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("unrestricted") }),
-  z.strictObject({
-    type: z.literal("limited"),
-    allowed_hosts: z.array(z.string().min(1)).default([]),
-    allow_mcp_servers: z.boolean().optional(),
-    allow_package_managers: z.boolean().optional(),
-  }),
+const NetworkingSchema = Type.Union([
+  Type.Object({ type: Type.Literal("unrestricted") }, STRICT),
+  Type.Object(
+    {
+      type: Type.Literal("limited"),
+      allowed_hosts: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+      allow_mcp_servers: Type.Optional(Type.Boolean()),
+      allow_package_managers: Type.Optional(Type.Boolean()),
+    },
+    STRICT,
+  ),
 ]);
 
-const ProviderRefSchema = z.strictObject({
-  service: z.string().min(1),
-  credential: z.string().min(1).optional(),
-});
+const ProviderRefSchema = Type.Object(
+  {
+    service: Type.String({ minLength: 1 }),
+    credential: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
 
-const ResourcesSchema = z.strictObject({
-  cpu: z.number().positive().optional(),
-  mem_mb: z.number().int().positive().optional(),
-  disk_mb: z.number().int().positive().optional(),
-});
+const ResourcesSchema = Type.Object(
+  {
+    cpu: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+    mem_mb: Type.Optional(Type.Integer({ minimum: 1 })),
+    disk_mb: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  STRICT,
+);
 
-const ConfigSchema = z.strictObject({
-  type: z.enum(["cloud", "local"]).default("local"),
-  packages: PackageManifestSchema.optional(),
-  networking: NetworkingSchema.optional(),
-  image: z.string().min(1).optional(),
-  working_dir: z.string().min(1).optional(),
-  provider: ProviderRefSchema.optional(),
-  resources: ResourcesSchema.optional(),
-  template: z.string().min(1).optional(),
-});
+const ConfigSchema = Type.Object(
+  {
+    type: Type.Union([Type.Literal("cloud"), Type.Literal("local")], { default: "local" }),
+    packages: Type.Optional(PackageManifestSchema),
+    networking: Type.Optional(NetworkingSchema),
+    image: Type.Optional(Type.String({ minLength: 1 })),
+    working_dir: Type.Optional(Type.String({ minLength: 1 })),
+    provider: Type.Optional(ProviderRefSchema),
+    resources: Type.Optional(ResourcesSchema),
+    template: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
 
-const EnvironmentRawSchema = z.strictObject({
-  id: z.string().regex(ID_PATTERN, "id must be lowercase letters/digits/hyphens, optional ns/name"),
-  name: z.string().min(1).optional(),
-  description: z.string().min(1).max(500).optional(),
-  config: ConfigSchema,
-});
+const EnvironmentRawSchema = Type.Object(
+  {
+    id: Type.String({ pattern: ID_PATTERN }),
+    name: Type.Optional(Type.String({ minLength: 1 })),
+    description: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+    config: ConfigSchema,
+  },
+  STRICT,
+);
+
+type EnvironmentRaw = Static<typeof EnvironmentRawSchema>;
+
+const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
+addFormats(ajv);
+const validate: ValidateFunction = ajv.compile(EnvironmentRawSchema);
+
+function pointerToPath(pointer: string): string {
+  if (!pointer || pointer === "/") return "";
+  return pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((seg) => seg.replace(/~1/g, "/").replace(/~0/g, "~"))
+    .join(".");
+}
 
 export function parseEnvironment(source: string): EnvironmentInput {
   let toml: unknown;
@@ -64,16 +100,17 @@ export function parseEnvironment(source: string): EnvironmentInput {
       err,
     );
   }
-  const result = EnvironmentRawSchema.safeParse(toml);
-  if (!result.success) {
-    throw new BlueprintParseError(
-      `Environment schema invalid:\n${result.error.issues
-        .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("\n")}`,
-      result.error,
-    );
+  const data = toml && typeof toml === "object" ? structuredClone(toml) : toml;
+  const ok = validate(data);
+  if (!ok) {
+    const issues = (validate.errors ?? []).map((e) => {
+      const extra = (e.params as { additionalProperty?: string } | undefined)?.additionalProperty;
+      const message = extra ? `Unrecognized key '${extra}'` : (e.message ?? "invalid");
+      return `  - ${pointerToPath(e.instancePath) || "(root)"}: ${message}`;
+    });
+    throw new BlueprintParseError(`Environment schema invalid:\n${issues.join("\n")}`);
   }
-  const raw = result.data;
+  const raw = data as EnvironmentRaw;
   const networking = raw.config.networking
     ? raw.config.networking.type === "unrestricted"
       ? { type: "unrestricted" as const }
