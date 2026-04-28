@@ -4,7 +4,7 @@
 // snapshot/fork/exposePort/pauseResume capabilities. Auth via the
 // DAYTONA_API_KEY credential (`oddjob env credential add daytona ...`).
 
-import { z } from "zod";
+import { Type } from "typebox";
 
 import type { EnvironmentProvider, ProviderCredential } from "@oddjob/core";
 import { definePlugin } from "@oddjob/sdk";
@@ -13,8 +13,8 @@ import { DaytonaEnvironmentProvider } from "./provider.ts";
 
 export { DaytonaEnvironmentProvider, DaytonaEnvironmentSession } from "./provider.ts";
 
-const authSchema = z.object({
-  apiKey: z.string().min(20).describe("Daytona API key (dtn_...)"),
+const authSchema = Type.Object({
+  apiKey: Type.String({ minLength: 20, description: "Daytona API key (dtn_...)" }),
 });
 
 export default definePlugin(

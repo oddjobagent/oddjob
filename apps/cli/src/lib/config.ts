@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { parse as parseToml, stringify } from "smol-toml";
-import { z } from "zod";
+import Ajv, { type ValidateFunction } from "ajv";
+import { Type } from "typebox";
 
 export const ODDJOB_HOME = process.env.ODDJOB_HOME ?? join(homedir(), ".oddjob");
 export const CONFIG_PATH = process.env.ODDJOB_CONFIG ?? join(ODDJOB_HOME, "config.toml");
@@ -86,36 +87,67 @@ export const DEFAULT_CONFIG: OddjobConfig = {
 // Schemas only validate the new Phase 17 blocks. Server + builtin_tools are
 // passed through as-is for backwards compatibility; they have their own typed
 // consumers downstream.
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-const CRED_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-const ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;
+const STRICT = { additionalProperties: false } as const;
+const SLUG_PATTERN = "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$";
+const CRED_NAME_PATTERN = "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$";
+const ROLE_PATTERN = "^[a-z][a-z0-9-]*$";
 
-const PluginsSchema = z
-  .strictObject({
-    disabled: z.array(z.string().regex(SLUG_PATTERN)).optional(),
-  })
-  .optional();
+const PluginsSchema = Type.Object(
+  {
+    disabled: Type.Optional(Type.Array(Type.String({ pattern: SLUG_PATTERN }))),
+  },
+  STRICT,
+);
 
-const ProviderCredentialSchema = z.strictObject({
-  api_key_secret: z.string().min(1).optional(),
-  options: z.record(z.string(), z.unknown()).optional(),
-});
+const ProviderCredentialSchema = Type.Object(
+  {
+    api_key_secret: Type.Optional(Type.String({ minLength: 1 })),
+    options: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  STRICT,
+);
 
-const ProvidersSchema = z
-  .record(
-    z.string().regex(SLUG_PATTERN),
-    z.record(z.string().regex(CRED_NAME_PATTERN), ProviderCredentialSchema),
-  )
-  .optional();
+const ProvidersSchema = Type.Record(
+  Type.String({ pattern: SLUG_PATTERN }),
+  Type.Record(Type.String({ pattern: CRED_NAME_PATTERN }), ProviderCredentialSchema),
+);
 
-const RoleSchema = z.strictObject({
-  provider: z.string().regex(SLUG_PATTERN),
-  model: z.string().min(1),
-  credential: z.string().regex(CRED_NAME_PATTERN).optional(),
-  options: z.record(z.string(), z.unknown()).optional(),
-});
+const RoleSchema = Type.Object(
+  {
+    provider: Type.String({ pattern: SLUG_PATTERN }),
+    model: Type.String({ minLength: 1 }),
+    credential: Type.Optional(Type.String({ pattern: CRED_NAME_PATTERN })),
+    options: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  STRICT,
+);
 
-const RolesSchema = z.record(z.string().regex(ROLE_PATTERN), RoleSchema).optional();
+const RolesSchema = Type.Record(Type.String({ pattern: ROLE_PATTERN }), RoleSchema);
+
+const ajv = new Ajv({ allErrors: true, strict: false });
+const validatePlugins: ValidateFunction = ajv.compile(PluginsSchema);
+const validateProviders: ValidateFunction = ajv.compile(ProvidersSchema);
+const validateRoles: ValidateFunction = ajv.compile(RolesSchema);
+
+function pointerToPath(p: string): string {
+  if (!p) return "";
+  return p
+    .replace(/^\//, "")
+    .split("/")
+    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"))
+    .join(".");
+}
+
+function formatAjvErrors(prefix: string, errors: ValidateFunction["errors"]): string {
+  return (errors ?? [])
+    .map((e) => {
+      const extra = (e.params as { additionalProperty?: string } | undefined)?.additionalProperty;
+      const message = extra ? `Unrecognized key '${extra}'` : (e.message ?? "invalid");
+      const path = pointerToPath(e.instancePath);
+      return `  - ${prefix}${path ? "." + path : ""}: ${message}`;
+    })
+    .join("\n");
+}
 
 export async function loadConfig(): Promise<OddjobConfig> {
   if (!existsSync(CONFIG_PATH)) return DEFAULT_CONFIG;
@@ -134,20 +166,32 @@ export async function loadConfig(): Promise<OddjobConfig> {
         `Fix the file or move it aside and let the server scaffold a fresh one.`,
     );
   }
-  const plugins = PluginsSchema.parse(parsed.plugins);
-  let providers: Record<string, Record<string, ProviderCredentialFileConfig>> | undefined;
-  let roles: Record<string, RoleFileConfig> | undefined;
-  try {
-    providers = ProvidersSchema.parse(parsed.providers);
-    roles = RolesSchema.parse(parsed.roles);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      const issues = err.issues
-        .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("\n");
-      throw new Error(`oddjob: ${CONFIG_PATH} schema invalid:\n${issues}`);
+  let plugins: PluginsFileConfig | undefined;
+  if (parsed.plugins !== undefined) {
+    if (!validatePlugins(parsed.plugins)) {
+      throw new Error(
+        `oddjob: ${CONFIG_PATH} schema invalid:\n${formatAjvErrors("plugins", validatePlugins.errors)}`,
+      );
     }
-    throw err;
+    plugins = parsed.plugins as PluginsFileConfig;
+  }
+  let providers: Record<string, Record<string, ProviderCredentialFileConfig>> | undefined;
+  if (parsed.providers !== undefined) {
+    if (!validateProviders(parsed.providers)) {
+      throw new Error(
+        `oddjob: ${CONFIG_PATH} schema invalid:\n${formatAjvErrors("providers", validateProviders.errors)}`,
+      );
+    }
+    providers = parsed.providers as Record<string, Record<string, ProviderCredentialFileConfig>>;
+  }
+  let roles: Record<string, RoleFileConfig> | undefined;
+  if (parsed.roles !== undefined) {
+    if (!validateRoles(parsed.roles)) {
+      throw new Error(
+        `oddjob: ${CONFIG_PATH} schema invalid:\n${formatAjvErrors("roles", validateRoles.errors)}`,
+      );
+    }
+    roles = parsed.roles as Record<string, RoleFileConfig>;
   }
   return {
     server: { ...DEFAULT_CONFIG.server, ...(parsed.server as object) },

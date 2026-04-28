@@ -17,6 +17,7 @@
     "@daytonaio/sdk": "latest",
     "@oddjob/core": "workspace:*",
     "@oddjob/sdk": "workspace:*",
-    "zod": "^4.3.6"
+    "ajv": "^8.17.1",
+    "typebox": "^1.1.33"
   }
 }

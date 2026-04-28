@@ -50,9 +50,10 @@
         "@oddjob/secrets-sqlite": "workspace:*",
         "@oddjob/server": "workspace:*",
         "@oddjob/state-sqlite": "workspace:*",
+        "ajv": "^8.17.1",
         "citty": "^0.1.6",
         "smol-toml": "^1.6.1",
-        "zod": "^4.3.6",
+        "typebox": "^1.1.33",
       },
     },
     "apps/dashboard": {
@@ -152,7 +153,6 @@
         "smol-toml": "^1.6.1",
         "turndown": "^7.2.0",
         "typebox": "^1.1.33",
-        "zod": "^4.3.6",
       },
       "devDependencies": {
         "@oddjob/plugin-env-process": "workspace:*",
@@ -277,7 +277,8 @@
         "@daytonaio/sdk": "latest",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
-        "zod": "^4.3.6",
+        "ajv": "^8.17.1",
+        "typebox": "^1.1.33",
       },
     },
     "plugins/env-docker": {

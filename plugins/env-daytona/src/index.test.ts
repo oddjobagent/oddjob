@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import Ajv from "ajv";
+
 import type { LogEntry } from "@oddjob/core";
 
 import plugin from "./index.ts";
@@ -40,10 +42,12 @@ describe("env-daytona plugin (unit)", () => {
   test("authSchema validates apiKey shape", () => {
     const svc = plugin.services[0]!;
     if (svc.kind !== "environment") throw new Error("unreachable");
-    const schema = svc.authSchema as { safeParse: (v: unknown) => { success: boolean } };
-    expect(schema.safeParse({ apiKey: "dtn_" + "x".repeat(60) }).success).toBe(true);
-    expect(schema.safeParse({ apiKey: "short" }).success).toBe(false);
-    expect(schema.safeParse({}).success).toBe(false);
+    // typebox JSON Schema; validate via Ajv at runtime.
+    const ajv = new Ajv({ strict: false });
+    const validate = ajv.compile(svc.authSchema as object);
+    expect(validate({ apiKey: "dtn_" + "x".repeat(60) })).toBe(true);
+    expect(validate({ apiKey: "short" })).toBe(false);
+    expect(validate({})).toBe(false);
   });
 });
 
