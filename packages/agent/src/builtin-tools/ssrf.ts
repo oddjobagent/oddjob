@@ -89,7 +89,7 @@ function v4ToInt(ip: string): number {
   );
 }
 
-function isPrivateV4(ip: string): boolean {
+export function isPrivateV4(ip: string): boolean {
   const value = v4ToInt(ip);
   return PRIVATE_V4_CIDRS.some(([net, bits]) => {
     const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
@@ -97,7 +97,7 @@ function isPrivateV4(ip: string): boolean {
   });
 }
 
-function isPrivateV6(ip: string): boolean {
+export function isPrivateV6(ip: string): boolean {
   const lower = ip.toLowerCase();
   if (lower === "::1") return true;
   if (lower.startsWith("fe80:")) return true; // link-local

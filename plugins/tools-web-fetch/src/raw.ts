@@ -18,28 +18,81 @@ import type { ProviderCredential, WebFetchOptions, WebFetchResult } from "@oddjo
 const MAX_REDIRECTS = 3;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
+class RebindBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebindBlockedError";
+  }
+}
+
 /**
- * DNS rebinding mitigation. Resolves the hostname once and returns a URL
- * that points the host portion at the resolved IP, so `fetch()` connects
- * to that exact IP instead of re-resolving (which could land on a private
- * IP between the dispatcher's SSRF/allowlist check and the actual connect).
+ * Resolved-IP validator. Defense-in-depth against DNS rebinding: the
+ * dispatcher's `assertSafeUrl` resolves once and validates the IP at gate
+ * time; we re-resolve here at connect time and re-validate, so an attacker
+ * who controls the hostname's DNS can't rebind between the gate and our
+ * fetch. Mirrors the ssrf guard's CIDR sets so behavior is consistent.
+ */
+function isPrivateV4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return false;
+  const [a, b] = parts as [number, number, number, number];
+  if (a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true; // link-local + 169.254.169.254 metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a >= 224) return true; // multicast/reserved
+  return false;
+}
+function isPrivateV6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower === "::1") return true;
+  if (lower.startsWith("fe80:")) return true; // link-local
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique-local
+  if (lower.startsWith("::ffff:")) {
+    const v4 = lower.slice(7);
+    return isIP(v4) === 4 ? isPrivateV4(v4) : false;
+  }
+  return false;
+}
+
+/**
+ * DNS rebinding mitigation for plain HTTP. Resolves the hostname, validates
+ * the resolved IP isn't private/sensitive, then returns a URL whose host is
+ * the IP literal so `fetch()` connects to that exact IP instead of
+ * re-resolving. Sets `Host` header to the original hostname for upstream
+ * virtual-host routing.
  *
- * Also returns the original hostname for use as the `Host` request header
- * — upstream virtual-host routing + TLS SNI both rely on it. For TLS,
- * Bun's fetch uses the URL's hostname for SNI; passing an IP defeats SNI.
- * That's an acceptable v1 tradeoff for plain HTTP and HTTPS to an
- * IP-addressable host. Sites that strictly require SNI may break under
- * limited-networking egress; this is documented in SECURITY.md.
+ * For HTTPS we deliberately do NOT rewrite the hostname — TLS SNI + cert
+ * verification both use the URL hostname, and Bun's fetch follows that. We
+ * still re-resolve and validate the IP (so an obvious rebind to RFC1918 is
+ * caught), then return the original URL unchanged. The residual rebind
+ * window for HTTPS is the same compromise the proxy uses for CONNECT
+ * tunneling — documented in SECURITY.md.
+ *
+ * Throws RebindBlockedError if the resolved IP fails the private-IP check.
  */
 async function pinUrl(rawUrl: string): Promise<{ pinnedUrl: URL; originalHost: string }> {
   const u = new URL(rawUrl);
   const original = u.hostname;
-  if (isIP(original)) {
-    return { pinnedUrl: u, originalHost: original };
-  }
+  if (isIP(original)) return { pinnedUrl: u, originalHost: original };
   const r = await lookup(original);
+  const v = isIP(r.address);
+  if (v === 4 && isPrivateV4(r.address)) {
+    throw new RebindBlockedError(
+      `${original} resolves to private IPv4 ${r.address} (DNS rebinding blocked)`,
+    );
+  }
+  if (v === 6 && isPrivateV6(r.address)) {
+    throw new RebindBlockedError(
+      `${original} resolves to private IPv6 ${r.address} (DNS rebinding blocked)`,
+    );
+  }
+  // HTTPS: do not rewrite hostname (preserves SNI + cert verification).
+  // HTTP: swap to IP literal so fetch connects to the validated IP.
+  if (u.protocol === "https:") return { pinnedUrl: u, originalHost: original };
   const pinned = new URL(rawUrl);
-  pinned.hostname = isIP(r.address) === 6 ? `[${r.address}]` : r.address;
+  pinned.hostname = v === 6 ? `[${r.address}]` : r.address;
   return { pinnedUrl: pinned, originalHost: original };
 }
 

@@ -140,14 +140,26 @@ The token-shape catalog covers OpenAI (`sk-...`), Anthropic
 
 ### Sandbox env vars
 
-Sandbox env continues to receive credentials via process env vars
-(today). The credential broker pattern (secrets stay outside the sandbox,
-proxy injects them at egress) only fully works for plain HTTP in v1; it
-becomes the default once v1.1 ships TLS termination.
+The agent loop does **not** inject blueprint secrets into the sandbox
+process env. Resolved secret values reach upstream services through two
+paths only:
 
-The `env-process` plugin uses a **curated host-env allowlist** —
-PATH/HOME/USER/SHELL/TMPDIR/LANG/LC_ALL only. Host AWS keys, SSH agent
-sockets, etc. are NOT inherited. Per-blueprint secrets are layered on top
+1. **MCP connectors** receive their auth header at MCP-call time
+   (`mcp-client` resolves `${secret:NAME}` from the SecretsProvider
+   directly into the request's `Authorization` header).
+2. **Plain-HTTP outbound from the agent** is rewritten by the egress
+   proxy (`${secret:NAME}` placeholders in headers / body get
+   substituted before forwarding upstream).
+
+HTTPS body inspection requires per-Run TLS termination + cert injection,
+which is deferred to v1.1; until then, secrets cannot be injected into
+HTTPS request bodies that the agent constructs itself. Operators who
+need this today should wrap the upstream behind a plain-HTTP MCP
+connector.
+
+The `env-process` plugin further isolates the sandbox shell with a
+**curated host-env allowlist** — PATH/HOME/USER/SHELL/TMPDIR/LANG/LC_ALL
+only. Host AWS keys, SSH agent sockets, etc. are NOT inherited. Per-blueprint secrets are layered on top
 via `EnvironmentRunConfig.env`.
 
 ## Lethal trifecta caveats (Willison)
