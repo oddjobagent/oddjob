@@ -41,6 +41,7 @@
         "@oddjob/plugin-llama-local": "workspace:*",
         "@oddjob/plugin-openai": "workspace:*",
         "@oddjob/plugin-openrouter": "workspace:*",
+        "@oddjob/plugin-tools-coding": "workspace:*",
         "@oddjob/plugin-tools-core": "workspace:*",
         "@oddjob/plugin-web-fetch-core": "workspace:*",
         "@oddjob/plugin-web-search-core": "workspace:*",
@@ -414,6 +415,15 @@
         "@oddjob/sdk": "workspace:*",
       },
     },
+    "plugins/tools-coding": {
+      "name": "@oddjob/plugin-tools-coding",
+      "version": "0.0.0",
+      "dependencies": {
+        "@oddjob/agent": "workspace:*",
+        "@oddjob/core": "workspace:*",
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
     "plugins/tools-core": {
       "name": "@oddjob/plugin-tools-core",
       "version": "0.0.0",
@@ -720,6 +730,8 @@
     "@oddjob/plugin-openai": ["@oddjob/plugin-openai@workspace:plugins/openai"],
 
     "@oddjob/plugin-openrouter": ["@oddjob/plugin-openrouter@workspace:plugins/openrouter"],
+
+    "@oddjob/plugin-tools-coding": ["@oddjob/plugin-tools-coding@workspace:plugins/tools-coding"],
 
     "@oddjob/plugin-tools-core": ["@oddjob/plugin-tools-core@workspace:plugins/tools-core"],
 

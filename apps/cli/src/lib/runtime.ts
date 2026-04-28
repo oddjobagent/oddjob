@@ -20,6 +20,7 @@ import openrouterPlugin from "@oddjob/plugin-openrouter";
 import llamaLocalPlugin from "@oddjob/plugin-llama-local";
 import channelsCorePlugin from "@oddjob/plugin-channels-core";
 import builtinToolsPlugin from "@oddjob/plugin-builtin-tools";
+import toolsCodingPlugin from "@oddjob/plugin-tools-coding";
 import toolsCorePlugin from "@oddjob/plugin-tools-core";
 import webSearchCorePlugin from "@oddjob/plugin-web-search-core";
 import webFetchCorePlugin from "@oddjob/plugin-web-fetch-core";
@@ -78,6 +79,7 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     llamaLocalPlugin,
     channelsCorePlugin,
     toolsCorePlugin,
+    toolsCodingPlugin,
     builtinToolsPlugin,
     webSearchCorePlugin,
     webFetchCorePlugin,
