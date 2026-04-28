@@ -44,6 +44,12 @@ export {
 
 export { parseSkillFile, resolveSkillPath, loadSkills, blueprintDirOf } from "./skills.ts";
 
+// SSRF guard primitives — exported so web-fetch backends can re-validate
+// resolved IPs at connect time without re-implementing the CIDR sets.
+// Drift between dispatcher gate (assertSafeUrl) and connect-time pin is
+// the exact thing this exposes for plugins to share.
+export { assertSafeUrl, isPrivateV4, isPrivateV6, SsrfBlockedError } from "./builtin-tools/ssrf.ts";
+
 export {
   listAllModels,
   listProviders,

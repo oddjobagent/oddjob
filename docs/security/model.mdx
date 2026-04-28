@@ -159,8 +159,11 @@ connector.
 
 The `env-process` plugin further isolates the sandbox shell with a
 **curated host-env allowlist** — PATH/HOME/USER/SHELL/TMPDIR/LANG/LC_ALL
-only. Host AWS keys, SSH agent sockets, etc. are NOT inherited. Per-blueprint secrets are layered on top
-via `EnvironmentRunConfig.env`.
+only. Host AWS keys, SSH agent sockets, etc. are NOT inherited. The
+agent loop does not pass per-blueprint secrets in the spawn `env` field
+either — secrets stay in the SecretsProvider and are surfaced only via
+the two paths above (MCP-client header injection + proxy-side
+rewriting).
 
 ## Lethal trifecta caveats (Willison)
 

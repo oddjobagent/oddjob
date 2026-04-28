@@ -14,6 +14,11 @@ import { isIP } from "node:net";
 import TurndownService from "turndown";
 
 import type { ProviderCredential, WebFetchOptions, WebFetchResult } from "@oddjob/sdk";
+// Share the SSRF CIDR sets with the dispatcher's assertSafeUrl so the
+// connect-time re-validation is provably congruent with the gate-time
+// check (Codex round-3 finding: a copied table drifted on 0.0.0.0/8 and
+// allowed http://0.0.0.0:<port> to reach host-local services).
+import { isPrivateV4, isPrivateV6 } from "@oddjob/agent";
 
 const MAX_REDIRECTS = 3;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
@@ -26,37 +31,6 @@ class RebindBlockedError extends Error {
 }
 
 /**
- * Resolved-IP validator. Defense-in-depth against DNS rebinding: the
- * dispatcher's `assertSafeUrl` resolves once and validates the IP at gate
- * time; we re-resolve here at connect time and re-validate, so an attacker
- * who controls the hostname's DNS can't rebind between the gate and our
- * fetch. Mirrors the ssrf guard's CIDR sets so behavior is consistent.
- */
-function isPrivateV4(ip: string): boolean {
-  const parts = ip.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return false;
-  const [a, b] = parts as [number, number, number, number];
-  if (a === 10 || a === 127) return true;
-  if (a === 169 && b === 254) return true; // link-local + 169.254.169.254 metadata
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  if (a >= 224) return true; // multicast/reserved
-  return false;
-}
-function isPrivateV6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  if (lower === "::1") return true;
-  if (lower.startsWith("fe80:")) return true; // link-local
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique-local
-  if (lower.startsWith("::ffff:")) {
-    const v4 = lower.slice(7);
-    return isIP(v4) === 4 ? isPrivateV4(v4) : false;
-  }
-  return false;
-}
-
-/**
  * DNS rebinding mitigation for plain HTTP. Resolves the hostname, validates
  * the resolved IP isn't private/sensitive, then returns a URL whose host is
  * the IP literal so `fetch()` connects to that exact IP instead of
@@ -65,10 +39,13 @@ function isPrivateV6(ip: string): boolean {
  *
  * For HTTPS we deliberately do NOT rewrite the hostname — TLS SNI + cert
  * verification both use the URL hostname, and Bun's fetch follows that. We
- * still re-resolve and validate the IP (so an obvious rebind to RFC1918 is
- * caught), then return the original URL unchanged. The residual rebind
- * window for HTTPS is the same compromise the proxy uses for CONNECT
- * tunneling — documented in SECURITY.md.
+ * still re-resolve and validate the IP (so an obvious rebind to RFC1918
+ * is caught), then return the original URL unchanged. **Residual rebind
+ * window**: between our validate and `fetch()`'s own re-resolve, an
+ * attacker DNS could swap the IP. This is weaker than the proxy's
+ * CONNECT path (which connects to the pinned IP); fully closing it for
+ * HTTPS requires a custom fetch dispatcher Bun doesn't expose yet.
+ * Documented in docs/security/model.mdx as a v1 limitation.
  *
  * Throws RebindBlockedError if the resolved IP fails the private-IP check.
  */

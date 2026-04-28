@@ -1,10 +1,15 @@
-# Security architecture
+---
+title: "Security architecture"
+description: "How Oddjob isolates AI agents from the host, controls what they can reach, and where the trust boundaries actually sit."
+group: "security"
+order: 2
+---
 
 How Oddjob isolates AI agents from the host, controls what they can reach,
 and where the trust boundaries actually sit. This is the architecture
-companion to [`SECURITY.md`](./SECURITY.md) — that doc describes the v1
-threat model and what's deferred; this doc explains how the pieces fit
-together.
+companion to [Security model](/docs/security/model) — that doc describes
+the v1 threat model and what's deferred; this doc explains how the pieces
+fit together.
 
 ---
 
@@ -177,7 +182,7 @@ reach an internal SSH bastion or DB" exfil patterns.
 
 ### Plain-HTTP secret rewriting
 
-Agent code can put `${secret:NAME}` placeholders in headers or the
+Agent code can put `${'$'}{secret:NAME}` placeholders in headers or the
 request body. The proxy's body buffer scans for placeholders, looks up
 each via `SecretsProvider.get(name)`, substitutes, then forwards.
 Pattern: `\$\{secret:([A-Za-z0-9_.-]+)\}`. Cloudflare AI Gateway model.
@@ -212,12 +217,13 @@ through `redactString()` which replaces vendor token patterns with
 
 ### What it doesn't do
 
-Documented in [`SECURITY.md`](./SECURITY.md). The big one:
+Documented in [Security model](/docs/security/model). The big one:
 
 - **HTTPS body inspection / secret injection over TLS.** v1 handles
   HTTPS via raw CONNECT only. Encrypted body passes opaque. So
-  `${secret:...}` placeholders sent over HTTPS reach upstream literally,
-  scrubber doesn't see HTTPS bodies, response scrub is HTTP-only.
+  `${'$'}{secret:...}` placeholders sent over HTTPS reach upstream
+  literally, scrubber doesn't see HTTPS bodies, response scrub is
+  HTTP-only.
 
 - **Block raw sockets bypassing HTTPS_PROXY.** The proxy only sees what
   the agent's HTTP libraries route through it. Raw sockets bypass
@@ -281,11 +287,11 @@ Secrets reach the sandbox via three paths today:
    via SecretsProvider, set as env vars on the spawned process.
    Env-process applies the curated host-env allowlist on top so OS
    secrets (AWS keys, SSH agent socket, etc.) are NOT inherited.
-2. **MCP connector auth** — for HTTP MCP, `Authorization: Bearer
-${secret:NAME}` is resolved client-side before the request. For
-   stdio MCP, the secret is set as an env var on the spawned MCP server.
-3. **Plain-HTTP placeholder rewrite** at the proxy — `${secret:NAME}` in
-   the agent's outbound request body or headers.
+2. **MCP connector auth** — for HTTP MCP, `Authorization: Bearer ${'$'}{secret:NAME}`
+   is resolved client-side before the request. For stdio MCP, the secret
+   is set as an env var on the spawned MCP server.
+3. **Plain-HTTP placeholder rewrite** at the proxy — `${'$'}{secret:NAME}`
+   in the agent's outbound request body or headers.
 
 v1.1 deferred: full TLS-terminating proxy with per-Run CA + cert
 injection (`NODE_EXTRA_CA_CERTS` already wired through
@@ -363,73 +369,3 @@ What's NOT defended against:
   nothing here helps.
 - **Side-channel leaks.** Timing, packet sizes, DNS lookups (via the
   proxy's resolver). Low-bandwidth but real.
-
----
-
-## Verification & E2E
-
-Phase 15 exit criteria validated end-to-end against the running server
-(team-lead context, not just engineer-claimed):
-
-```
-$ curl /api/v1/environments/providers
-process         trusted        available=True
-seatbelt        local-strict   available=True
-bwrap           local-strict   available=False  (Linux only)
-appcontainer    local-strict   available=False  (Win only, stub)
-docker          container      available=True
-daytona         remote-vm      available=False  (no credential)
-
-$ oddjob env credential add daytona --api-key dtn_...
-credential daytona/default added
-
-$ oddjob env set-default seatbelt-default
-$ oddjob run echo --follow --input '{"text":"e2e-test"}'
-status: complete
-→ run.environmentSnapshot = { id: seatbelt-default,
-                              source: engine-default,
-                              serviceId: seatbelt,
-                              trustTier: local-strict }
-
-$ oddjob env set-default daytona-default
-$ oddjob run echo --follow --input '{"text":"daytona-e2e"}'
-status: complete
-→ run.environmentSnapshot = { id: daytona-default,
-                              source: engine-default,
-                              serviceId: daytona,
-                              trustTier: remote-vm }
-```
-
-Both runs landed status=complete with correct provenance persisted on
-the Run row. Cost: $0.002 (Haiku via OpenRouter) for seatbelt; Daytona
-spun a real Firecracker MicroVM, executed the agent loop inside it,
-returned, killed the sandbox.
-
-The `jobs/env-demo` blueprint exists for ongoing CI-style verification
-(host-env isolation + allowlisted egress + python interpreter) but
-exercises the same machinery this section verified by hand.
-
-Built-in tool routing (bash/read/write/edit/grep/find/ls/python_repl/
-javascript_repl through `EnvironmentSession`) verified via
-`packages/core/src/agent/builtin-tools/environment-isolation.test.ts`
-which asserts `bash` runs in the per-Run tempdir, not host process.cwd.
-
----
-
-## v1 → v1.1 roadmap
-
-Tracked in `SECURITY.md`. Headline items:
-
-- **TLS-terminating proxy** — per-Run ephemeral CA, MITM HTTPS, full
-  body inspection over TLS. Replaces env-var secret injection for
-  HTTPS-using connectors. The `caPem` field is already wired through
-  the `EgressProxyHandle` and consumed by every environment provider.
-- **Native Windows AppContainer** — replaces the WSL2 fallback in
-  `env-local-strict`'s `appcontainer` service. Stub-throws today.
-- **Per-Run cgroups** for `env-docker` — CPU/memory/IO limits at the
-  container, not just the soft tool/budget limits in the agent loop.
-- **Connector OAuth lifecycle** for MCP — token refresh, re-auth
-  notification (planned in Phase 9b, separate from Phase 15).
-- **Output-channel attestation** — sign run outputs with a per-Run key
-  so a downstream consumer can verify the run's environment provenance
-  without trusting the operator's audit log.
