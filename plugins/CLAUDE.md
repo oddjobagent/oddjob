@@ -4,11 +4,11 @@ Concrete provider/tool/channel/llm implementations. Bundled at build time (CLI i
 
 ## Inventory (post April 2026 re-arch)
 
-### Tools (4 bundles)
-- `tools-core` — bash, read, write, edit, grep, find, ls, datetime. One .ts per tool registering `b.tool({name, build})`. Build delegates to `buildSingleBuiltinTool(name, ctx)` from `@oddjob/agent`.
-- `tools-coding` — python_repl, javascript_repl. Subprocess REPLs (system python3 / `bun -e`); WASM REPLs broken on Bun.
-- `tools-web-fetch` — `web_fetch` tool + 4 backends (raw, browserbase, firecrawl, scrapingbee). Backend selected via engine config `[builtin_tools.web_fetch] plugin = "..."`.
-- `tools-web-search` — `web_search` tool + 5 providers (brave, tavily, searxng, exa, serpapi).
+### Tools (2 bundles)
+- `tools-web-fetch` — `web_fetch` tool (real dispatcher) + 4 backends (raw, browserbase, firecrawl, scrapingbee). Backend selected via engine config `[builtin_tools.web_fetch] plugin = "..."`. Backends import SSRF + egress utilities from `@oddjob/agent`.
+- `tools-web-search` — `web_search` tool (real dispatcher) + 5 providers (brave, tavily, searxng, exa, serpapi).
+
+**Internal tools** (bash, read, write, edit, grep, find, ls, datetime, javascript, python) ship inside `@oddjob/agent` (`packages/agent/src/tools/`). They are NOT plugins; they bypass the registry and are not overridable. The previous `tools-core` and `tools-coding` shim plugins are gone — pure-shim plugins were a backwards-compat artifact for hypothetical external `@oddjob/agent` consumers, and we have none.
 
 ### Model providers (2)
 - `pi-models` — single plugin registering a `ModelProviderService` for every pi-ai built-in provider (~25 providers, ~880 models). Replaces the deleted plugin-{anthropic,openai,openrouter} trio. `createClient` delegates to `pi-ai.getModel`; passthrough providers (openrouter, vercel-ai-gateway, huggingface, fireworks, opencode, opencode-go) synthesise a Model when pi-ai's registry lacks the id (uses the provider's exemplar to pick api + baseUrl).
@@ -37,11 +37,12 @@ Concrete provider/tool/channel/llm implementations. Bundled at build time (CLI i
 - Tool plugins: each tool gets its own .ts file exporting `Omit<ToolService, "kind">`. The plugin's index.ts calls `b.tool(toolDescriptor)`.
 - Model providers: register via `b.modelProvider({id, listModels, createClient, ...})`. Multiple `b.modelProvider` calls per plugin are fine (pi-models registers ~25); use `PluginRegistry.ownerOfProvider(id)` from server-side code to walk back to the owning plugin slug.
 
-## Plugin registry semantics (post Phase H)
+## Plugin registry semantics (post Phase J)
 
-- Last-wins registration for tool/channel/web-* services. Local plugins override bundled by registering second.
-- Tool resolution at run time: `plugins.toolFor(name)` first; fall back to `buildSingleBuiltinTool` only when `plugins.hasTool(name)` is false (no plugin claimed the name). Disabled plugins honor disable.
-- Don't iterate `BUILTIN_TOOL_NAMES` directly in new plugins — the registry is the source of truth. The constant remains in `core/types/builtin-tools.ts` for blueprint validation only.
+- Internal tools (bash, read, write, edit, grep, find, ls, datetime, javascript, python) are dispatched directly by `runOnce` via `buildInternalTool`. They do NOT go through the registry and are NOT overridable by plugins.
+- Plugin-contributed tool/channel/web-* services use last-wins registration. Local plugins override bundled by registering second.
+- Tool resolution at run time: `isInternalToolName(name)` first → internal direct; else `plugins.toolFor(name)` → service if enabled; else `plugins.hasTool(name)` → warn + skip (disabled); else warn + skip.
+- Plugin tool names available for blueprint validation: `registry.allToolNames()` returns the names of enabled plugin-contributed tools.
 
 ## Gotchas
 

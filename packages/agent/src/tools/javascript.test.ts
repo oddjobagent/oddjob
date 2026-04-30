@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 
-import { createJavascriptReplTool } from "./javascript_repl.ts";
+import { createJavascriptTool } from "./javascript.ts";
 
 let dir: string;
 let provider: ProcessEnvironmentProvider;
@@ -24,9 +24,9 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-describe("createJavascriptReplTool", () => {
+describe("createJavascriptTool", () => {
   test("evaluates arithmetic and prints", async () => {
-    const tool = createJavascriptReplTool({ environment: session });
+    const tool = createJavascriptTool({ environment: session });
     const r = await tool.execute(
       "c1",
       { code: "console.log('hi'); console.log(1 + 2);" },
@@ -39,7 +39,7 @@ describe("createJavascriptReplTool", () => {
   }, 30_000);
 
   test("supports top-level await", async () => {
-    const tool = createJavascriptReplTool({ environment: session });
+    const tool = createJavascriptTool({ environment: session });
     const r = await tool.execute(
       "c2",
       { code: "const v = await Promise.resolve(42); console.log(v);" },
@@ -50,7 +50,7 @@ describe("createJavascriptReplTool", () => {
   }, 30_000);
 
   test("captures errors as non-zero exit", async () => {
-    const tool = createJavascriptReplTool({ environment: session });
+    const tool = createJavascriptTool({ environment: session });
     const r = await tool.execute("c3", { code: "throw new Error('boom')" }, undefined);
     expect(r.details.exitCode).not.toBe(0);
     const text = r.content.map((c) => (c.type === "text" ? c.text : "")).join("");
@@ -58,7 +58,7 @@ describe("createJavascriptReplTool", () => {
   }, 30_000);
 
   test("infinite loop killed by timeout", async () => {
-    const tool = createJavascriptReplTool({ environment: session, defaultTimeoutMs: 500 });
+    const tool = createJavascriptTool({ environment: session, defaultTimeoutMs: 500 });
     const r = await tool.execute("c4", { code: "while(true){}" }, undefined);
     expect(r.details.exitCode).not.toBe(0);
   }, 30_000);

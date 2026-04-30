@@ -1,13 +1,248 @@
-import { buildSingleBuiltinTool } from "@oddjob/agent";
+// web_fetch dispatcher. Resolves the configured WebFetchService backend via
+// engine config (`[builtin_tools.web_fetch] plugin = "..."`), applies the
+// SSRF guard at this layer (so all backends inherit it), then delegates the
+// actual fetch.
+//
+// Defaults to plugin "raw" when registered. Backends are sub-services of this
+// plugin (raw / browserbase / firecrawl / scrapingbee).
+
+import type { Static } from "typebox";
+import { Type } from "typebox";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+
+import { assertSafeUrl, checkEnvAllowlist, SsrfBlockedError } from "@oddjob/agent";
+import {
+  redactString,
+  type LogEntry,
+  type PluginRegistry,
+  type ProviderCredential,
+  type SecretsProvider,
+  type StateProvider,
+  type WebFetchConfig,
+} from "@oddjob/core";
 import type { ToolService, ToolBuildContext } from "@oddjob/sdk";
 
-// Fetch a URL and return the body as markdown. SSRF guarded; dispatches through
-// a registered web-fetch backend (raw, Browserbase, Firecrawl, ScrapingBee).
+const schema = Type.Object({
+  url: Type.String({ description: "Absolute http(s) URL to fetch." }),
+  format: Type.Optional(
+    Type.Union([Type.Literal("markdown"), Type.Literal("text"), Type.Literal("raw")], {
+      description: "Output format hint (raw passes through unchanged).",
+    }),
+  ),
+});
+type FetchInput = Static<typeof schema>;
+
+interface FetchDetails {
+  status: number;
+  bytesIn: number;
+  truncated: boolean;
+  format: string;
+  plugin: string;
+}
+
+export interface WebFetchToolOptions {
+  config?: WebFetchConfig;
+  onLog?: (entry: LogEntry) => void;
+  fetchImpl?: typeof fetch;
+  plugins?: PluginRegistry;
+  secrets?: SecretsProvider;
+  state?: StateProvider;
+  envAllowedHosts?: readonly string[];
+  engineRequiredHosts?: readonly string[];
+}
+
+export function createWebFetchTool(opts: WebFetchToolOptions = {}): AgentTool<typeof schema> {
+  const cfg = opts.config ?? {};
+  const slug = cfg.plugin ?? "raw";
+  const maxBytes = (cfg.maxBodyMb ?? 5) * 1024 * 1024;
+  return {
+    name: "web_fetch",
+    label: "Web Fetch",
+    description:
+      "Fetch a URL via HTTPS and return the body. Backend chosen by [builtin_tools.web_fetch] plugin = ... (raw / browserbase / firecrawl / scrapingbee). SSRF-guarded.",
+    parameters: schema,
+    async execute(_id, params: FetchInput, signal): Promise<AgentToolResult<FetchDetails>> {
+      const start = Date.now();
+      let safeUrl: string;
+      let safeHost: string;
+      try {
+        const target = await assertSafeUrl(params.url, {
+          privateIpsAllowed: cfg.privateIpsAllowed,
+          allowlist: cfg.allowlist,
+          blocklist: cfg.blocklist,
+        });
+        safeUrl = target.toString();
+        safeHost = target.hostname;
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) return errorResult(err.message, slug);
+        return errorResult((err as Error).message ?? "ssrf check failed", slug);
+      }
+
+      const envGate = checkEnvAllowlist(safeHost, opts.envAllowedHosts, opts.engineRequiredHosts);
+      if (!envGate.allowed) {
+        return errorResult(
+          `host '${safeHost}' not in env egress allowlist (${envGate.allowedSummary})`,
+          slug,
+        );
+      }
+
+      if (!opts.plugins) {
+        return errorResult(
+          `web_fetch plugin registry unavailable; cannot dispatch '${slug}'`,
+          slug,
+        );
+      }
+      const svc = opts.plugins.webFetchFor(slug);
+      if (!svc) {
+        return errorResult(`web-fetch plugin '${slug}' not registered or disabled`, slug);
+      }
+      if (opts.envAllowedHosts !== undefined && svc.supportsRedirectValidation !== true) {
+        return errorResult(
+          `backend '${svc.id}' cannot enforce redirect validation; refused under limited-networking env`,
+          slug,
+        );
+      }
+      const credential = await materializeCredential(slug, opts.state, opts.secrets, cfg);
+      const validateUrl = makeUrlValidator({
+        ssrf: {
+          privateIpsAllowed: cfg.privateIpsAllowed,
+          allowlist: cfg.allowlist,
+          blocklist: cfg.blocklist,
+        },
+        envAllowedHosts: opts.envAllowedHosts,
+        engineRequiredHosts: opts.engineRequiredHosts,
+      });
+      try {
+        const result = await svc.fetch(safeUrl, credential, {
+          maxBytes,
+          signal,
+          fetchImpl: opts.fetchImpl,
+          renderJs: cfg.renderJs,
+          validateUrl,
+        });
+        if (result.finalUrl && result.finalUrl !== safeUrl) {
+          try {
+            await validateUrl(result.finalUrl);
+          } catch (vErr) {
+            opts.onLog?.({
+              timestamp: Date.now(),
+              level: "error",
+              message: `web_fetch ${svc.id} blocked at final URL ${redactString(result.finalUrl)}: ${(vErr as Error).message}`,
+              meta: { durationMs: Date.now() - start },
+            });
+            return errorResult(
+              `final URL rejected after fetch: ${(vErr as Error).message}`,
+              svc.id,
+            );
+          }
+        }
+        opts.onLog?.({
+          timestamp: Date.now(),
+          level: result.status >= 400 ? "warn" : "info",
+          message: `web_fetch ${svc.id} ${result.status} ${redactString(result.finalUrl)}`,
+          meta: { durationMs: Date.now() - start, format: result.format },
+        });
+        const text = renderForOutput(result.body, result.format, params.format);
+        const prefix = result.status >= 400 ? `[HTTP ${result.status}]\n` : "";
+        return {
+          content: [{ type: "text", text: prefix + text }],
+          details: {
+            status: result.status,
+            bytesIn: text.length,
+            truncated: result.truncated,
+            format: result.format,
+            plugin: svc.id,
+          },
+        };
+      } catch (err) {
+        return errorResult((err as Error).message ?? "fetch failed", svc.id);
+      }
+    },
+  };
+}
+
+function errorResult(message: string, plugin: string): AgentToolResult<FetchDetails> {
+  return {
+    content: [{ type: "text", text: `web_fetch error: ${message}` }],
+    details: { status: 0, bytesIn: 0, truncated: false, format: "text", plugin },
+  };
+}
+
+function renderForOutput(
+  body: string,
+  serviceFormat: "markdown" | "html" | "text" | "json",
+  hint?: "markdown" | "text" | "raw",
+): string {
+  if (hint === "raw") return body;
+  if (hint === "text" && serviceFormat === "html") {
+    return body
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return body;
+}
+
+interface UrlValidatorOpts {
+  ssrf: {
+    privateIpsAllowed?: boolean;
+    allowlist?: readonly string[];
+    blocklist?: readonly string[];
+  };
+  envAllowedHosts?: readonly string[];
+  engineRequiredHosts?: readonly string[];
+}
+
+function makeUrlValidator(opts: UrlValidatorOpts): (url: string) => Promise<void> {
+  return async (url: string) => {
+    const target = await assertSafeUrl(url, opts.ssrf);
+    const gate = checkEnvAllowlist(target.hostname, opts.envAllowedHosts, opts.engineRequiredHosts);
+    if (!gate.allowed) {
+      throw new SsrfBlockedError(
+        `host '${target.hostname}' not in env egress allowlist (${gate.allowedSummary})`,
+      );
+    }
+  };
+}
+
+async function materializeCredential(
+  slug: string,
+  state: StateProvider | undefined,
+  secrets: SecretsProvider | undefined,
+  cfg: WebFetchConfig | undefined,
+): Promise<ProviderCredential> {
+  let apiKey = cfg?.apiKey;
+  let options: Record<string, unknown> | undefined;
+  if (state) {
+    const row = await state.getProviderCredential(slug, "default").catch(() => null);
+    if (row) {
+      if (row.apiKeySecret && secrets) {
+        const v = await secrets.get(row.apiKeySecret);
+        if (v) apiKey = v;
+      }
+      if (row.optionsJson) {
+        try {
+          options = JSON.parse(row.optionsJson) as Record<string, unknown>;
+        } catch {
+          // ignore malformed
+        }
+      }
+    }
+  }
+  return { apiKey, options };
+}
+
+// ToolService registration: builds the dispatcher from the loop's ToolBuildContext.
 export const webFetchTool: Omit<ToolService, "kind"> = {
   name: "web_fetch",
-  build: (ctx: ToolBuildContext) => {
-    const tool = buildSingleBuiltinTool("web_fetch", ctx);
-    if (!tool) throw new Error("web_fetch tool could not be built");
-    return tool;
-  },
+  build: (ctx: ToolBuildContext) =>
+    createWebFetchTool({
+      config: ctx.engine?.builtinTools?.webFetch,
+      onLog: ctx.onLog,
+      plugins: ctx.plugins,
+      secrets: ctx.secrets,
+      state: ctx.state,
+      envAllowedHosts: ctx.envAllowedHosts,
+      engineRequiredHosts: ctx.engineRequiredHosts,
+    }),
 };

@@ -13,6 +13,8 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    // Plugin-tool names are enforced by the server on push, not the offline
+    // validator — local plugins under ~/.oddjob/plugins are server-side state.
     const bp = await loadBlueprint(args.path, { validate: true, checkFs: true });
     process.stdout.write(`OK ${bp.id} v${bp.version} (hash ${bp.contentHash.slice(0, 8)})\n`);
     process.stdout.write(`  scripts: ${Object.keys(bp.scripts).length}\n`);

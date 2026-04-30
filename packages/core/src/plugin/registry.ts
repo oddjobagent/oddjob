@@ -191,11 +191,23 @@ export class PluginRegistry {
   /**
    * Whether ANY plugin (enabled or not) has claimed this tool name. Used by
    * the agent loop to distinguish "no plugin ever owned this name" from
-   * "plugin owns this but is disabled" — only the former should fall back
-   * to a direct builtin build.
+   * "plugin owns this but is disabled".
    */
   hasTool(name: string): boolean {
     return this.tools.has(name);
+  }
+
+  /**
+   * Names of all tools registered by enabled plugins. Used by blueprint
+   * validation to accept plugin-contributed names alongside the agent's
+   * internal tool list.
+   */
+  allToolNames(): readonly string[] {
+    const names: string[] = [];
+    for (const [name, svc] of this.tools) {
+      if (this.isEnabled(svc)) names.push(name);
+    }
+    return names;
   }
 
   environmentFor(id: string): EnvironmentService | undefined {

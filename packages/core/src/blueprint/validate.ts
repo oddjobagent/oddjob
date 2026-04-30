@@ -1,19 +1,27 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { BUILTIN_TOOL_NAMES } from "../types/builtin-tools.ts";
+import { INTERNAL_TOOL_NAMES } from "../types/internal-tools.ts";
 import type { Blueprint } from "../types/blueprint.ts";
 import { type BlueprintIssue, BlueprintValidationError } from "./errors.ts";
 
 const SCRIPT_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".py"]);
-const BUILTIN_NAMES_SET: ReadonlySet<string> = new Set(BUILTIN_TOOL_NAMES);
+const INTERNAL_NAMES_SET: ReadonlySet<string> = new Set(INTERNAL_TOOL_NAMES);
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  javascript_repl: "javascript",
+  python_repl: "python",
+};
 
 export interface ValidateOptions {
   checkFs?: boolean;
   /**
-   * Tool names contributed by plugins. Validator accepts them in addition to
-   * the bundled built-in list. Pass enabled plugin tool names from the server
-   * boot path; CLI validation without a registry context just gets builtins.
+   * Tool names contributed by enabled plugins. Validator accepts them in
+   * addition to `INTERNAL_TOOL_NAMES`. **Semantics:**
+   * - `undefined` → don't enforce plugin-tool names. Unknown non-internal names
+   *   pass validation (runtime warns + skips). Use this when there's no
+   *   registry context (offline CLI commands, parser tests).
+   * - `Set` → exhaustive list. Unknown non-internal names fail. Use this from
+   *   the server push path with `registry.allToolNames()`.
    */
   pluginToolNames?: ReadonlySet<string>;
 }
@@ -88,17 +96,25 @@ export function validateBlueprint(
   }
 
   for (const toolName of blueprint.tools) {
-    if (BUILTIN_NAMES_SET.has(toolName)) continue;
-    if (options.pluginToolNames?.has(toolName)) continue;
-    const suggestion = nearestBuiltin(toolName);
+    if (LEGACY_TOOL_NAMES[toolName]) {
+      issues.push({
+        path: "tools",
+        message: `tool '${toolName}' was renamed to '${LEGACY_TOOL_NAMES[toolName]}' — update the blueprint`,
+      });
+      continue;
+    }
+    if (INTERNAL_NAMES_SET.has(toolName)) continue;
+    // No registry context → don't enforce. Runtime warn-and-skip handles
+    // unknown names. CLI offline `validate` falls into this branch.
+    if (options.pluginToolNames === undefined) continue;
+    if (options.pluginToolNames.has(toolName)) continue;
+    const suggestion = nearestKnown(toolName, options.pluginToolNames);
     issues.push({
       path: "tools",
       message: suggestion
         ? `unknown tool '${toolName}' (did you mean '${suggestion}'?)`
-        : `unknown tool '${toolName}' (valid built-ins: ${[...BUILTIN_NAMES_SET].join(", ")}; plugin-contributed tools: ${
-            options.pluginToolNames && options.pluginToolNames.size > 0
-              ? [...options.pluginToolNames].join(", ")
-              : "(none)"
+        : `unknown tool '${toolName}' (internals: ${[...INTERNAL_NAMES_SET].join(", ")}; plugin-contributed: ${
+            options.pluginToolNames.size > 0 ? [...options.pluginToolNames].join(", ") : "(none)"
           })`,
     });
   }
@@ -202,11 +218,13 @@ function extOf(p: string): string {
   return dot === -1 ? "" : p.slice(dot);
 }
 
-function nearestBuiltin(input: string): string | undefined {
+function nearestKnown(input: string, pluginNames?: ReadonlySet<string>): string | undefined {
   const lower = input.toLowerCase();
   let best: string | undefined;
   let bestScore = Infinity;
-  for (const name of BUILTIN_NAMES_SET) {
+  const candidates: string[] = [...INTERNAL_NAMES_SET];
+  if (pluginNames) candidates.push(...pluginNames);
+  for (const name of candidates) {
     const score = levenshtein(lower, name);
     if (score < bestScore && score <= 2) {
       best = name;

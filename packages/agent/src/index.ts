@@ -1,8 +1,8 @@
 // Agent runtime exports.
 //
 // This package owns the agent loop, system-prompt assembly, output validation,
-// grader, tool registry, and skill+MCP wiring. Pure types/contracts live in
-// @oddjob/core; concrete tool/provider impls live in plugins.
+// grader, internal-tool factories, and skill+MCP wiring. Pure types/contracts
+// live in @oddjob/core; plugin-contributed tool/provider impls live in plugins.
 
 export {
   runOnce,
@@ -20,20 +20,41 @@ export {
 
 export { assembleSystemPrompt, type AssembleSystemPromptOptions } from "./system-prompt.ts";
 export { createReportStatusTool, type RunOutcome, type RunVerdict } from "./report-status-tool.ts";
-export { buildScriptTools, type ScriptToolOptions } from "./script-tool.ts";
 
 export {
-  buildBuiltinTools,
-  buildSingleBuiltinTool,
-  isBuiltinToolName,
-  BUILTIN_TOOL_NAMES,
-  type BuiltinToolName,
-  type BuildBuiltinToolsOptions,
-  type BuiltinToolsConfig,
-  type EngineConfig,
-  type WebSearchConfig,
-  type WebFetchConfig,
-} from "./builtin-tools/index.ts";
+  buildInternalTool,
+  INTERNAL_TOOL_NAMES,
+  isInternalToolName,
+  type InternalToolName,
+  type BuildInternalToolContext,
+  buildScriptTools,
+  type ScriptToolOptions,
+  buildSkillTool,
+  buildSkillSystemPrompt,
+  buildMcpRuntime,
+  type McpRuntime,
+  type McpToolBuilderOptions,
+  // Per-tool factories — exported for tests / direct construction.
+  createBashTool,
+  createDatetimeTool,
+  createEditTool,
+  createFindTool,
+  createGrepTool,
+  createJavascriptTool,
+  createLsTool,
+  createPythonTool,
+  createReadTool,
+  createWriteTool,
+  // Security primitives shared with web-fetch / web-search plugins.
+  assertSafeUrl,
+  isPrivateV4,
+  isPrivateV6,
+  SsrfBlockedError,
+  checkEnvAllowlist,
+  type EnvGateResult,
+} from "./tools/index.ts";
+
+export type { EngineConfig, BuiltinToolsConfig, WebSearchConfig, WebFetchConfig } from "@oddjob/core";
 
 export {
   createEngineLLM,
@@ -43,12 +64,6 @@ export {
 } from "./engine.ts";
 
 export { parseSkillFile, resolveSkillPath, loadSkills, blueprintDirOf } from "./skills.ts";
-
-// SSRF guard primitives — exported so web-fetch backends can re-validate
-// resolved IPs at connect time without re-implementing the CIDR sets.
-// Drift between dispatcher gate (assertSafeUrl) and connect-time pin is
-// the exact thing this exposes for plugins to share.
-export { assertSafeUrl, isPrivateV4, isPrivateV6, SsrfBlockedError } from "./builtin-tools/ssrf.ts";
 
 export {
   listAllModels,

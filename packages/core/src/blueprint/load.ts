@@ -21,7 +21,10 @@ export async function loadBlueprint(
   const parsed = parseBlueprint(source, { path: tomlPath });
   const blueprint = await resolveSchemaSidecars(parsed);
   if (options.validate !== false) {
-    validateBlueprint(blueprint, { checkFs: options.checkFs ?? true });
+    validateBlueprint(blueprint, {
+      checkFs: options.checkFs ?? true,
+      pluginToolNames: options.pluginToolNames,
+    });
   }
   return blueprint;
 }

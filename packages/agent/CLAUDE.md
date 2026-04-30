@@ -9,8 +9,10 @@ Agent runtime: the loop, tool registry, system-prompt assembly, output validatio
 - `validateOutput`, `composeOutputSchemaWithChannels` (output)
 - `assembleSystemPrompt` (prompt)
 - `createReportStatusTool`, `RunOutcome`, `RunVerdict` (verdict tool)
-- `buildScriptTools` (script-tool)
-- `buildBuiltinTools`, `buildSingleBuiltinTool` (builtin factories — kept for tests + plugin shims)
+- `buildInternalTool`, `INTERNAL_TOOL_NAMES`, `isInternalToolName` (internal tool dispatch)
+- Per-tool factories: `createBashTool`, `createReadTool`, `createWriteTool`, `createEditTool`, `createGrepTool`, `createFindTool`, `createLsTool`, `createDatetimeTool`, `createJavascriptTool`, `createPythonTool`
+- `buildScriptTools`, `buildSkillTool`, `buildMcpRuntime` (auto-included tool builders)
+- `assertSafeUrl`, `isPrivateV4`, `isPrivateV6`, `SsrfBlockedError`, `checkEnvAllowlist` (security primitives shared with web-fetch / web-search plugins)
 - `createEngineLLM`, `EngineLLM` (engine)
 - `parseSkillFile`, `loadSkills`, `blueprintDirOf`, `resolveSkillPath` (skills loader)
 - `listAllModels`, `listProviders`, `ModelDescriptor`, `ProviderDescriptor` (pi-ai model registry adapter)
@@ -21,37 +23,61 @@ Agent runtime: the loop, tool registry, system-prompt assembly, output validatio
 src/
 ├── loop.ts                # runOnce — the orchestrator
 ├── grader.ts              # runGrader, buildRevisionPrompt
-├── system-prompt.ts       # 3-layer prompt assembler (preamble + blueprint + auto-injected)
+├── system-prompt.ts       # 3-layer prompt assembler
 ├── output-validate.ts     # Ajv on blueprint.outputSchema; sticky hardFailureVerdict on failure
 ├── output-schema-compose.ts  # dynamic-channel composition
-├── report-status-tool.ts  # the report_status tool the agent uses to declare verdict
-├── script-tool.ts         # blueprint.scripts → AgentTool[]
-├── skill-tool.ts          # buildSkillTool + buildSkillSystemPrompt
-├── mcp-tool.ts            # buildMcpRuntime — wires McpSession into AgentTool[]
+├── report-status-tool.ts  # report_status verdict tool
 ├── engine.ts              # createEngineLLM, AskAdvisorOptions
-├── model-registry.ts      # pi-ai getProviders/getModels adapter (Phase F)
-├── skills.ts              # loadSkills + parseSkillFile (moved from core)
-└── builtin-tools/         # the 12 builtin tool factories (bash, read, write, edit, grep, find, ls, web_*, *_repl, datetime). Plugins/tools-* call buildSingleBuiltinTool to register these.
+├── model-registry.ts      # pi-ai getProviders/getModels adapter
+├── skills.ts              # loadSkills + parseSkillFile (uses node:fs)
+└── tools/                 # internal tool factories + auto-included builders
+    ├── index.ts           # buildInternalTool, INTERNAL_TOOL_NAMES, public re-exports
+    ├── bash.ts / read.ts / write.ts / edit.ts / grep.ts / find.ts / ls.ts
+    ├── datetime.ts
+    ├── javascript.ts      # bun -e subprocess (via session)
+    ├── python.ts          # python3 -c subprocess (via session)
+    ├── coding-adapter.ts  # pi-coding-agent ops bridge + session-routed grep
+    ├── scripts.ts         # blueprint.scripts → AgentTool[]
+    ├── skills.ts          # buildSkillTool + buildSkillSystemPrompt
+    ├── mcp.ts             # buildMcpRuntime — wires McpSession into AgentTool[]
+    └── security/
+        ├── egress.ts      # checkEnvAllowlist
+        └── ssrf.ts        # assertSafeUrl + private CIDR sets
 ```
 
 ## Tool resolution flow
 
-`runOnce` no longer iterates `BUILTIN_TOOL_NAMES` directly. For each name in `blueprint.tools`:
-1. `opts.plugins?.toolFor(name)` — service IFF a plugin owns the name AND is enabled.
-2. else if `opts.plugins?.hasTool(name)` — name claimed but plugin disabled → log warn + skip (honor disable).
-3. else if `isBuiltinToolName(name)` — fallback to `buildSingleBuiltinTool(name, ctx)` for tests / no-registry setups.
-4. else log warn + skip.
+For each name in `blueprint.tools`:
+1. `isInternalToolName(name)` → `buildInternalTool(name, ctx)`. Internal tools bypass the plugin registry; not overridable.
+2. else `opts.plugins?.toolFor(name)` → `svc.build(ctx)`. Plugin-contributed tools.
+3. else if `opts.plugins?.hasTool(name)` → claimed but disabled → warn + skip.
+4. else warn + skip.
 
-`ToolBuildContext` carries `{environment, blueprintDir, engine, onLog, plugins, secrets, state, envAllowedHosts, engineRequiredHosts}`. Plugin-resolved web_fetch / web_search use these for backend dispatch + egress gates.
+Auto-included tools are appended after the allowlist resolves: scripts (`blueprint.scripts`), MCP (`blueprint.connectors`), skill_load (`blueprint.skills`), report_status (`blueprint.outcomes`).
+
+`ToolBuildContext` carries `{environment, blueprintDir, engine, onLog, plugins, secrets, state, envAllowedHosts, engineRequiredHosts}`. Internal tools use a subset; plugin dispatchers use the full context.
+
+## Sandbox runtime contract
+
+Internal tools run subprocesses inside the session so they inherit the run's sandbox + egress proxy. Every environment plugin MUST provide on PATH inside the session:
+
+- `bun` — used by `javascript` (and `scripts.ts` for blueprint scripts via `bun run`).
+- `python3` — used by `python`. `uv` works as an alternative if `pythonBin` is overridden to `"uv run python"` via engine config.
+- `rg` (preferred) or `grep` — used by `grep`.
+- coreutils (`test`, `mkdir`, `find`, `ls`, `head`).
+
+`env-docker` default image ships these. `env-process` and `env-local-strict` rely on host PATH. `env-daytona` defaults to `ubuntu:24.04` (has `python3`; bun must be added at snapshot init).
 
 ## Why the split exists
 
-`core/` used to mix types, parsers, AND agent runtime. The dashboard imports `@oddjob/core` for types only — but at runtime that pulled in agent code transitively. Splitting `agent/` out keeps `core/` browser-safe (almost — it has Bun deps via Ajv but no Bun built-ins reachable from types) and lets future "remote dashboard" stories not bundle the agent.
+`core/` used to mix types, parsers, AND agent runtime. The dashboard imports `@oddjob/core` for types only — but at runtime that pulled in agent code transitively. Splitting `agent/` out keeps `core/` browser-safe and lets future "remote dashboard" stories not bundle the agent.
 
-`agent/` depends on `core/`, never the reverse. If you need a type in core that lives in agent today, move the TYPE to core (leave the runtime function in agent). Example: `BUILTIN_TOOL_NAMES` + `EngineConfig` + `BuiltinToolsConfig` live in `core/types/builtin-tools.ts` because blueprint validation needs them; the build functions stay in agent.
+`agent/` depends on `core/`, never the reverse. If a type currently lives in agent but core needs it, move the TYPE to core (leave the runtime function in agent). Example: `INTERNAL_TOOL_NAMES` + `EngineConfig` + `BuiltinToolsConfig` live in `core/src/types/internal-tools.ts` because blueprint validation needs them; the build functions stay in agent.
 
 ## Gotchas
 
-- **Inline `import("../path")` types** survive sed-based path rewrites less well than `from "..."` imports — when adding new path-based type imports, use the bare-import form so future moves are mechanical.
-- **Skills loader** uses Node `fs`. Tests that run in browser-like environments can't import this. Keep skill-tool (which only uses LoadedSkill type) separate from skills.ts (the loader).
-- **mcp-tool's `import("../index.ts")`** pattern was the trickiest thing to migrate during Phase B — it pulled in core types via core's main index. Always import types from `@oddjob/core` directly now.
+- **No `buildBuiltinTools` / `buildSingleBuiltinTool` anymore.** Tests construct internal tools via `buildInternalTool(name, ctx)` directly.
+- **`javascript_repl` / `python_repl` are renamed** to `javascript` / `python`. Validator throws an explicit "renamed to X" error if old names appear in a blueprint.
+- **Inline `import("../path")` types** survive sed-based path rewrites less well than `from "..."` imports — use the bare-import form so future moves are mechanical.
+- **Skills loader** uses Node `fs`. Keep `tools/skills.ts` (uses `LoadedSkill` type only) separate from `skills.ts` (the loader).
+- **Per-tool wrappers in `tools/{bash,read,write,edit,find,ls,grep}.ts`** delegate to pi-coding-agent or `coding-adapter.ts`. Don't put logic there — extend `coding-adapter.ts` and re-route.

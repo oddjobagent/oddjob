@@ -20,10 +20,12 @@ export interface Blueprint {
   /** Required engine roles ("default" / "advisor" / "grader" / custom). */
   requires?: { roles: string[] };
   /**
-   * Allowlist of built-in harness tools the blueprint opts into
-   * (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`,
-   * `web_fetch`, `web_search`, `python_repl`, `javascript_repl`).
-   * Empty / omitted = no built-ins. Unknown names fail validation.
+   * Allowlist of tools the blueprint opts into. Internal tools shipped with
+   * the agent: `bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`,
+   * `datetime`, `javascript`, `python`. Plugin-contributed tool names
+   * (`web_fetch`, `web_search`, anything from local plugins) are accepted at
+   * validation time when the plugin registry is available; runtime warns +
+   * skips unknown names. Empty / omitted = no tools.
    */
   tools: string[];
   /**

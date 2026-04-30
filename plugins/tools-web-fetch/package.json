@@ -14,10 +14,12 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.70.2",
     "@oddjob/agent": "workspace:*",
     "@oddjob/core": "workspace:*",
     "@oddjob/sdk": "workspace:*",
-    "turndown": "^7.2.0"
+    "turndown": "^7.2.0",
+    "typebox": "^1.1.33"
   },
   "devDependencies": {
     "@types/turndown": "^5.0.5"

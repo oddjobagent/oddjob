@@ -85,24 +85,54 @@ describe("validateBlueprint", () => {
     ).toThrow(/relative/);
   });
 
-  test("accepts known built-in tools", () => {
+  test("accepts internal tools", () => {
     expect(() =>
-      validateBlueprint(fixture({ tools: ["bash", "web_fetch", "python_repl"] }), {
+      validateBlueprint(fixture({ tools: ["bash", "python", "javascript", "datetime"] }), {
         checkFs: false,
       }),
     ).not.toThrow();
   });
 
-  test("rejects unknown built-in tool with did-you-mean", () => {
-    expect(() => validateBlueprint(fixture({ tools: ["bsh"] }), { checkFs: false })).toThrow(
-      /did you mean 'bash'/,
-    );
+  test("accepts plugin-contributed tools when registry passes them", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["bash", "web_fetch", "web_search"] }), {
+        checkFs: false,
+        pluginToolNames: new Set(["web_fetch", "web_search"]),
+      }),
+    ).not.toThrow();
   });
 
-  test("rejects unknown built-in tool without near match", () => {
+  test("rejects renamed legacy names with explicit migration message", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["python_repl"] }), { checkFs: false }),
+    ).toThrow(/python_repl.*renamed.*python/);
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["javascript_repl"] }), { checkFs: false }),
+    ).toThrow(/javascript_repl.*renamed.*javascript/);
+  });
+
+  test("rejects unknown tool with did-you-mean (with registry context)", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["bsh"] }), {
+        checkFs: false,
+        pluginToolNames: new Set(),
+      }),
+    ).toThrow(/did you mean 'bash'/);
+  });
+
+  test("rejects unknown tool without near match (with registry context)", () => {
+    expect(() =>
+      validateBlueprint(fixture({ tools: ["totally-not-a-tool"] }), {
+        checkFs: false,
+        pluginToolNames: new Set(),
+      }),
+    ).toThrow(/unknown tool/);
+  });
+
+  test("accepts unknown tool when no registry context (runtime warns + skips)", () => {
     expect(() =>
       validateBlueprint(fixture({ tools: ["totally-not-a-tool"] }), { checkFs: false }),
-    ).toThrow(/unknown tool/);
+    ).not.toThrow();
   });
 
   test("rejects built-in colliding with script of same name", () => {

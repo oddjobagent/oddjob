@@ -38,8 +38,6 @@
         "@oddjob/plugin-env-process": "workspace:*",
         "@oddjob/plugin-llama-local": "workspace:*",
         "@oddjob/plugin-pi-models": "workspace:*",
-        "@oddjob/plugin-tools-coding": "workspace:*",
-        "@oddjob/plugin-tools-core": "workspace:*",
         "@oddjob/plugin-tools-web-fetch": "workspace:*",
         "@oddjob/plugin-tools-web-search": "workspace:*",
         "@oddjob/queue-sqlite": "workspace:*",
@@ -379,32 +377,16 @@
         "@oddjob/core": "workspace:*",
       },
     },
-    "plugins/tools-coding": {
-      "name": "@oddjob/plugin-tools-coding",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/agent": "workspace:*",
-        "@oddjob/core": "workspace:*",
-        "@oddjob/sdk": "workspace:*",
-      },
-    },
-    "plugins/tools-core": {
-      "name": "@oddjob/plugin-tools-core",
-      "version": "0.0.0",
-      "dependencies": {
-        "@oddjob/agent": "workspace:*",
-        "@oddjob/core": "workspace:*",
-        "@oddjob/sdk": "workspace:*",
-      },
-    },
     "plugins/tools-web-fetch": {
       "name": "@oddjob/plugin-tools-web-fetch",
       "version": "0.0.0",
       "dependencies": {
+        "@mariozechner/pi-agent-core": "^0.70.2",
         "@oddjob/agent": "workspace:*",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
         "turndown": "^7.2.0",
+        "typebox": "^1.1.33",
       },
       "devDependencies": {
         "@types/turndown": "^5.0.5",
@@ -414,9 +396,11 @@
       "name": "@oddjob/plugin-tools-web-search",
       "version": "0.0.0",
       "dependencies": {
+        "@mariozechner/pi-agent-core": "^0.70.2",
         "@oddjob/agent": "workspace:*",
         "@oddjob/core": "workspace:*",
         "@oddjob/sdk": "workspace:*",
+        "typebox": "^1.1.33",
       },
     },
   },
@@ -688,10 +672,6 @@
     "@oddjob/plugin-llama-local": ["@oddjob/plugin-llama-local@workspace:plugins/llama-local"],
 
     "@oddjob/plugin-pi-models": ["@oddjob/plugin-pi-models@workspace:plugins/pi-models"],
-
-    "@oddjob/plugin-tools-coding": ["@oddjob/plugin-tools-coding@workspace:plugins/tools-coding"],
-
-    "@oddjob/plugin-tools-core": ["@oddjob/plugin-tools-core@workspace:plugins/tools-core"],
 
     "@oddjob/plugin-tools-web-fetch": ["@oddjob/plugin-tools-web-fetch@workspace:plugins/tools-web-fetch"],
 

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import type { Blueprint } from "@oddjob/core";
 import type { EnvironmentSession, ExecOptions, ExecResult } from "@oddjob/core";
-import { buildScriptTools } from "./script-tool.ts";
+import { buildScriptTools } from "./scripts.ts";
 
 interface RunCall {
   command: string;

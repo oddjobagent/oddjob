@@ -182,7 +182,7 @@ export interface ChannelService {
 export interface ToolBuildContext {
   environment: import("../providers/environment.ts").EnvironmentSession;
   blueprintDir: string;
-  engine?: import("../types/builtin-tools.ts").EngineConfig;
+  engine?: import("../types/internal-tools.ts").EngineConfig;
   onLog?: (entry: import("../providers/logging.ts").LogEntry) => void;
   /**
    * Plugin registry — passed so a plugin-built tool (e.g. web_fetch) can

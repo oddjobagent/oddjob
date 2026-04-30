@@ -4,7 +4,7 @@
 
 **Status (April 2026):** v0.0.0 — pre-alpha. Phases 1–18-light shipped + April 2026 re-arch (core/agent/plugins split, typebox throughout, pi-ai unified model provider, plugin-registry tool routing). 479 backend tests pass, single-file binary at `dist/oddjob` (~65 MB, includes dashboard).
 
-**Package layout (post-rearch):** Bun monorepo. `packages/{core,agent,server,api-client,sdk}` + 18 `plugins/*` (tools, channels, envs, sqlite stores, llm) + 2 `apps/*` (`apps/cli`, `apps/dashboard`). Core is types+contracts only; agent owns the runtime (loop, tool registry, system-prompt, MCP/skill wiring, pi-ai model registry adapter). All concrete providers/tools/channels live in `plugins/*`. Single LLM plugin: `pi-models` (~25 pi-ai providers / ~880 models) + `llama-local` for Ollama-style endpoints. Tools split into `tools-{core,coding,web-fetch,web-search}` plugins.
+**Package layout (post-rearch):** Bun monorepo. `packages/{core,agent,server,api-client,sdk}` + 16 `plugins/*` (tools, channels, envs, sqlite stores, llm) + 2 `apps/*` (`apps/cli`, `apps/dashboard`). Core is types+contracts only; agent owns the runtime AND the 10 internal tools (bash/read/write/edit/grep/find/ls/datetime/javascript/python) under `packages/agent/src/tools/`. Plugins provide everything else (`web_fetch`/`web_search` + backends, channels, envs, model providers, MCP, sqlite stores). Internal tools bypass the plugin registry; plugin-contributed tools resolve through `registry.toolFor(name)`. Single LLM plugin: `pi-models` (~25 pi-ai providers / ~880 models) + `llama-local` for Ollama-style endpoints.
 
 ## Where things are
 

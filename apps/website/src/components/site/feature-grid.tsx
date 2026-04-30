@@ -23,7 +23,7 @@ const FEATURES: Feature[] = [
     num: "03",
     title: "12 built-in tools",
     description:
-      "bash, read/write/edit, grep, find, web_fetch, web_search, javascript_repl, python_repl, datetime — opt-in per blueprint.",
+      "bash, read/write/edit, grep, find, web_fetch, web_search, javascript, python, datetime — opt-in per blueprint.",
   },
   {
     num: "04",

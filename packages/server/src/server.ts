@@ -263,7 +263,7 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
 
     r("GET", "/api/v1/engine", Engine.get(rt)),
     r("PATCH", "/api/v1/engine", Engine.update(rt)),
-    r("GET", "/api/v1/engine/tools", Engine.tools()),
+    r("GET", "/api/v1/engine/tools", Engine.tools(rt)),
     r("GET", "/api/v1/models", Engine.models(rt)),
 
     r("GET", "/api/v1/plugins", Plugins.list(rt)),

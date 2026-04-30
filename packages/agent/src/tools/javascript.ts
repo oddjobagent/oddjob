@@ -37,16 +37,15 @@ export interface JsReplOptions {
   bunBin?: string;
 }
 
-// NOTE: We tried `@sebastianwessel/quickjs` (QuickJS WASM) for true in-process sandboxing.
-// Both sync + asyncify variants crash on Bun with `freeHostRef is not a function` during
-// disposal. Until upstream fixes that, we shell out via the environment session, which
-// gives us a real isolation boundary (seatbelt/bwrap/docker/daytona).
-export function createJavascriptReplTool(opts: JsReplOptions): AgentTool<typeof schema> {
+// Subprocess-based JS executor. Runs `bun -e <code>` inside the environment
+// session so it inherits the run's sandbox (seatbelt / bwrap / docker / daytona)
+// and egress proxy. The session must have `bun` on PATH.
+export function createJavascriptTool(opts: JsReplOptions): AgentTool<typeof schema> {
   const defaultTimeout = opts.defaultTimeoutMs ?? 10_000;
   const bin = opts.bunBin ?? "bun";
   return {
-    name: "javascript_repl",
-    label: "JavaScript REPL",
+    name: "javascript",
+    label: "JavaScript",
     description:
       "Execute JavaScript / TypeScript via `bun -e`. Top-level await is supported. console.log output is captured. Runs inside the run's environment.",
     parameters: schema,
@@ -62,7 +61,7 @@ export function createJavascriptReplTool(opts: JsReplOptions): AgentTool<typeof 
         opts.onLog?.({
           timestamp: Date.now(),
           level: r.exitCode === 0 ? "info" : "warn",
-          message: `javascript_repl exit=${r.exitCode} in ${durationMs}ms`,
+          message: `javascript exit=${r.exitCode} in ${durationMs}ms`,
         });
         const text = formatOutput(r.exitCode, r.stdout, r.stderr);
         return {
@@ -77,7 +76,7 @@ export function createJavascriptReplTool(opts: JsReplOptions): AgentTool<typeof 
       } catch (err) {
         const durationMs = Date.now() - start;
         return {
-          content: [{ type: "text", text: `javascript_repl error: ${(err as Error).message}` }],
+          content: [{ type: "text", text: `javascript error: ${(err as Error).message}` }],
           details: { exitCode: -1, durationMs, stdout: "", stderr: "" },
         };
       }

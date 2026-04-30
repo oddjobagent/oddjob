@@ -33,8 +33,6 @@
     "@oddjob/plugin-env-process": "workspace:*",
     "@oddjob/plugin-llama-local": "workspace:*",
     "@oddjob/plugin-pi-models": "workspace:*",
-    "@oddjob/plugin-tools-coding": "workspace:*",
-    "@oddjob/plugin-tools-core": "workspace:*",
     "@oddjob/plugin-tools-web-fetch": "workspace:*",
     "@oddjob/plugin-tools-web-search": "workspace:*",
     "@oddjob/queue-sqlite": "workspace:*",

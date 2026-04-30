@@ -61,14 +61,8 @@ export const push =
       return badRequest("body.toml or body.blueprint required");
     }
     // Plugin tools registered + enabled in this server become valid blueprint
-    // tool names alongside the bundled built-ins.
-    const pluginToolNames = new Set<string>();
-    for (const reg of rt.plugins.list()) {
-      if (!reg.record.enabled) continue;
-      for (const svc of reg.plugin.services) {
-        if (svc.kind === "tool") pluginToolNames.add(svc.name);
-      }
-    }
+    // tool names alongside the agent's internal tools.
+    const pluginToolNames = new Set<string>(rt.plugins.allToolNames());
     validateBlueprint(bp, { checkFs: false, pluginToolNames });
     try {
       await rt.state.upsertBlueprint(bp, { force, tags: promoteTags });

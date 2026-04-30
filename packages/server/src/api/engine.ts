@@ -1,5 +1,5 @@
 import {
-  BUILTIN_TOOL_NAMES,
+  INTERNAL_TOOL_NAMES,
   listAllModels,
   listProviders,
   type BuiltinToolsConfig,
@@ -10,14 +10,15 @@ import {
 import type { Runtime } from "../runtime.ts";
 import { type Handler, badRequest, json, readJson } from "../middleware/index.ts";
 
-interface BuiltinToolDescriptor {
+interface ToolDescriptor {
   name: string;
   description: string;
   category: "filesystem" | "shell" | "network" | "execution" | "utility";
   configurable: boolean;
+  source: "internal" | "plugin";
 }
 
-const TOOL_CATALOG: Record<string, Omit<BuiltinToolDescriptor, "name">> = {
+const TOOL_CATALOG: Record<string, Omit<ToolDescriptor, "name" | "source">> = {
   bash: {
     description: "Execute shell commands in the run sandbox.",
     category: "shell",
@@ -51,16 +52,16 @@ const TOOL_CATALOG: Record<string, Omit<BuiltinToolDescriptor, "name">> = {
     configurable: true,
   },
   web_search: {
-    description: "Run a web search via Brave / Tavily / SearXNG. Requires provider config.",
+    description: "Run a web search via Brave / Tavily / SearXNG / Exa / SerpAPI.",
     category: "network",
     configurable: true,
   },
-  python_repl: {
-    description: "Execute Python via system python3 (configurable timeout).",
+  python: {
+    description: "Execute Python via system python3 / uv (configurable timeout).",
     category: "execution",
     configurable: true,
   },
-  javascript_repl: {
+  javascript: {
     description: "Execute JavaScript/TypeScript via bun -e (configurable timeout).",
     category: "execution",
     configurable: true,
@@ -72,17 +73,38 @@ const TOOL_CATALOG: Record<string, Omit<BuiltinToolDescriptor, "name">> = {
   },
 };
 
-export const tools = (): Handler => () => {
-  const list: BuiltinToolDescriptor[] = BUILTIN_TOOL_NAMES.map((name) => ({
-    name,
-    ...(TOOL_CATALOG[name] ?? {
-      description: name,
-      category: "utility" as const,
-      configurable: false,
-    }),
-  }));
-  return json({ tools: list });
-};
+export const tools =
+  (rt: Runtime): Handler =>
+  () => {
+    const seen = new Set<string>();
+    const list: ToolDescriptor[] = [];
+    for (const name of INTERNAL_TOOL_NAMES) {
+      seen.add(name);
+      list.push({
+        name,
+        source: "internal",
+        ...(TOOL_CATALOG[name] ?? {
+          description: name,
+          category: "utility" as const,
+          configurable: false,
+        }),
+      });
+    }
+    for (const name of rt.plugins.allToolNames()) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      list.push({
+        name,
+        source: "plugin",
+        ...(TOOL_CATALOG[name] ?? {
+          description: name,
+          category: "utility" as const,
+          configurable: false,
+        }),
+      });
+    }
+    return json({ tools: list });
+  };
 
 export const get =
   (rt: Runtime): Handler =>
@@ -208,10 +230,9 @@ function mergeEngine(current: EngineConfig | undefined, patch: EnginePatchBody):
     if (patch.builtinTools.webSearch !== undefined)
       builtin.webSearch = patch.builtinTools.webSearch;
     if (patch.builtinTools.webFetch !== undefined) builtin.webFetch = patch.builtinTools.webFetch;
-    if (patch.builtinTools.pythonRepl !== undefined)
-      builtin.pythonRepl = patch.builtinTools.pythonRepl;
-    if (patch.builtinTools.javascriptRepl !== undefined)
-      builtin.javascriptRepl = patch.builtinTools.javascriptRepl;
+    if (patch.builtinTools.python !== undefined) builtin.python = patch.builtinTools.python;
+    if (patch.builtinTools.javascript !== undefined)
+      builtin.javascript = patch.builtinTools.javascript;
   }
   return { ...cur, builtinTools: builtin };
 }

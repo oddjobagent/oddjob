@@ -1,5 +1,5 @@
 import type { Blueprint, LoadedSkill } from "@oddjob/core";
-import { buildSkillSystemPrompt } from "./skill-tool.ts";
+import { buildSkillSystemPrompt } from "./tools/skills.ts";
 import type { DynamicChannelDescriptor } from "./output-schema-compose.ts";
 
 const HARNESS_PREAMBLE = `You are running inside the Oddjob agent harness. \

@@ -13,11 +13,11 @@ export type * from "./message.ts";
 export type * from "./environment.ts";
 export * from "./limits.ts";
 export {
-  BUILTIN_TOOL_NAMES,
-  isBuiltinToolName,
-  type BuiltinToolName,
+  INTERNAL_TOOL_NAMES,
+  isInternalToolName,
+  type InternalToolName,
   type EngineConfig,
   type BuiltinToolsConfig,
   type WebSearchConfig,
   type WebFetchConfig,
-} from "./builtin-tools.ts";
+} from "./internal-tools.ts";

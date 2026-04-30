@@ -36,17 +36,18 @@ export interface PythonReplOptions {
   pythonBin?: string;
 }
 
-// NOTE: Pyodide (Python WASM) was the original v14 plan, but emscripten/Bun has the same
-// `freeHostRef` GC issue we hit with QuickJS, AND the WASM is ~10 MB. python3 via the
-// environment session gives us a working tool today AND the proper boundary in Phase 15.
-export function createPythonReplTool(opts: PythonReplOptions): AgentTool<typeof schema> {
+// Subprocess-based Python executor. Runs `python3 -c <code>` inside the
+// environment session so it inherits the run's sandbox + egress proxy. The
+// session must have `python3` (or `uv`) on PATH; pass a custom `pythonBin`
+// to use uv: `pythonBin: "uv run python"`.
+export function createPythonTool(opts: PythonReplOptions): AgentTool<typeof schema> {
   const defaultTimeout = opts.defaultTimeoutMs ?? 30_000;
   const bin = opts.pythonBin ?? "python3";
   return {
-    name: "python_repl",
-    label: "Python REPL",
+    name: "python",
+    label: "Python",
     description:
-      "Execute Python via `python3 -c`. Requires python3 on PATH inside the environment. Runs inside the run's environment.",
+      "Execute Python via `python3 -c`. Requires python3 (or uv) on PATH inside the environment.",
     parameters: schema,
     async execute(_id, params: Input, signal): Promise<AgentToolResult<Details>> {
       const start = Date.now();
@@ -57,14 +58,14 @@ export function createPythonReplTool(opts: PythonReplOptions): AgentTool<typeof 
         opts.onLog?.({
           timestamp: Date.now(),
           level: r.exitCode === 0 ? "info" : "warn",
-          message: `python_repl exit=${r.exitCode} in ${durationMs}ms`,
+          message: `python exit=${r.exitCode} in ${durationMs}ms`,
         });
         if (r.exitCode !== 0 && /not found|No such file|command not found/i.test(r.stderr)) {
           return {
             content: [
               {
                 type: "text",
-                text: `python_repl error: '${bin}' not found inside the environment. Add 'python3' to environment.config.packages.apt or set [builtin_tools.python_repl].bin in config.`,
+                text: `python error: '${bin}' not found inside the environment. Install python3 (or uv) in the environment image.`,
               },
             ],
             details: { exitCode: r.exitCode, durationMs, stdout: r.stdout, stderr: r.stderr },
@@ -78,7 +79,7 @@ export function createPythonReplTool(opts: PythonReplOptions): AgentTool<typeof 
       } catch (err) {
         const message = (err as Error).message ?? "spawn failed";
         return {
-          content: [{ type: "text", text: `python_repl error: ${message}` }],
+          content: [{ type: "text", text: `python error: ${message}` }],
           details: { exitCode: -1, durationMs: Date.now() - start, stdout: "", stderr: "" },
         };
       }

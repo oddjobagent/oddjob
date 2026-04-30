@@ -17,8 +17,6 @@ import { LlmPiProvider } from "@oddjob/llm-pi";
 import piModelsPlugin from "@oddjob/plugin-pi-models";
 import llamaLocalPlugin from "@oddjob/plugin-llama-local";
 import channelsCorePlugin from "@oddjob/plugin-channels-core";
-import toolsCodingPlugin from "@oddjob/plugin-tools-coding";
-import toolsCorePlugin from "@oddjob/plugin-tools-core";
 import toolsWebFetchPlugin from "@oddjob/plugin-tools-web-fetch";
 import toolsWebSearchPlugin from "@oddjob/plugin-tools-web-search";
 import envProcessPlugin from "@oddjob/plugin-env-process";
@@ -73,8 +71,6 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     piModelsPlugin,
     llamaLocalPlugin,
     channelsCorePlugin,
-    toolsCorePlugin,
-    toolsCodingPlugin,
     toolsWebFetchPlugin,
     toolsWebSearchPlugin,
     envProcessPlugin,
@@ -174,7 +170,7 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
         ? {
             web_search: bt.webSearch
               ? {
-                  provider: bt.webSearch.provider,
+                  plugin: bt.webSearch.plugin,
                   api_key: bt.webSearch.apiKey,
                   base_url: bt.webSearch.baseUrl,
                   max_results: bt.webSearch.maxResults,
@@ -216,11 +212,8 @@ async function buildEngineConfig(
       (bt.web_search.api_key_secret
         ? await secrets.get(bt.web_search.api_key_secret)
         : undefined) ?? bt.web_search.api_key;
-    // `plugin` is the new field; `provider` is kept as a fallback alias for
-    // legacy configs. The dispatcher tool checks plugin first, then provider.
     out.builtinTools!.webSearch = {
       plugin: bt.web_search.plugin ?? bt.web_search.provider,
-      provider: bt.web_search.provider,
       apiKey,
       baseUrl: bt.web_search.base_url,
       maxResults: bt.web_search.max_results,

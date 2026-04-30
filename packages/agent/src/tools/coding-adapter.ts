@@ -2,59 +2,17 @@ import { type Static, Type } from "typebox";
 import type { TSchema } from "typebox";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 
-import {
-  createBashTool,
-  createEditTool,
-  createFindTool,
-  // NOTE: createGrepTool deliberately NOT imported. pi-coding-agent's grep
-  // shells out to host `rg` regardless of the pluggable Operations contract,
-  // which leaks out of the environment. We use createSessionGrepTool below.
-  createLsTool,
-  createReadTool,
-  createWriteTool,
-} from "@mariozechner/pi-coding-agent";
-
 import type { EnvironmentSession } from "@oddjob/core";
-import type { BuiltinToolName } from "./index.ts";
 
-export interface CodingToolsAdapterOptions {
+export interface CodingToolOptions {
   cwd: string;
   /**
-   * Environment session that owns the tool's filesystem + shell. pi-coding-agent's
-   * pluggable Operations interfaces are wired to delegate run/readFile/writeFile
-   * through the session instead of the host process. Tool name + JSON schema stay
-   * identical to the host-shell version.
+   * Environment session that owns the tool's filesystem + shell.
+   * pi-coding-agent's pluggable Operations interfaces are wired to delegate
+   * run/readFile/writeFile through the session instead of the host process.
+   * Tool name + JSON schema stay identical to the host-shell version.
    */
   environment: EnvironmentSession;
-}
-
-const FACTORIES = {
-  bash: (opts: CodingToolsAdapterOptions) =>
-    createBashTool(opts.cwd, { operations: makeBashOps(opts.environment) }),
-  read: (opts: CodingToolsAdapterOptions) =>
-    createReadTool(opts.cwd, { operations: makeReadOps(opts.environment) }),
-  write: (opts: CodingToolsAdapterOptions) =>
-    createWriteTool(opts.cwd, { operations: makeWriteOps(opts.environment) }),
-  edit: (opts: CodingToolsAdapterOptions) =>
-    createEditTool(opts.cwd, { operations: makeEditOps(opts.environment) }),
-  grep: (opts: CodingToolsAdapterOptions) => createSessionGrepTool(opts.cwd, opts.environment),
-  find: (opts: CodingToolsAdapterOptions) =>
-    createFindTool(opts.cwd, { operations: makeFindOps(opts.environment) }),
-  ls: (opts: CodingToolsAdapterOptions) =>
-    createLsTool(opts.cwd, { operations: makeLsOps(opts.environment) }),
-} as const;
-
-export type CodingBuiltinName = keyof typeof FACTORIES;
-
-export function isCodingBuiltin(name: BuiltinToolName): name is CodingBuiltinName {
-  return name in FACTORIES;
-}
-
-export function buildCodingTool(
-  name: CodingBuiltinName,
-  opts: CodingToolsAdapterOptions,
-): AgentTool<TSchema> {
-  return FACTORIES[name](opts) as unknown as AgentTool<TSchema>;
 }
 
 // Operations adapters bridge pi-coding-agent's host-IO contracts onto the
@@ -62,7 +20,7 @@ export function buildCodingTool(
 // shell builtin / coreutil so it works under seatbelt / bwrap / docker /
 // daytona equally well.
 
-function makeBashOps(env: EnvironmentSession) {
+export function makeBashOps(env: EnvironmentSession) {
   return {
     async exec(
       command: string,
@@ -91,7 +49,7 @@ function makeBashOps(env: EnvironmentSession) {
   };
 }
 
-function makeReadOps(env: EnvironmentSession) {
+export function makeReadOps(env: EnvironmentSession) {
   return {
     async readFile(absolutePath: string): Promise<Buffer> {
       const text = await env.readFile(absolutePath);
@@ -104,7 +62,7 @@ function makeReadOps(env: EnvironmentSession) {
   };
 }
 
-function makeWriteOps(env: EnvironmentSession) {
+export function makeWriteOps(env: EnvironmentSession) {
   return {
     async writeFile(absolutePath: string, content: string): Promise<void> {
       await env.writeFile(absolutePath, content);
@@ -116,7 +74,7 @@ function makeWriteOps(env: EnvironmentSession) {
   };
 }
 
-function makeEditOps(env: EnvironmentSession) {
+export function makeEditOps(env: EnvironmentSession) {
   return {
     async readFile(absolutePath: string): Promise<Buffer> {
       const text = await env.readFile(absolutePath);
@@ -171,7 +129,7 @@ interface GrepDetails {
   truncated: boolean;
 }
 
-function createSessionGrepTool(
+export function createSessionGrepTool(
   cwd: string,
   env: EnvironmentSession,
 ): AgentTool<typeof grepSchema, GrepDetails> {
@@ -235,7 +193,7 @@ function createSessionGrepTool(
   };
 }
 
-function makeFindOps(env: EnvironmentSession) {
+export function makeFindOps(env: EnvironmentSession) {
   return {
     async exists(absolutePath: string): Promise<boolean> {
       const r = await env.exec(`test -e ${shellQuote(absolutePath)}`);
@@ -257,7 +215,7 @@ function makeFindOps(env: EnvironmentSession) {
   };
 }
 
-function makeLsOps(env: EnvironmentSession) {
+export function makeLsOps(env: EnvironmentSession) {
   return {
     async exists(absolutePath: string): Promise<boolean> {
       const r = await env.exec(`test -e ${shellQuote(absolutePath)}`);
@@ -278,6 +236,8 @@ function makeLsOps(env: EnvironmentSession) {
   };
 }
 
-function shellQuote(s: string): string {
+export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
+
+export type AnyAgentTool = AgentTool<TSchema>;

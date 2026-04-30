@@ -49,7 +49,7 @@ function EnginePage(): React.JSX.Element {
   const setSearch = (next: Partial<WebSearchConfig>) =>
     setDraft({
       ...draft,
-      webSearch: { provider: "brave", ...draft.webSearch, ...next } as WebSearchConfig,
+      webSearch: { ...draft.webSearch, ...next },
     });
 
   return (
@@ -106,12 +106,12 @@ function EnginePage(): React.JSX.Element {
               <p className="mt-2 text-sm text-muted-foreground">{t.description}</p>
               {t.name === "web_search" && (
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  <Field label="Provider">
+                  <Field label="Plugin">
                     <Select
-                      value={draft.webSearch?.provider ?? ""}
+                      value={draft.webSearch?.plugin ?? ""}
                       onChange={(e) =>
                         setSearch({
-                          provider: (e.target.value || "brave") as WebSearchConfig["provider"],
+                          plugin: e.target.value || "brave",
                         })
                       }
                     >
@@ -119,6 +119,8 @@ function EnginePage(): React.JSX.Element {
                       <option value="brave">Brave</option>
                       <option value="tavily">Tavily</option>
                       <option value="searxng">SearXNG</option>
+                      <option value="exa">Exa</option>
+                      <option value="serpapi">SerpAPI</option>
                     </Select>
                   </Field>
                   <Field
@@ -182,25 +184,25 @@ function EnginePage(): React.JSX.Element {
                   </Field>
                 </div>
               )}
-              {(t.name === "python_repl" || t.name === "javascript_repl") && (
+              {(t.name === "python" || t.name === "javascript") && (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Field label="Timeout ms">
                     <Input
                       type="number"
                       value={
-                        (t.name === "python_repl"
-                          ? draft.pythonRepl?.timeoutMs
-                          : draft.javascriptRepl?.timeoutMs) ?? ""
+                        (t.name === "python"
+                          ? draft.python?.timeoutMs
+                          : draft.javascript?.timeoutMs) ?? ""
                       }
                       onChange={(e) => {
                         const v = e.target.value === "" ? undefined : Number(e.target.value);
                         setDraft(
-                          t.name === "python_repl"
-                            ? { ...draft, pythonRepl: { timeoutMs: v } }
-                            : { ...draft, javascriptRepl: { timeoutMs: v } },
+                          t.name === "python"
+                            ? { ...draft, python: { timeoutMs: v } }
+                            : { ...draft, javascript: { timeoutMs: v } },
                         );
                       }}
-                      placeholder={t.name === "python_repl" ? "30000" : "10000"}
+                      placeholder={t.name === "python" ? "30000" : "10000"}
                     />
                   </Field>
                 </div>

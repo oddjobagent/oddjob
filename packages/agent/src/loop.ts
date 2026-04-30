@@ -19,29 +19,27 @@ import type { Limits } from "@oddjob/core";
 import type { Run, RunId } from "@oddjob/core";
 import type { RunOutput } from "@oddjob/core";
 
-import {
-  buildBuiltinTools,
-  buildSingleBuiltinTool as buildSingleBuiltinToolDirect,
-  type EngineConfig,
-} from "./builtin-tools/index.ts";
-import { isBuiltinToolName } from "@oddjob/core";
+import { buildInternalTool } from "./tools/index.ts";
+import { isInternalToolName, type EngineConfig } from "@oddjob/core";
 import type { EngineLLM } from "./engine.ts";
 import type { PluginRegistry } from "@oddjob/core";
 import { startEgressProxy } from "@oddjob/core";
 import { deepRedact } from "@oddjob/core";
 import { validateOutput } from "./output-validate.ts";
-import { buildMcpRuntime } from "./mcp-tool.ts";
+import { buildMcpRuntime } from "./tools/mcp.ts";
 import {
   composeOutputSchemaWithChannels,
   type DynamicChannelDescriptor,
 } from "./output-schema-compose.ts";
 import { buildRevisionPrompt, type GraderEvaluation, runGrader } from "./grader.ts";
 import { createReportStatusTool, type RunVerdict } from "./report-status-tool.ts";
-import { buildSkillTool } from "./skill-tool.ts";
-import { buildScriptTools } from "./script-tool.ts";
+import { buildSkillTool } from "./tools/skills.ts";
+import { buildScriptTools } from "./tools/scripts.ts";
 import { assembleSystemPrompt } from "./system-prompt.ts";
 import type { LoadedSkill } from "@oddjob/core";
 import { loadSkills } from "./skills.ts";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { TSchema } from "typebox";
 
 export interface ResolvedLLM {
   model: import("@mariozechner/pi-ai").Model<import("@mariozechner/pi-ai").Api>;
@@ -283,15 +281,14 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       deploymentId,
       onReauthNeeded: opts.onMcpReauthNeeded,
     });
-    // Tool resolution: ask the plugin registry FIRST for every name in the
-    // allowlist; fall back to buildSingleBuiltinTool only if no plugin claims
-    // it. This makes the plugin extraction in Phase C end-to-end: disabling
-    // tools-core actually disables bash/read/write/etc, and a local plugin
-    // can override `bash` by registering its own tool with that name.
+    // Tool resolution. Internal tools (bash/read/write/edit/grep/find/ls/
+    // datetime/javascript/python) are built directly by the agent — they
+    // bypass the plugin registry. Everything else (web_fetch, web_search,
+    // any local plugin tools) goes through the registry.
     //
-    // Builtin tools operate inside the sandbox session — use the SESSION-side
-    // workdir (e.g. "/work" in docker) so cwd values passed to `docker exec
-    // -w …` resolve inside the container, not on the host filesystem.
+    // Tools operate inside the sandbox session — use the SESSION-side workdir
+    // (e.g. "/work" in docker) so cwd resolves inside the container, not on
+    // the host filesystem.
     const toolBuildCtx = {
       environment: session,
       blueprintDir: session.sessionWorkdir,
@@ -303,23 +300,23 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       envAllowedHosts,
       engineRequiredHosts: engineHosts,
     };
-    const resolvedTools: ReturnType<typeof buildBuiltinTools> = [];
+    const resolvedTools: AgentTool<TSchema>[] = [];
     const toolNames = new Set<string>();
     for (const entry of blueprint.tools) {
       const name = typeof entry === "string" ? entry : entry;
       if (toolNames.has(name)) continue;
       toolNames.add(name);
-      const svc = opts.plugins?.toolFor(name);
       try {
-        if (svc) {
-          resolvedTools.push(
-            svc.build(toolBuildCtx) as (typeof resolvedTools)[number],
-          );
+        if (isInternalToolName(name)) {
+          const t = buildInternalTool(name, toolBuildCtx);
+          if (t) resolvedTools.push(t);
           continue;
         }
-        // Plugin registry has the name but the owning plugin is disabled —
-        // honor the disable: skip rather than falling back to the direct
-        // builtin. (registry.hasTool returns true even for disabled svcs.)
+        const svc = opts.plugins?.toolFor(name);
+        if (svc) {
+          resolvedTools.push(svc.build(toolBuildCtx) as AgentTool<TSchema>);
+          continue;
+        }
         if (opts.plugins?.hasTool(name)) {
           append({
             timestamp: Date.now(),
@@ -328,17 +325,10 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           });
           continue;
         }
-        if (isBuiltinToolName(name)) {
-          // Fallback for setups without a plugin registry (tests, embedded use)
-          // OR builtins not yet claimed by any plugin.
-          const built = buildSingleBuiltinToolDirect(name, toolBuildCtx);
-          if (built) resolvedTools.push(built as (typeof resolvedTools)[number]);
-          continue;
-        }
         append({
           timestamp: Date.now(),
           level: "warn",
-          message: `tool '${name}' not registered in plugin registry and not a known builtin — skipping`,
+          message: `tool '${name}' not registered in plugin registry — skipping`,
         });
       } catch (err) {
         append({
