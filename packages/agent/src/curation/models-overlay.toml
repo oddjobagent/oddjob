@@ -1,0 +1,99 @@
+# Hand-curated frontier picks. Edit when the lineup shifts; keep tight (~30).
+# Validated against pi-ai's registry on boot — unknown {provider, modelId} pairs
+# get logged as warnings.
+
+[[recommended]]
+provider = "anthropic"
+modelId = "claude-opus-4-7"
+
+[[recommended]]
+provider = "anthropic"
+modelId = "claude-opus-4-6"
+
+[[recommended]]
+provider = "anthropic"
+modelId = "claude-sonnet-4-6"
+
+[[recommended]]
+provider = "anthropic"
+modelId = "claude-sonnet-4-5"
+
+[[recommended]]
+provider = "anthropic"
+modelId = "claude-haiku-4-5"
+
+[[recommended]]
+provider = "openai"
+modelId = "gpt-5.5"
+
+[[recommended]]
+provider = "openai"
+modelId = "gpt-5.4"
+
+[[recommended]]
+provider = "openai"
+modelId = "gpt-5.4-mini"
+
+[[recommended]]
+provider = "openai"
+modelId = "gpt-5.3-codex"
+
+[[recommended]]
+provider = "openai"
+modelId = "gpt-5-pro"
+
+[[recommended]]
+provider = "openai"
+modelId = "o4-mini"
+
+[[recommended]]
+provider = "google"
+modelId = "gemini-3.1-pro-preview"
+
+[[recommended]]
+provider = "google"
+modelId = "gemini-3-pro-preview"
+
+[[recommended]]
+provider = "google"
+modelId = "gemini-3-flash-preview"
+
+[[recommended]]
+provider = "google"
+modelId = "gemini-2.5-pro"
+
+[[recommended]]
+provider = "xai"
+modelId = "grok-4.20-0309-reasoning"
+
+[[recommended]]
+provider = "xai"
+modelId = "grok-4-1-fast"
+
+[[recommended]]
+provider = "xai"
+modelId = "grok-4"
+
+[[recommended]]
+provider = "deepseek"
+modelId = "deepseek-v4-pro"
+
+[[recommended]]
+provider = "deepseek"
+modelId = "deepseek-v4-flash"
+
+[[recommended]]
+provider = "mistral"
+modelId = "mistral-large-2512"
+
+[[recommended]]
+provider = "mistral"
+modelId = "mistral-medium-2508"
+
+[[recommended]]
+provider = "mistral"
+modelId = "devstral-2512"
+
+[[recommended]]
+provider = "groq"
+modelId = "moonshotai/kimi-k2-instruct-0905"

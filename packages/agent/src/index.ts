@@ -18,7 +18,12 @@ export {
   type DynamicChannelDescriptor,
 } from "./output-schema-compose.ts";
 
-export { assembleSystemPrompt, type AssembleSystemPromptOptions } from "./system-prompt.ts";
+export {
+  assembleSystemPrompt,
+  assembleSystemPromptZones,
+  type AssembleSystemPromptOptions,
+  type SystemPromptZones,
+} from "./system-prompt.ts";
 export { createReportStatusTool, type RunOutcome, type RunVerdict } from "./report-status-tool.ts";
 
 export {
@@ -54,7 +59,12 @@ export {
   type EnvGateResult,
 } from "./tools/index.ts";
 
-export type { EngineConfig, BuiltinToolsConfig, WebSearchConfig, WebFetchConfig } from "@oddjob/core";
+export type {
+  EngineConfig,
+  BuiltinToolsConfig,
+  WebSearchConfig,
+  WebFetchConfig,
+} from "@oddjob/core";
 
 export {
   createEngineLLM,
@@ -71,3 +81,19 @@ export {
   type ModelDescriptor,
   type ProviderDescriptor,
 } from "./model-registry.ts";
+
+export {
+  loadCuration,
+  type Curation,
+  type ModelEnrichment,
+} from "./curation/index.ts";
+
+// Recording / replay primitive — used by the eval CLI (Phase A.3) and any
+// external harness that wants token-free regression runs.
+export {
+  recordingWrapper,
+  replayFromJsonl,
+  maybeRecordingFromEnv,
+  type RecordedCall,
+  type RecordedRequest,
+} from "./lib/recording.ts";

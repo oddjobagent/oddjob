@@ -12,7 +12,11 @@ import type {
   ModelInfo,
   Run,
   RunFilter,
+  StepKind,
+  StepRecord,
 } from "@oddjob/core";
+
+export type { StepKind, StepRecord };
 
 import { createTransport, type Transport, type TransportOptions } from "./transport.ts";
 
@@ -35,6 +39,10 @@ export interface ModelOption {
   maxTokens: number;
   requiresSecret: string;
   available: boolean;
+  releasedAt?: string;
+  knowledgeCutoff?: string;
+  recommended?: boolean;
+  deprecatedAt?: string;
 }
 
 export interface ModelProviderInfo {
@@ -165,6 +173,10 @@ export interface OddjobApi {
     list: (f?: RunFilter) => Promise<{ runs: Run[] }>;
     get: (id: string) => Promise<Run>;
     logs: (id: string, since?: number, limit?: number) => Promise<{ entries: LogEntry[] }>;
+    steps: (
+      id: string,
+      opts?: { since?: number; limit?: number; kind?: StepKind },
+    ) => Promise<{ steps: StepRecord[] }>;
     cancel: (id: string) => Promise<{ runId: string; result: string }>;
   };
 
@@ -489,6 +501,14 @@ export function createApi(opts: TransportOptions): OddjobApi {
         if (limit) q.set("limit", String(limit));
         const qs = q.toString();
         return r("GET", `/api/v1/runs/${id}/logs${qs ? `?${qs}` : ""}`);
+      },
+      steps: (id, opts) => {
+        const q = new URLSearchParams();
+        if (opts?.since) q.set("since", String(opts.since));
+        if (opts?.limit) q.set("limit", String(opts.limit));
+        if (opts?.kind) q.set("kind", opts.kind);
+        const qs = q.toString();
+        return r("GET", `/api/v1/runs/${id}/steps${qs ? `?${qs}` : ""}`);
       },
       cancel: (id) => r("POST", `/api/v1/runs/${id}/cancel`),
     },

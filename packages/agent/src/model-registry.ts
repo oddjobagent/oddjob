@@ -9,6 +9,8 @@
 
 import { getModels, getProviders, type Api, type Model } from "@mariozechner/pi-ai";
 
+import { loadCuration, type Curation } from "./curation/index.ts";
+
 export interface ModelDescriptor {
   /** Fully-qualified id used as the blueprint `model` string (provider/id). */
   id: string;
@@ -28,6 +30,10 @@ export interface ModelDescriptor {
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextWindow: number;
   maxTokens: number;
+  releasedAt?: string;
+  knowledgeCutoff?: string;
+  recommended?: boolean;
+  deprecatedAt?: string;
 }
 
 export interface ProviderDescriptor {
@@ -37,7 +43,8 @@ export interface ProviderDescriptor {
   modelCount: number;
 }
 
-function toDescriptor(provider: string, m: Model<Api>): ModelDescriptor {
+function toDescriptor(provider: string, m: Model<Api>, curation: Curation): ModelDescriptor {
+  const enrichment = curation.enrich(provider, m.id);
   return {
     id: `${provider}/${m.id}`,
     modelId: m.id,
@@ -49,15 +56,20 @@ function toDescriptor(provider: string, m: Model<Api>): ModelDescriptor {
     cost: m.cost,
     contextWindow: m.contextWindow,
     maxTokens: m.maxTokens,
+    ...(enrichment.releasedAt ? { releasedAt: enrichment.releasedAt } : {}),
+    ...(enrichment.knowledgeCutoff ? { knowledgeCutoff: enrichment.knowledgeCutoff } : {}),
+    ...(enrichment.recommended ? { recommended: true } : {}),
   };
 }
 
-/** All built-in models from pi-ai, flattened with provider prefix. */
-export function listAllModels(): ModelDescriptor[] {
+/** All built-in models from pi-ai, flattened with provider prefix and enriched
+ * via curation (models.dev release dates + hand-curated `recommended` flag). */
+export async function listAllModels(): Promise<ModelDescriptor[]> {
+  const curation = await loadCuration();
   const out: ModelDescriptor[] = [];
   for (const provider of getProviders()) {
     for (const m of getModels(provider)) {
-      out.push(toDescriptor(provider, m as Model<Api>));
+      out.push(toDescriptor(provider, m as Model<Api>, curation));
     }
   }
   return out;

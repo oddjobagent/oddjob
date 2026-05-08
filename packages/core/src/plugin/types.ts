@@ -93,6 +93,12 @@ export interface ModelInfo {
   family?: string;
   /** ISO date string. Marks the model as deprecated in the UI. */
   deprecatedAt?: string;
+  /** ISO YYYY-MM-DD. From models.dev when present. */
+  releasedAt?: string;
+  /** ISO YYYY-MM. Knowledge cutoff from models.dev when present. */
+  knowledgeCutoff?: string;
+  /** Editorial: surface this model first in the UI. */
+  recommended?: boolean;
 }
 
 export interface ModelCapabilities {

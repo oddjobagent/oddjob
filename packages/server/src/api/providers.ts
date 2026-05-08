@@ -1,6 +1,8 @@
 // /api/v1/providers — model-provider service introspection: list providers,
 // view & refresh model catalogs, manage credentials.
 
+import { loadCuration } from "@oddjob/agent";
+
 import { badRequest, json, notFound, readJson, type Handler } from "../middleware/index.ts";
 import type { Runtime } from "../runtime.ts";
 
@@ -49,7 +51,16 @@ export const get =
     const provider = rt.plugins.providerFor(slug);
     if (!provider) return notFound(`provider '${slug}' not found`);
     const cached = await rt.state.listModelCatalog(slug);
-    const merged = mergeCatalog(provider.listModels(), cached);
+    const curation = await loadCuration();
+    const merged = mergeCatalog(provider.listModels(), cached).map((m) => {
+      const e = curation.enrich(slug, m.id);
+      return {
+        ...m,
+        ...(e.releasedAt && !m.releasedAt ? { releasedAt: e.releasedAt } : {}),
+        ...(e.knowledgeCutoff && !m.knowledgeCutoff ? { knowledgeCutoff: e.knowledgeCutoff } : {}),
+        ...(e.recommended ? { recommended: true } : {}),
+      };
+    });
     const creds = await rt.state.listProviderCredentials(slug);
     return json({
       slug,
@@ -203,5 +214,5 @@ function mergeCatalog(
   if (cached.length === 0) return [...bundled];
   const byId = new Map(bundled.map((m) => [m.id, m]));
   for (const c of cached) byId.set(c.modelId, c.data);
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...byId.values()].toSorted((a, b) => a.id.localeCompare(b.id));
 }

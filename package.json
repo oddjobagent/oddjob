@@ -10,14 +10,15 @@
   ],
   "type": "module",
   "scripts": {
-    "test": "bun test",
+    "test": "bun test packages plugins apps",
     "typecheck": "bunx tsgo --noEmit && bun run --cwd apps/dashboard typecheck",
     "lint": "bunx oxlint",
     "lint:fix": "bunx oxlint --fix",
     "format": "bunx oxfmt",
     "format:check": "bunx oxfmt --check",
     "build": "bun run --filter '*' build",
-    "clean": "bun run --filter '*' clean && rm -rf node_modules"
+    "clean": "bun run --filter '*' clean && rm -rf node_modules",
+    "refresh:models-dev": "bun packages/agent/scripts/refresh-models-dev.ts"
   },
   "devDependencies": {
     "@mdx-js/react": "^3.1.1",

@@ -196,7 +196,7 @@ export const models =
   (rt: Runtime): Handler =>
   async () => {
     const secretNames = new Set(await rt.secrets.list());
-    const all = listAllModels();
+    const all = await listAllModels();
     const out = all.map((m: ModelDescriptor) => {
       // Default to a provider-derived placeholder when we don't have an
       // explicit map entry, so the dashboard treats unknown providers as
@@ -218,6 +218,10 @@ export const models =
         maxTokens: m.maxTokens,
         requiresSecret,
         available: requiresSecret === "" || secretNames.has(requiresSecret),
+        releasedAt: m.releasedAt,
+        knowledgeCutoff: m.knowledgeCutoff,
+        recommended: m.recommended,
+        deprecatedAt: m.deprecatedAt,
       };
     });
     return json({ models: out, providers: listProviders() });
