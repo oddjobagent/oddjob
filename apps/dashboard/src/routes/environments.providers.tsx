@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createRoute, Link } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 import type { EnvironmentProviderDescriptor } from "@oddjob/api-client";
@@ -7,7 +7,6 @@ import type { EnvironmentProviderDescriptor } from "@oddjob/api-client";
 import { useEnvironmentProviders, useProvider, useProviderMutations } from "../api/queries.ts";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
 import { Input } from "../components/ui/input.tsx";
 import { TrustTierBadge } from "../components/environments/TrustTierBadge.tsx";
 
@@ -19,45 +18,34 @@ export const Route = createRoute({
   component: EnvironmentProviders,
 });
 
+export function EnvironmentProvidersPage(): React.JSX.Element {
+  return EnvironmentProviders();
+}
+
 function EnvironmentProviders(): React.JSX.Element {
   const { data, isLoading } = useEnvironmentProviders();
 
   return (
     <div className="space-y-6">
-      <header className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <Link to="/environments" className="text-xs text-muted-foreground hover:underline">
-            ← Environments
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight mt-1">Environment providers</h1>
-          <p className="text-sm text-muted-foreground">
-            Registered environment services from installed plugins. Trust tier and capability badges
-            show what each backend supports. Remote providers need credentials configured below.
-          </p>
-        </div>
-      </header>
+      <p className="text-sm text-(--text-muted)">
+        Registered environment services from installed plugins. Trust tier and capability badges
+        show what each backend supports. Remote providers need credentials configured below.
+      </p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Installed providers</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading…</div>
-          ) : data?.providers.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No environment providers registered. Install the bundled plugins or drop one in{" "}
-              <code className="font-mono text-xs">~/.oddjob/plugins/</code>.
-            </div>
-          ) : (
-            <ul className="space-y-3">
-              {data?.providers.map((p) => (
-                <ProviderRow key={p.id} provider={p} />
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <div className="text-sm text-(--text-muted)">Loading…</div>
+      ) : data?.providers.length === 0 ? (
+        <div className="text-sm text-(--text-muted)">
+          No environment providers registered. Install the bundled plugins or drop one in{" "}
+          <code className="font-mono text-xs">~/.oddjob/plugins/</code>.
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {data?.providers.map((p) => (
+            <ProviderRow key={p.id} provider={p} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

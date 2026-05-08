@@ -8,6 +8,7 @@ import type {
   Environment,
   LogEntry,
   Run,
+  StepRecord,
 } from "@oddjob/core";
 import type {
   BuiltinToolDescriptor,
@@ -179,6 +180,20 @@ export function useRunLogs(id: string | undefined) {
     enabled: Boolean(id),
     refetchInterval: fast,
     refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Fetch the structured step trace for a run. Polls fast while the run is live;
+ * stops once terminal. Empty `steps` is normal for older runs predating the
+ * step-trace migration.
+ */
+export function useRunSteps(id: string | undefined, live: boolean) {
+  return useQuery<{ steps: StepRecord[] }>({
+    queryKey: ["runs", id, "steps"],
+    queryFn: () => api.runs.steps(id!),
+    enabled: Boolean(id),
+    refetchInterval: live ? fast : false,
   });
 }
 

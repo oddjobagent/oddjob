@@ -5,18 +5,18 @@ import { createRoute } from "@tanstack/react-router";
 import { api } from "../api/client.ts";
 import { useSecrets } from "../api/queries.ts";
 import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
 import { Input } from "../components/ui/input.tsx";
+import { Section } from "../components/ui/section.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: "/secrets",
-  component: Secrets,
+  component: SecretsPage,
 });
 
-function Secrets(): React.JSX.Element {
+export function SecretsPage(): React.JSX.Element {
   const { data } = useSecrets();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -37,75 +37,58 @@ function Secrets(): React.JSX.Element {
   });
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Secrets</h1>
-        <p className="text-sm text-muted-foreground">
-          Encrypted values referenced by blueprints. Names only — values never leave the server.
-        </p>
-      </header>
+    <div className="space-y-8">
+      <Section
+        title="Add secret"
+        description="Encrypted values referenced by blueprints. Names only — values never leave the server."
+      >
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name && value) setSecret.mutate();
+          }}
+        >
+          <Input
+            placeholder="NAME (SCREAMING_SNAKE_CASE)"
+            value={name}
+            onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
+            className="max-w-xs font-mono"
+          />
+          <Input
+            placeholder="value"
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={!name || !value} loading={setSecret.isPending}>
+            Save
+          </Button>
+        </form>
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (name && value) setSecret.mutate();
-            }}
-          >
-            <Input
-              placeholder="NAME (SCREAMING_SNAKE_CASE)"
-              value={name}
-              onChange={(e) => setName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
-              className="font-mono max-w-xs"
-            />
-            <Input
-              placeholder="value"
-              type="password"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={!name || !value || setSecret.isPending}>
-              {setSecret.isPending ? "…" : "Save"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Stored secrets</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data?.secrets.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No secrets stored yet.</div>
-          ) : (
-            <ul className="space-y-2">
-              {data?.secrets.map((n) => (
-                <li
-                  key={n}
-                  className="flex items-center justify-between border-b last:border-b-0 pb-2"
+      <Section title="Stored secrets">
+        {data?.secrets.length === 0 ? (
+          <div className="text-sm text-(--text-muted)">No secrets stored yet.</div>
+        ) : (
+          <ul className="divide-y divide-(--border-subtle) rounded-md border border-(--border-subtle) bg-(--surface-1)">
+            {data?.secrets.map((n) => (
+              <li key={n} className="flex items-center justify-between px-3 py-2">
+                <span className="font-mono text-sm">{n}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeSecret.mutate(n)}
+                  loading={removeSecret.isPending}
                 >
-                  <span className="font-mono text-sm">{n}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeSecret.mutate(n)}
-                    disabled={removeSecret.isPending}
-                  >
-                    Delete
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </div>
   );
 }

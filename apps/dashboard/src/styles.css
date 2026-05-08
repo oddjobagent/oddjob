@@ -3,82 +3,235 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/Geist-Variable.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/GeistMono-Variable.woff2") format("woff2-variations");
+}
+
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Fonts */
+  --font-sans:
+    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+
+  /* Type tracking */
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+
+  /* Radius — small, hairline aesthetic */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+
+  /* Role tokens (mapped to ramp below) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-raised: var(--surface-raised);
+  --color-border-subtle: var(--border-subtle);
   --color-border: var(--border);
-  --color-input: var(--input);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
   --color-ring: var(--ring);
+
+  /* Accent (cobalt) */
+  --color-accent-3: var(--accent-3);
+  --color-accent-7: var(--accent-7);
+  --color-accent-9: var(--accent-9);
+  --color-accent-10: var(--accent-10);
+  --color-accent-fg: var(--accent-fg);
+
+  /* Semantic */
+  --color-success-3: var(--success-3);
+  --color-success-7: var(--success-7);
+  --color-success-9: var(--success-9);
+  --color-warn-3: var(--warn-3);
+  --color-warn-7: var(--warn-7);
+  --color-warn-9: var(--warn-9);
+  --color-danger-3: var(--danger-3);
+  --color-danger-7: var(--danger-7);
+  --color-danger-9: var(--danger-9);
+  --color-info-3: var(--info-3);
+  --color-info-7: var(--info-7);
+  --color-info-9: var(--info-9);
+
+  /* Legacy aliases — kept so untouched components still resolve. Sweep + remove in Phase 4. */
+  --color-card: var(--surface-1);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-raised);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent-9);
+  --color-primary-foreground: var(--accent-fg);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger-9);
+  --color-destructive-foreground: var(--accent-fg);
+  --color-input: var(--border);
 }
 
+/* ─────────────────────────────────────────────────────────
+   Light theme — Radix-style 12-step neutral ramp + roles
+   ───────────────────────────────────────────────────────── */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* 12-step neutral ramp */
+  --gray-1: oklch(0.995 0 0);
+  --gray-2: oklch(0.985 0 0);
+  --gray-3: oklch(0.97 0 0);
+  --gray-4: oklch(0.955 0 0);
+  --gray-5: oklch(0.935 0 0);
+  --gray-6: oklch(0.91 0 0);
+  --gray-7: oklch(0.88 0 0);
+  --gray-8: oklch(0.78 0 0);
+  --gray-9: oklch(0.6 0 0);
+  --gray-10: oklch(0.52 0 0);
+  --gray-11: oklch(0.39 0 0);
+  --gray-12: oklch(0.18 0 0);
+
+  /* Role tokens */
+  --background: var(--gray-1);
+  --foreground: var(--gray-12);
+  --surface-1: var(--gray-2);
+  --surface-2: var(--gray-3);
+  --surface-raised: oklch(1 0 0);
+  --border-subtle: var(--gray-4);
+  --border: var(--gray-6);
+  --border-strong: var(--gray-7);
+  --text: var(--gray-12);
+  --text-muted: var(--gray-10);
+  --text-subtle: var(--gray-9);
+  --ring: var(--accent-9);
+
+  /* Cobalt accent */
+  --accent-3: oklch(0.95 0.03 260);
+  --accent-7: oklch(0.78 0.12 260);
+  --accent-9: oklch(0.62 0.19 260);
+  --accent-10: oklch(0.56 0.2 260);
+  --accent-fg: oklch(0.99 0 0);
+
+  /* Semantic — success/green */
+  --success-3: oklch(0.95 0.04 155);
+  --success-7: oklch(0.78 0.13 155);
+  --success-9: oklch(0.62 0.16 155);
+
+  /* warn/amber */
+  --warn-3: oklch(0.96 0.05 80);
+  --warn-7: oklch(0.82 0.14 80);
+  --warn-9: oklch(0.7 0.16 70);
+
+  /* danger/red */
+  --danger-3: oklch(0.96 0.04 25);
+  --danger-7: oklch(0.78 0.16 25);
+  --danger-9: oklch(0.6 0.22 27);
+
+  /* info — re-uses accent ramp slightly cooler */
+  --info-3: oklch(0.95 0.03 240);
+  --info-7: oklch(0.78 0.12 240);
+  --info-9: oklch(0.6 0.18 240);
 }
 
+/* ─────────────────────────────────────────────────────────
+   Dark theme — Linear-grade near-blacks
+   ───────────────────────────────────────────────────────── */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 0.1);
-  --input: oklch(1 0 0 / 0.15);
-  --ring: oklch(0.556 0 0);
+  --gray-1: oklch(0.145 0 0);
+  --gray-2: oklch(0.18 0 0);
+  --gray-3: oklch(0.215 0 0);
+  --gray-4: oklch(0.245 0 0);
+  --gray-5: oklch(0.275 0 0);
+  --gray-6: oklch(0.31 0 0);
+  --gray-7: oklch(0.36 0 0);
+  --gray-8: oklch(0.44 0 0);
+  --gray-9: oklch(0.55 0 0);
+  --gray-10: oklch(0.66 0 0);
+  --gray-11: oklch(0.78 0 0);
+  --gray-12: oklch(0.96 0 0);
+
+  --background: var(--gray-1);
+  --foreground: var(--gray-12);
+  --surface-1: var(--gray-2);
+  --surface-2: var(--gray-3);
+  --surface-raised: var(--gray-3);
+  --border-subtle: var(--gray-4);
+  --border: var(--gray-6);
+  --border-strong: var(--gray-7);
+  --text: var(--gray-12);
+  --text-muted: var(--gray-10);
+  --text-subtle: var(--gray-9);
+  --ring: var(--accent-9);
+
+  --accent-3: oklch(0.28 0.07 260);
+  --accent-7: oklch(0.46 0.16 260);
+  --accent-9: oklch(0.66 0.2 260);
+  --accent-10: oklch(0.72 0.2 260);
+  --accent-fg: oklch(0.99 0 0);
+
+  --success-3: oklch(0.28 0.06 155);
+  --success-7: oklch(0.5 0.13 155);
+  --success-9: oklch(0.7 0.16 155);
+
+  --warn-3: oklch(0.3 0.07 75);
+  --warn-7: oklch(0.55 0.14 75);
+  --warn-9: oklch(0.78 0.16 75);
+
+  --danger-3: oklch(0.3 0.08 25);
+  --danger-7: oklch(0.5 0.18 25);
+  --danger-9: oklch(0.7 0.2 27);
+
+  --info-3: oklch(0.28 0.06 240);
+  --info-7: oklch(0.5 0.14 240);
+  --info-9: oklch(0.7 0.18 240);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    color-scheme: light dark;
+  }
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    letter-spacing: var(--tracking-snug);
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: var(--tracking-tight);
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
   }
 }

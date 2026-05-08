@@ -1,25 +1,27 @@
 import type { Run } from "@oddjob/core";
 
+import type { BadgeProps } from "../components/ui/badge.tsx";
+
 export interface StatusVisual {
   label: string;
-  className: string;
+  tone: NonNullable<BadgeProps["tone"]>;
 }
 
 export function statusVisual(status: Run["status"]): StatusVisual {
   switch (status) {
     case "queued":
-      return { label: "queued", className: "bg-muted text-muted-foreground" };
+      return { label: "queued", tone: "default" };
     case "running":
-      return { label: "running", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" };
+      return { label: "running", tone: "info" };
     case "complete":
-      return { label: "complete", className: "bg-green-500/15 text-green-600 dark:text-green-400" };
+      return { label: "complete", tone: "success" };
     case "failed":
-      return { label: "failed", className: "bg-red-500/15 text-red-600 dark:text-red-400" };
+      return { label: "failed", tone: "danger" };
     case "timeout":
-      return { label: "timeout", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" };
+      return { label: "timeout", tone: "warn" };
     case "cancelled":
-      return { label: "cancelled", className: "bg-muted text-muted-foreground line-through" };
+      return { label: "cancelled", tone: "default" };
     default:
-      return { label: String(status), className: "bg-muted text-muted-foreground" };
+      return { label: String(status), tone: "default" };
   }
 }

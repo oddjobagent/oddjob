@@ -1,11 +1,17 @@
 import { createRoute, Link } from "@tanstack/react-router";
-import { Loader2, X as XIcon } from "lucide-react";
+import { ArrowLeft, Loader2, X as XIcon } from "lucide-react";
 
-import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
-import { RunStatusBadge } from "../components/runs/RunStatusBadge.tsx";
-import { useToast } from "../components/ui/toast.tsx";
 import { useCancelRun, useRun, useRunLogs, useRunLogsStream } from "../api/queries.ts";
+import { PageContainer } from "../components/layout/PageContainer.tsx";
+import { RunStatusBadge } from "../components/runs/RunStatusBadge.tsx";
+import { RunWaterfall } from "../components/runs/run-waterfall.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { DataList } from "../components/ui/data-list.tsx";
+import { PageHeader } from "../components/ui/page-header.tsx";
+import { Section } from "../components/ui/section.tsx";
+import { Stat } from "../components/ui/stat.tsx";
+import { Surface } from "../components/ui/surface.tsx";
+import { useToast } from "../components/ui/toast.tsx";
 import { formatCost, formatDuration, formatTimestamp } from "../lib/format.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
@@ -26,52 +32,62 @@ function RunDetail(): React.JSX.Element {
   const live = status === "running" || status === "queued";
   useRunLogsStream(id, live);
 
-  if (run.isLoading) return <div className="text-muted-foreground">Loading…</div>;
-  if (!run.data) return <div className="text-muted-foreground">Run not found.</div>;
+  if (run.isLoading)
+    return (
+      <PageContainer>
+        <div className="text-(--text-muted)">Loading…</div>
+      </PageContainer>
+    );
+  if (!run.data)
+    return (
+      <PageContainer>
+        <div className="text-(--text-muted)">Run not found.</div>
+      </PageContainer>
+    );
 
   const r = run.data;
   const duration = r.startedAt && r.finishedAt ? r.finishedAt - r.startedAt : undefined;
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Link to="/runs" className="text-xs text-muted-foreground hover:underline">
-            ← Runs
+    <PageContainer className="space-y-8">
+      <PageHeader
+        eyebrow={
+          <Link to="/runs" className="inline-flex items-center gap-1 hover:text-(--text)">
+            <ArrowLeft className="size-3" /> Runs
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight font-mono">{r.id.slice(0, 12)}</h1>
-          <p className="text-sm text-muted-foreground">
-            {r.blueprintId} · {r.triggeredBy}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {live && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> live
-            </span>
-          )}
-          <RunStatusBadge status={r.status} />
-          {live && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  const res = await cancel.mutateAsync(id);
-                  toast.push("success", `Cancelled (${res.result})`);
-                } catch (e) {
-                  toast.push("error", (e as Error).message);
-                }
-              }}
-              disabled={cancel.isPending}
-            >
-              <XIcon className="size-3.5" /> Cancel
-            </Button>
-          )}
-        </div>
-      </header>
+        }
+        title={<span className="font-mono">{r.id.slice(0, 12)}</span>}
+        description={`${r.blueprintId} · ${r.triggeredBy}`}
+        actions={
+          <>
+            {live ? (
+              <span className="inline-flex items-center gap-1 text-xs text-(--text-muted)">
+                <Loader2 className="size-3 animate-spin" /> live
+              </span>
+            ) : null}
+            <RunStatusBadge status={r.status} size="lg" />
+            {live ? (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={cancel.isPending}
+                onClick={async () => {
+                  try {
+                    const res = await cancel.mutateAsync(id);
+                    toast.push("success", `Cancelled (${res.result})`);
+                  } catch (e) {
+                    toast.push("error", (e as Error).message);
+                  }
+                }}
+              >
+                <XIcon className="size-3.5" /> Cancel
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4 [&>*+*]:border-l [&>*+*]:border-(--border-subtle) [&>*+*]:pl-6">
         <Stat label="Cost" value={formatCost(r.costUsd)} />
         <Stat
           label="Tokens"
@@ -81,125 +97,123 @@ function RunDetail(): React.JSX.Element {
         <Stat label="Tools" value={String(r.toolCalls)} />
       </div>
 
-      {r.error && (
-        <Card className="border-destructive/50">
-          <CardHeader>
-            <CardTitle>Error</CardTitle>
-          </CardHeader>
-          <CardContent className="font-mono text-sm text-destructive">{r.error}</CardContent>
-        </Card>
-      )}
+      <Section title="Metadata">
+        <DataList>
+          <DataList.Item label="Blueprint" mono>
+            {r.blueprintId}
+          </DataList.Item>
+          <DataList.Item label="Triggered by">{r.triggeredBy}</DataList.Item>
+          <DataList.Item label="Started">
+            {r.startedAt ? formatTimestamp(r.startedAt) : "—"}
+          </DataList.Item>
+          <DataList.Item label="Finished">
+            {r.finishedAt ? formatTimestamp(r.finishedAt) : "—"}
+          </DataList.Item>
+        </DataList>
+      </Section>
 
-      {r.outputValidation && r.outputValidation.source !== "skipped" && (
-        <Card className={r.outputValidation.ok ? "border-emerald-500/40" : "border-destructive/50"}>
-          <CardHeader>
-            <CardTitle>
-              Output validation: {r.outputValidation.ok ? "passed" : "failed"}
-              {r.outputValidation.source === "no-output" && " (no structured output)"}
-            </CardTitle>
-          </CardHeader>
-          {!r.outputValidation.ok && r.outputValidation.errors && (
-            <CardContent>
+      {r.error ? (
+        <Section title="Error">
+          <Surface tone="danger" padding="md">
+            <pre className="font-mono text-sm text-(--danger-9) whitespace-pre-wrap break-words">
+              {r.error}
+            </pre>
+          </Surface>
+        </Section>
+      ) : null}
+
+      {r.outputValidation && r.outputValidation.source !== "skipped" ? (
+        <Section
+          title={`Output validation — ${r.outputValidation.ok ? "passed" : "failed"}${
+            r.outputValidation.source === "no-output" ? " (no structured output)" : ""
+          }`}
+        >
+          <Surface tone={r.outputValidation.ok ? "success" : "danger"} padding="md">
+            {!r.outputValidation.ok && r.outputValidation.errors ? (
               <ul className="space-y-1 font-mono text-xs">
                 {r.outputValidation.errors.map((err, i) => (
                   <li key={i}>
-                    <span className="text-muted-foreground">{err.path || "$"}</span>{" "}
-                    <span className="text-destructive">{err.message}</span>
+                    <span className="text-(--text-muted)">{err.path || "$"}</span>{" "}
+                    <span className="text-(--danger-9)">{err.message}</span>
                   </li>
                 ))}
               </ul>
-            </CardContent>
-          )}
-        </Card>
-      )}
+            ) : (
+              <p className="text-xs text-(--text-muted)">All output fields validated.</p>
+            )}
+          </Surface>
+        </Section>
+      ) : null}
 
-      {r.input !== undefined && r.input !== null && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Input</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="bg-muted/30 rounded p-3 text-xs overflow-auto whitespace-pre-wrap break-words">
+      {r.input !== undefined && r.input !== null ? (
+        <Section title="Input">
+          <Surface variant="raised" padding="sm">
+            <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
               {typeof r.input === "string" ? r.input : JSON.stringify(r.input, null, 2)}
             </pre>
-          </CardContent>
-        </Card>
-      )}
+          </Surface>
+        </Section>
+      ) : null}
 
-      {r.output && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Output</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      {r.output ? (
+        <Section title="Output">
+          <Surface variant="raised" padding="sm" className="space-y-3">
             <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              <div className="mb-1 text-[11px] uppercase tracking-wide text-(--text-muted)">
                 final_text
               </div>
-              <pre className="bg-muted/30 rounded p-3 text-sm overflow-auto whitespace-pre-wrap break-words">
+              <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm">
                 {r.output.finalText || "(empty)"}
               </pre>
             </div>
-            {r.output.structuredOutput && (
+            {r.output.structuredOutput ? (
               <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-(--text-muted)">
                   structured_output
                 </div>
-                <pre className="bg-muted/30 rounded p-3 text-xs overflow-auto">
+                <pre className="overflow-auto font-mono text-xs">
                   {JSON.stringify(r.output.structuredOutput, null, 2)}
                 </pre>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            ) : null}
+          </Surface>
+        </Section>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Logs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="font-mono text-xs space-y-0.5 max-h-96 overflow-auto">
+      <RunWaterfall runId={r.id} live={live} startedAt={r.startedAt ?? undefined} />
+
+      <Section title="Logs">
+        <Surface variant="raised" padding="sm">
+          <div className="max-h-96 space-y-0.5 overflow-auto font-mono text-xs">
             {logs.data?.entries.map((entry, idx) => (
               <div key={idx} className="flex gap-3">
-                <span className="text-muted-foreground shrink-0">
+                <span className="shrink-0 text-(--text-muted)">
                   {formatTimestamp(entry.timestamp)}
                 </span>
                 <span className={levelClass(entry.level)}>{entry.level.padEnd(5)}</span>
                 <span>{entry.message}</span>
               </div>
             ))}
-            {logs.data?.entries.length === 0 && (
-              <div className="text-muted-foreground">No log entries.</div>
-            )}
+            {logs.data?.entries.length === 0 ? (
+              <div className="text-(--text-muted)">No log entries.</div>
+            ) : null}
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }): React.JSX.Element {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
-      </CardContent>
-    </Card>
+        </Surface>
+      </Section>
+    </PageContainer>
   );
 }
 
 function levelClass(level: string): string {
   switch (level) {
     case "error":
-      return "text-red-600 dark:text-red-400";
+      return "text-(--danger-9)";
     case "warn":
-      return "text-amber-600 dark:text-amber-400";
+      return "text-(--warn-9)";
     case "info":
-      return "text-foreground";
+      return "text-(--text)";
     case "debug":
-      return "text-muted-foreground";
+      return "text-(--text-muted)";
     default:
       return "";
   }

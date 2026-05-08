@@ -1,12 +1,8 @@
 import * as React from "react";
-import { createRoute, Link } from "@tanstack/react-router";
+import { createRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Inbox, Plus, Send, Trash2 } from "lucide-react";
 
 import type { ChannelConfig } from "@oddjob/core";
-
-import { ChannelRow as ChannelRowComp } from "../components/deployments/ChannelRow.tsx";
-import { Field } from "../components/ui/form.tsx";
-import { Input } from "../components/ui/input.tsx";
 
 import {
   useChannelTemplateMutations,
@@ -16,9 +12,9 @@ import {
   useTestChannel,
 } from "../api/queries.ts";
 import { ChannelRow } from "../components/deployments/ChannelRow.tsx";
+import { PageContainer } from "../components/layout/PageContainer.tsx";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
 import {
   Dialog,
   DialogContent,
@@ -27,14 +23,29 @@ import {
   DialogTitle,
 } from "../components/ui/dialog.tsx";
 import { EmptyState } from "../components/ui/empty-state.tsx";
+import { Field } from "../components/ui/form.tsx";
+import { Input } from "../components/ui/input.tsx";
+import { PageHeader } from "../components/ui/page-header.tsx";
+import { Section } from "../components/ui/section.tsx";
+import { Surface } from "../components/ui/surface.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.tsx";
 import { useToast } from "../components/ui/toast.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
+
+type ChannelsTab = "templates" | "types" | "in-use";
+
+interface ChannelsSearch {
+  tab: ChannelsTab;
+}
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: "/channels",
   component: ChannelsPage,
+  validateSearch: (raw): ChannelsSearch => ({
+    tab: raw.tab === "types" ? "types" : raw.tab === "in-use" ? "in-use" : "templates",
+  }),
 });
 
 function ChannelsPage(): React.JSX.Element {
@@ -44,6 +55,9 @@ function ChannelsPage(): React.JSX.Element {
   const tplMutations = useChannelTemplateMutations();
   const test = useTestChannel();
   const toast = useToast();
+  const navigate = useNavigate();
+  const { tab } = useSearch({ from: "/channels" });
+  const setTab = (v: string) => navigate({ to: "/channels", search: { tab: v as ChannelsTab } });
 
   const [testOpen, setTestOpen] = React.useState(false);
   const [testCfg, setTestCfg] = React.useState<ChannelConfig>({ type: "console" });
@@ -57,7 +71,7 @@ function ChannelsPage(): React.JSX.Element {
   const onTest = async () => {
     try {
       await test.mutateAsync({ config: testCfg });
-      toast.push("success", "Test message sent");
+      toast.push("success", "Sent test message");
       setTestOpen(false);
     } catch (e) {
       toast.push("error", (e as Error).message);
@@ -65,135 +79,152 @@ function ChannelsPage(): React.JSX.Element {
   };
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Channels</h1>
-          <p className="text-sm text-muted-foreground">
-            How completed runs reach you. Test-fire any channel without affecting a deployment.
-          </p>
-        </div>
-        <Button onClick={() => setTestOpen(true)}>
-          <Send className="size-4" /> Test a channel
-        </Button>
-      </header>
+    <PageContainer className="space-y-6">
+      <Tabs value={tab} onValueChange={setTab}>
+        <PageHeader
+          title="Channels"
+          description="How completed runs reach you. Test-fire any channel without affecting a deployment."
+          actions={
+            <Button onClick={() => setTestOpen(true)}>
+              <Send className="size-3.5" /> Test a channel
+            </Button>
+          }
+          tabs={
+            <TabsList>
+              <TabsTrigger value="templates">Templates</TabsTrigger>
+              <TabsTrigger value="types">Types</TabsTrigger>
+              <TabsTrigger value="in-use">In use</TabsTrigger>
+            </TabsList>
+          }
+        />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Available channel types</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          {types.data?.types.map((t) => (
-            <div key={t.type} className="rounded-md border p-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{t.label}</span>
-                <Badge className="bg-muted text-muted-foreground font-mono text-xs">{t.type}</Badge>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">{t.description}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Templates</CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setTplName("");
-              setTplDesc("");
-              setTplCfg({ type: "console" });
-              setTplDialog(true);
-            }}
+        <TabsContent value="templates">
+          <Section
+            title="Templates"
+            description="Reusable channel presets — Slack rooms, email recipients, webhook URLs."
+            actions={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setTplName("");
+                  setTplDesc("");
+                  setTplCfg({ type: "console" });
+                  setTplDialog(true);
+                }}
+              >
+                <Plus className="size-3.5" /> New template
+              </Button>
+            }
           >
-            <Plus className="size-4" /> New template
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {templates.data?.templates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No saved presets yet. Templates make it easy to reuse Slack channels, email
-              recipients, or webhook URLs across deployments.
-            </p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {templates.data?.templates.map((t) => (
-                <li
-                  key={t.name}
-                  className="flex items-center justify-between rounded-md border p-3"
-                >
-                  <div>
-                    <div className="font-medium">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {t.type}
-                      {t.description ? ` · ${t.description}` : ""}
-                    </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={async () => {
-                      try {
-                        await tplMutations.remove.mutateAsync(t.name);
-                        toast.push("success", `Deleted template ${t.name}`);
-                      } catch (e) {
-                        toast.push("error", (e as Error).message);
-                      }
-                    }}
-                    aria-label={`Delete ${t.name}`}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>In-use across deployments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {usage.length === 0 ? (
-            <EmptyState
-              icon={Inbox}
-              title="No channels configured yet"
-              description="Add a channel when creating or editing a deployment to get notified on runs."
-            />
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {usage.map((u, i) => (
-                <li key={i} className="flex items-center justify-between rounded-md border p-3">
-                  <div>
-                    <div className="font-mono text-xs text-muted-foreground">{u.type}</div>
-                    <div>{u.label}</div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{u.deployments.length} deployment(s)</span>
-                    <div className="flex gap-1">
-                      {u.deployments.slice(0, 3).map((d) => (
-                        <Link
-                          key={d.id}
-                          to="/deployments/$id"
-                          params={{ id: d.id }}
-                          className="rounded bg-muted px-2 py-0.5 hover:bg-accent"
+            {templates.data?.templates.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No templates yet"
+                description="Save Slack channels, email recipients, or webhook URLs to reuse across deployments."
+              />
+            ) : (
+              <ul className="space-y-2">
+                {templates.data?.templates.map((t) => (
+                  <li key={t.name}>
+                    <Surface padding="sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-(--text)">{t.name}</div>
+                          <div className="text-xs text-(--text-muted)">
+                            {t.type}
+                            {t.description ? ` · ${t.description}` : ""}
+                          </div>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={async () => {
+                            try {
+                              await tplMutations.remove.mutateAsync(t.name);
+                              toast.push("success", `Deleted template ${t.name}`);
+                            } catch (e) {
+                              toast.push("error", (e as Error).message);
+                            }
+                          }}
+                          aria-label={`Delete ${t.name}`}
                         >
-                          {d.name}
-                        </Link>
-                      ))}
-                      {u.deployments.length > 3 && <span className="text-muted-foreground">…</span>}
-                    </div>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </Surface>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+        </TabsContent>
+
+        <TabsContent value="types">
+          <Section
+            title="Available channel types"
+            description="What kinds of delivery the running plugins support."
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              {types.data?.types.map((t) => (
+                <Surface key={t.type} padding="md">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium text-(--text)">{t.label}</span>
+                    <Badge size="sm" tone="outline" className="font-mono">
+                      {t.type}
+                    </Badge>
                   </div>
-                </li>
+                  <p className="mt-1 text-sm text-(--text-muted)">{t.description}</p>
+                </Surface>
               ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+          </Section>
+        </TabsContent>
+
+        <TabsContent value="in-use">
+          <Section
+            title="In use across deployments"
+            description="Where channels are actually wired. Click a deployment chip to jump to it."
+          >
+            {usage.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No channels configured yet"
+                description="Add a channel when creating or editing a deployment to get notified on runs."
+              />
+            ) : (
+              <ul className="space-y-2">
+                {usage.map((u, i) => (
+                  <li key={i}>
+                    <Surface padding="sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="font-mono text-[11px] text-(--text-muted)">{u.type}</div>
+                          <div className="text-sm">{u.label}</div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-(--text-muted)">
+                          <span>{u.deployments.length} deployment(s)</span>
+                          {u.deployments.slice(0, 3).map((d) => (
+                            <Link
+                              key={d.id}
+                              to="/deployments/$id"
+                              params={{ id: d.id }}
+                              className="rounded bg-(--surface-2) px-2 py-0.5 text-(--text) hover:bg-(--gray-4)"
+                            >
+                              {d.name}
+                            </Link>
+                          ))}
+                          {u.deployments.length > 3 ? <span>…</span> : null}
+                        </div>
+                      </div>
+                    </Surface>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>
         <DialogContent onClose={() => setTestOpen(false)}>
@@ -205,8 +236,8 @@ function ChannelsPage(): React.JSX.Element {
             <Button variant="outline" onClick={() => setTestOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={onTest} disabled={test.isPending}>
-              {test.isPending ? "Sending…" : "Send test message"}
+            <Button onClick={onTest} loading={test.isPending}>
+              Send test message
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -227,13 +258,14 @@ function ChannelsPage(): React.JSX.Element {
             <Field label="Description">
               <Input value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} />
             </Field>
-            <ChannelRowComp value={tplCfg} onChange={setTplCfg} types={types.data?.types ?? []} />
+            <ChannelRow value={tplCfg} onChange={setTplCfg} types={types.data?.types ?? []} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTplDialog(false)}>
               Cancel
             </Button>
             <Button
+              loading={tplMutations.upsert.isPending}
               onClick={async () => {
                 if (!tplName) return toast.push("error", "name is required");
                 try {
@@ -248,14 +280,13 @@ function ChannelsPage(): React.JSX.Element {
                   toast.push("error", (e as Error).message);
                 }
               }}
-              disabled={tplMutations.upsert.isPending}
             >
-              {tplMutations.upsert.isPending ? "Saving…" : "Save"}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
 

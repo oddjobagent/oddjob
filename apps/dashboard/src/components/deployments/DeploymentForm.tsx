@@ -80,19 +80,38 @@ export function DeploymentForm({ state, onChange, lockIdentity }: Props): React.
       <Fieldset legend="Runtime">
         <Field
           label="Model"
-          helper={`Defaults to blueprint's "${bp?.model ?? "—"}". Override for this deployment.`}
+          helper={`Defaults to blueprint's "${bp?.model ?? "—"}". Override for this deployment. Only providers with credentials configured are listed; configure more in Models.`}
         >
           <Combobox
             value={state.modelOverride}
             onChange={(v) => set("modelOverride", v)}
-            options={(models.data?.models ?? []).map((m) => ({
-              value: m.id,
-              label: m.displayName ? `${m.displayName} (${m.id})` : m.id,
-              hint: m.available
-                ? `${(m.contextWindow / 1000).toFixed(0)}K ctx · $${m.cost.input.toFixed(2)}/M in${m.reasoning ? " · reasoning" : ""}`
-                : "secret missing",
-              disabled: !m.available,
-            }))}
+            options={(models.data?.models ?? [])
+              .filter((m) => m.available)
+              .filter((m) => !m.deprecatedAt)
+              .toSorted((a, b) => {
+                if ((b.recommended ? 1 : 0) !== (a.recommended ? 1 : 0)) {
+                  return (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0);
+                }
+                const da = a.releasedAt ?? "";
+                const db = b.releasedAt ?? "";
+                if (da !== db) return db.localeCompare(da);
+                return a.id.localeCompare(b.id);
+              })
+              .map((m) => {
+                const star = m.recommended ? "★ " : "";
+                const baseLabel = m.displayName ? `${m.displayName} (${m.id})` : m.id;
+                const parts: string[] = [
+                  `${(m.contextWindow / 1000).toFixed(0)}K ctx`,
+                  `$${m.cost.input.toFixed(2)}/M in`,
+                ];
+                if (m.releasedAt) parts.push(`released ${m.releasedAt}`);
+                if (m.reasoning) parts.push("reasoning");
+                return {
+                  value: m.id,
+                  label: `${star}${baseLabel}`,
+                  hint: parts.join(" · "),
+                };
+              })}
             allowCustom
             placeholder={bp?.model ?? "Pick a model"}
           />

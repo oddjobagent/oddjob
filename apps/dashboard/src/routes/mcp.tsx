@@ -10,8 +10,8 @@ import {
 } from "../api/queries.ts";
 import { Badge } from "../components/ui/badge.tsx";
 import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
 import { EmptyState } from "../components/ui/empty-state.tsx";
+import { Section } from "../components/ui/section.tsx";
 import {
   Table,
   TableBody,
@@ -38,28 +38,26 @@ type DisplayStatus =
   | "pending";
 
 function badgeFor(status: DisplayStatus): React.JSX.Element {
-  if (status === "active") {
-    return <Badge className="bg-green-500/15 text-green-700">active</Badge>;
-  }
-  if (status === "expired" || status === "reauth_needed") {
+  if (status === "active")
     return (
-      <Badge className="bg-red-500/15 text-red-700">
+      <Badge tone="success" size="sm">
+        active
+      </Badge>
+    );
+  if (status === "expired" || status === "reauth_needed")
+    return (
+      <Badge tone="danger" size="sm">
         {status === "expired" ? "expired" : "reauth needed"}
       </Badge>
     );
-  }
-  if (status === "revoked") {
-    return <Badge className="bg-muted text-muted-foreground">revoked</Badge>;
-  }
-  if (status === "pending") {
+  if (status === "revoked") return <Badge size="sm">revoked</Badge>;
+  if (status === "pending")
     return (
-      <Badge className="bg-amber-500/15 text-amber-700 inline-flex items-center gap-1">
-        <Loader2 className="size-3 animate-spin" />
-        pending
+      <Badge tone="warn" size="sm" className="inline-flex items-center gap-1">
+        <Loader2 className="size-3 animate-spin" /> pending
       </Badge>
     );
-  }
-  return <Badge className="bg-muted text-muted-foreground">not connected</Badge>;
+  return <Badge size="sm">not connected</Badge>;
 }
 
 function fmtExpires(ts: number | undefined): string {
@@ -67,6 +65,10 @@ function fmtExpires(ts: number | undefined): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
+}
+
+export function McpPageBody(): React.JSX.Element {
+  return McpPage();
 }
 
 function McpPage(): React.JSX.Element {
@@ -154,88 +156,74 @@ function McpPage(): React.JSX.Element {
   };
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">MCP Connectors</h1>
-        <p className="text-sm text-muted-foreground">
-          OAuth-authenticated MCP connectors used by your blueprints. Reconnect when status shows
-          reauth needed.
-        </p>
-      </header>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Connectors</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {list.isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading…</div>
-          ) : tokens.length === 0 ? (
-            <EmptyState
-              icon={Cable}
-              title="No MCP connectors configured"
-              description="Add OAuth2 connectors to your blueprints to see them here."
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Connector</TableHead>
-                  <TableHead>Deployment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+    <Section
+      title="MCP connectors"
+      description="OAuth-authenticated MCP connectors used by your blueprints. Reconnect when status shows reauth needed."
+    >
+      {list.isLoading ? (
+        <div className="text-sm text-(--text-muted)">Loading…</div>
+      ) : tokens.length === 0 ? (
+        <EmptyState
+          icon={Cable}
+          title="No MCP connectors configured"
+          description="Add OAuth2 connectors to your blueprints to see them here."
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Connector</TableHead>
+              <TableHead>Deployment</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tokens.map((row) => {
+              const raw = row.status as DisplayStatus;
+              const isPending = pendingIds[row.connectorId] !== undefined && raw !== "active";
+              const display: DisplayStatus = isPending ? "pending" : raw;
+              const isActive = raw === "active";
+              const actionLabel =
+                raw === "reauth_needed" || raw === "expired" ? "Re-authenticate" : "Authenticate";
+              return (
+                <TableRow key={row.connectorId}>
+                  <TableCell className="font-mono text-sm">{row.connectorName}</TableCell>
+                  <TableCell className="font-mono text-xs text-(--text-muted)">
+                    {row.deploymentId}
+                  </TableCell>
+                  <TableCell>{badgeFor(display)}</TableCell>
+                  <TableCell className="text-sm text-(--text-muted)">
+                    {fmtExpires(row.expiresAt)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isActive ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={revoke.isPending}
+                        onClick={() => handleRevoke(row)}
+                      >
+                        Revoke
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={initiate.isPending || isPending}
+                        onClick={() => handleAuthenticate(row)}
+                      >
+                        {isPending ? "Waiting for callback…" : actionLabel}
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((row) => {
-                  const raw = row.status as DisplayStatus;
-                  const isPending = pendingIds[row.connectorId] !== undefined && raw !== "active";
-                  const display: DisplayStatus = isPending ? "pending" : raw;
-                  const isActive = raw === "active";
-                  const actionLabel =
-                    raw === "reauth_needed" || raw === "expired"
-                      ? "Re-authenticate"
-                      : "Authenticate";
-                  return (
-                    <TableRow key={row.connectorId}>
-                      <TableCell className="font-mono text-sm">{row.connectorName}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {row.deploymentId}
-                      </TableCell>
-                      <TableCell>{badgeFor(display)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {fmtExpires(row.expiresAt)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={revoke.isPending}
-                            onClick={() => handleRevoke(row)}
-                          >
-                            Revoke
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={initiate.isPending || isPending}
-                            onClick={() => handleAuthenticate(row)}
-                          >
-                            {isPending ? "Waiting for callback…" : actionLabel}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+    </Section>
   );
 }

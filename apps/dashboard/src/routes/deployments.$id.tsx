@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, Edit3, Pause, Play, X as XIcon } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, Edit3, Pause, Play, X as XIcon } from "lucide-react";
 
 import {
   useBlueprint,
@@ -10,8 +10,10 @@ import {
   useDeploymentNextRun,
   useRuns,
 } from "../api/queries.ts";
+import { PageContainer } from "../components/layout/PageContainer.tsx";
+import { RunStatusBadge } from "../components/runs/RunStatusBadge.tsx";
 import { Button } from "../components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.tsx";
+import { DataList } from "../components/ui/data-list.tsx";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +22,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog.tsx";
-import { RunStatusBadge } from "../components/runs/RunStatusBadge.tsx";
+import { PageHeader } from "../components/ui/page-header.tsx";
+import { Section } from "../components/ui/section.tsx";
+import { Stat } from "../components/ui/stat.tsx";
+import { Surface } from "../components/ui/surface.tsx";
 import {
   Table,
   TableBody,
@@ -31,9 +36,9 @@ import {
 } from "../components/ui/table.tsx";
 import { useToast } from "../components/ui/toast.tsx";
 import { formatCost, formatRelative } from "../lib/format.ts";
-import { StatusBadge } from "./deployments.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
+import { StatusBadge } from "./deployments.tsx";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -58,8 +63,18 @@ function DeploymentDetail(): React.JSX.Element {
 
   const [archiveDialog, setArchiveDialog] = React.useState(false);
 
-  if (dep.isLoading) return <div className="text-muted-foreground">Loading…</div>;
-  if (!dep.data) return <div className="text-muted-foreground">Deployment not found.</div>;
+  if (dep.isLoading)
+    return (
+      <PageContainer>
+        <div className="text-(--text-muted)">Loading…</div>
+      </PageContainer>
+    );
+  if (!dep.data)
+    return (
+      <PageContainer>
+        <div className="text-(--text-muted)">Deployment not found.</div>
+      </PageContainer>
+    );
 
   const d = dep.data;
   const isActive = d.status === "active";
@@ -93,221 +108,195 @@ function DeploymentDetail(): React.JSX.Element {
     }
   };
 
+  const [namespace, name] = d.blueprintId.split("/") as [string, string];
+
   return (
-    <div className="space-y-6">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Link to="/deployments" className="text-xs text-muted-foreground hover:underline">
-            ← Deployments
+    <PageContainer className="space-y-8">
+      <PageHeader
+        eyebrow={
+          <Link to="/deployments" className="inline-flex items-center gap-1 hover:text-(--text)">
+            <ArrowLeft className="size-3" /> Deployments
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight mt-1">{d.name}</h1>
-          <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
+        }
+        title={d.name}
+        description={
+          <span className="inline-flex items-center gap-2">
             <Link
               to="/blueprints/$namespace/$name"
-              params={{
-                namespace: d.blueprintId.split("/")[0]!,
-                name: d.blueprintId.split("/")[1]!,
-              }}
-              className="font-mono hover:underline"
+              params={{ namespace, name }}
+              className="font-mono text-(--accent-9) hover:underline"
             >
               {d.blueprintId}
               {d.blueprintTag && d.blueprintTag !== "latest" ? `:${d.blueprintTag}` : ""}
             </Link>
-            <span>·</span>
+            <span className="text-(--text-subtle)">·</span>
             <StatusBadge status={d.status} />
-            {blueprint.data && (
-              <span className="text-xs">resolves → v{blueprint.data.version}</span>
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={onTrigger}
-            disabled={lifecycle.trigger.isPending || !isActive}
-            title={isActive ? undefined : "Resume to trigger"}
-          >
-            {lifecycle.trigger.isPending ? "Triggering…" : "Trigger now"}
-          </Button>
-          {isActive && (
+            {blueprint.data ? (
+              <span className="text-xs text-(--text-muted)">
+                resolves → v{blueprint.data.version}
+              </span>
+            ) : null}
+          </span>
+        }
+        actions={
+          <>
             <Button
-              variant="outline"
-              onClick={wrap("Paused", () => lifecycle.pause.mutateAsync(id))}
-              disabled={lifecycle.pause.isPending}
+              onClick={onTrigger}
+              disabled={lifecycle.trigger.isPending || !isActive}
+              loading={lifecycle.trigger.isPending}
+              title={isActive ? undefined : "Resume to trigger"}
             >
-              <Pause className="size-4" /> Pause
+              Trigger now
             </Button>
-          )}
-          {isPaused && (
-            <Button
-              variant="outline"
-              onClick={wrap("Resumed", () => lifecycle.resume.mutateAsync(id))}
-              disabled={lifecycle.resume.isPending}
-            >
-              <Play className="size-4" /> Resume
-            </Button>
-          )}
-          {isArchived && (
-            <Button
-              variant="outline"
-              onClick={wrap("Unarchived (paused)", () => lifecycle.unarchive.mutateAsync(id))}
-              disabled={lifecycle.unarchive.isPending}
-            >
-              <ArchiveRestore className="size-4" /> Unarchive
-            </Button>
-          )}
-          {!isArchived && (
-            <Button
-              variant="outline"
-              onClick={() => navigate({ to: "/deployments/$id/edit", params: { id } })}
-            >
-              <Edit3 className="size-4" /> Edit
-            </Button>
-          )}
-          {!isArchived && (
-            <Button
-              variant="outline"
-              onClick={() => navigate({ to: "/deployments/$id/environment", params: { id } })}
-            >
-              Environment
-            </Button>
-          )}
-          {!isArchived && (
-            <Button variant="destructive" onClick={() => setArchiveDialog(true)}>
-              <Archive className="size-4" /> Archive
-            </Button>
-          )}
-        </div>
-      </header>
+            {isActive ? (
+              <Button
+                variant="outline"
+                onClick={wrap("Paused", () => lifecycle.pause.mutateAsync(id))}
+                loading={lifecycle.pause.isPending}
+              >
+                <Pause className="size-3.5" /> Pause
+              </Button>
+            ) : null}
+            {isPaused ? (
+              <Button
+                variant="outline"
+                onClick={wrap("Resumed", () => lifecycle.resume.mutateAsync(id))}
+                loading={lifecycle.resume.isPending}
+              >
+                <Play className="size-3.5" /> Resume
+              </Button>
+            ) : null}
+            {isArchived ? (
+              <Button
+                variant="outline"
+                onClick={wrap("Unarchived (paused)", () => lifecycle.unarchive.mutateAsync(id))}
+                loading={lifecycle.unarchive.isPending}
+              >
+                <ArchiveRestore className="size-3.5" /> Unarchive
+              </Button>
+            ) : null}
+            {!isArchived ? (
+              <Button
+                variant="outline"
+                onClick={() => navigate({ to: "/deployments/$id/edit", params: { id } })}
+              >
+                <Edit3 className="size-3.5" /> Edit
+              </Button>
+            ) : null}
+            {!isArchived ? (
+              <Button
+                variant="outline"
+                onClick={() => navigate({ to: "/deployments/$id/environment", params: { id } })}
+              >
+                Environment
+              </Button>
+            ) : null}
+            {!isArchived ? (
+              <Button variant="destructive" onClick={() => setArchiveDialog(true)}>
+                <Archive className="size-3.5" /> Archive
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Model</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-sm">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-3 [&>*+*]:md:border-l [&>*+*]:md:border-(--border-subtle) [&>*+*]:md:pl-6">
+        <Stat
+          label="Model"
+          value={
+            <span className="font-mono text-base">
               {d.modelOverride ?? blueprint.data?.model ?? "—"}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {d.modelOverride ? "deployment override" : "blueprint default"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Budget</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm">
-              {d.limits.budgetUsd != null ? `$${d.limits.budgetUsd.toFixed(2)} / run` : "—"}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              warn at {d.limits.warnThresholdPct ?? 80}%
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Next cron run</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm">
-              {hasCron && nextRun.data?.nextRun
-                ? new Date(nextRun.data.nextRun).toLocaleString()
-                : hasCron && d.status !== "active"
-                  ? "(paused)"
-                  : "—"}
-            </div>
-          </CardContent>
-        </Card>
+            </span>
+          }
+          hint={d.modelOverride ? "deployment override" : "blueprint default"}
+        />
+        <Stat
+          label="Budget"
+          value={d.limits.budgetUsd != null ? `$${d.limits.budgetUsd.toFixed(2)}` : "—"}
+          hint={`warn at ${d.limits.warnThresholdPct ?? 80}%`}
+        />
+        <Stat
+          label="Next cron run"
+          value={
+            hasCron && nextRun.data?.nextRun
+              ? new Date(nextRun.data.nextRun).toLocaleString()
+              : hasCron && d.status !== "active"
+                ? "(paused)"
+                : "—"
+          }
+        />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Triggers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {d.triggers.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No triggers configured.</div>
-            ) : (
-              <ul className="text-sm space-y-2">
-                {d.triggers.map((t, i) => (
-                  <li key={i} className="font-mono">
-                    <span className="font-medium">{t.type}</span>
-                    {t.type === "cron" && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        {t.schedule}
-                        {t.timezone ? ` (${t.timezone})` : ""}
-                      </span>
-                    )}
-                    {t.type === "webhook" && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        {t.path ?? `/webhooks/${d.name}`} auth={t.auth.kind}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Channels</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {d.channels.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No channels configured.</div>
-            ) : (
-              <ul className="text-sm space-y-2">
-                {d.channels.map((c, i) => (
-                  <li key={i} className="font-mono">
-                    <span className="font-medium">{c.type}</span>
-                    {c.type === "slack" && (
-                      <span className="text-muted-foreground"> {c.target}</span>
-                    )}
-                    {c.type === "email" && (
-                      <span className="text-muted-foreground"> {String(c.to)}</span>
-                    )}
-                    {c.type === "webhook" && (
-                      <span className="text-muted-foreground"> {c.url}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-8 md:grid-cols-2">
+        <Section title="Triggers">
+          {d.triggers.length === 0 ? (
+            <div className="text-sm text-(--text-muted)">No triggers configured.</div>
+          ) : (
+            <ul className="space-y-2">
+              {d.triggers.map((t, i) => (
+                <li key={i} className="font-mono text-sm">
+                  <span className="font-medium text-(--text)">{t.type}</span>
+                  {t.type === "cron" ? (
+                    <span className="text-(--text-muted)">
+                      {" "}
+                      {t.schedule}
+                      {t.timezone ? ` (${t.timezone})` : ""}
+                    </span>
+                  ) : null}
+                  {t.type === "webhook" ? (
+                    <span className="text-(--text-muted)">
+                      {" "}
+                      {t.path ?? `/webhooks/${d.name}`} auth={t.auth.kind}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+        <Section title="Channels">
+          {d.channels.length === 0 ? (
+            <div className="text-sm text-(--text-muted)">No channels configured.</div>
+          ) : (
+            <ul className="space-y-2">
+              {d.channels.map((c, i) => (
+                <li key={i} className="font-mono text-sm">
+                  <span className="font-medium text-(--text)">{c.type}</span>
+                  {c.type === "slack" ? (
+                    <span className="text-(--text-muted)"> {c.target}</span>
+                  ) : null}
+                  {c.type === "email" ? (
+                    <span className="text-(--text-muted)"> {String(c.to)}</span>
+                  ) : null}
+                  {c.type === "webhook" ? (
+                    <span className="text-(--text-muted)"> {c.url}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       </div>
 
-      {d.defaultInput !== undefined && d.defaultInput !== null && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Default input</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="overflow-auto rounded-md bg-muted/30 p-3 text-xs">
+      {d.defaultInput !== undefined && d.defaultInput !== null ? (
+        <Section title="Default input">
+          <Surface variant="raised" padding="sm">
+            <pre className="overflow-auto font-mono text-xs">
               {JSON.stringify(d.defaultInput, null, 2)}
             </pre>
-          </CardContent>
-        </Card>
-      )}
+          </Surface>
+        </Section>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent runs</CardTitle>
-        </CardHeader>
+      <Section title="Recent runs">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Status</TableHead>
               <TableHead>Run</TableHead>
               <TableHead>Triggered by</TableHead>
-              <TableHead>Cost</TableHead>
-              <TableHead>Started</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Started</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -317,47 +306,59 @@ function DeploymentDetail(): React.JSX.Element {
               return (
                 <TableRow key={r.id}>
                   <TableCell>
-                    <RunStatusBadge status={r.status} />
+                    <RunStatusBadge status={r.status} size="sm" />
                   </TableCell>
                   <TableCell>
                     <Link
                       to="/runs/$id"
                       params={{ id: r.id }}
-                      className="font-mono text-xs hover:underline"
+                      className="font-mono text-xs text-(--accent-9) hover:underline"
                     >
                       {r.id.slice(0, 8)}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-sm">{r.triggeredBy}</TableCell>
-                  <TableCell className="text-sm tabular-nums">{formatCost(r.costUsd)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="text-sm text-(--text-muted)">{r.triggeredBy}</TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {formatCost(r.costUsd)}
+                  </TableCell>
+                  <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
                     {formatRelative(r.startedAt ?? r.createdAt)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {cancellable && (
+                    {cancellable ? (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => onCancelRun(r.id)}
-                        disabled={cancelRun.isPending}
+                        loading={cancelRun.isPending}
                       >
                         <XIcon className="size-3.5" /> Cancel
                       </Button>
-                    )}
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );
             })}
-            {recent.data?.runs.length === 0 && (
+            {recent.data?.runs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={6} className="py-8 text-center text-(--text-muted)">
                   No runs yet for this deployment.
                 </TableCell>
               </TableRow>
-            )}
+            ) : null}
           </TableBody>
         </Table>
-      </Card>
+      </Section>
+
+      <Section title="Metadata">
+        <DataList>
+          <DataList.Item label="Created">{formatRelative(d.createdAt)}</DataList.Item>
+          <DataList.Item label="Updated">{formatRelative(d.updatedAt)}</DataList.Item>
+          <DataList.Item label="ID" mono>
+            {d.id}
+          </DataList.Item>
+        </DataList>
+      </Section>
 
       <Dialog open={archiveDialog} onOpenChange={setArchiveDialog}>
         <DialogContent onClose={() => setArchiveDialog(false)}>
@@ -374,6 +375,7 @@ function DeploymentDetail(): React.JSX.Element {
             </Button>
             <Button
               variant="destructive"
+              loading={lifecycle.archive.isPending}
               onClick={async () => {
                 try {
                   await lifecycle.archive.mutateAsync(id);
@@ -383,13 +385,12 @@ function DeploymentDetail(): React.JSX.Element {
                   toast.push("error", (e as Error).message);
                 }
               }}
-              disabled={lifecycle.archive.isPending}
             >
-              {lifecycle.archive.isPending ? "Archiving…" : "Archive"}
+              Archive
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
