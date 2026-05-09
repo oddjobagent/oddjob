@@ -1,0 +1,110 @@
+{
+  "version": "v4",
+  "generatedAt": 1778297823014,
+  "note": "First baseline with --strategy support (Phase 2). Each profile run through both fixed and classifier strategies via oddjob eval-compare. Tiers: simple/standard/complex = anthropic/claude-haiku-4.5 / anthropic/claude-haiku-4.5 / anthropic/claude-sonnet-4.5 (all on Anthropic via OpenRouter).",
+  "profiles": {
+    "coding": {
+      "fixed": {
+        "cases": 8,
+        "passed": 8,
+        "passRate": 1,
+        "meanCostUsd": 0.03243324375000001,
+        "totalCostUsd": 0.25946595000000006,
+        "costPerSuccessUsd": 0.03243324375000001,
+        "p50Ms": 21595,
+        "p95Ms": 32244
+      },
+      "classifier": {
+        "cases": 8,
+        "passed": 8,
+        "passRate": 1,
+        "meanCostUsd": 0.042658481250000005,
+        "totalCostUsd": 0.34126785000000004,
+        "costPerSuccessUsd": 0.042658481250000005,
+        "p50Ms": 27603,
+        "p95Ms": 38756
+      }
+    },
+    "data-extract": {
+      "fixed": {
+        "cases": 8,
+        "passed": 5,
+        "passRate": 0.625,
+        "meanCostUsd": 0.0112765,
+        "totalCostUsd": 0.090212,
+        "costPerSuccessUsd": 0.0180424,
+        "p50Ms": 5331,
+        "p95Ms": 14013
+      },
+      "classifier": {
+        "cases": 8,
+        "passed": 4,
+        "passRate": 0.5,
+        "meanCostUsd": 0.0111937875,
+        "totalCostUsd": 0.0895503,
+        "costPerSuccessUsd": 0.022387575,
+        "p50Ms": 6731,
+        "p95Ms": 10617
+      }
+    },
+    "long-horizon": {
+      "fixed": {
+        "cases": 8,
+        "passed": 7,
+        "passRate": 0.875,
+        "meanCostUsd": 0.05141696250000001,
+        "totalCostUsd": 0.4113357000000001,
+        "costPerSuccessUsd": 0.05876224285714287,
+        "p50Ms": 39317,
+        "p95Ms": 51792
+      },
+      "classifier": {
+        "cases": 8,
+        "passed": 7,
+        "passRate": 0.875,
+        "meanCostUsd": 0.05957781875,
+        "totalCostUsd": 0.47662255,
+        "costPerSuccessUsd": 0.06808893571428572,
+        "p50Ms": 42007,
+        "p95Ms": 74465
+      }
+    },
+    "web-research": {
+      "fixed": {
+        "cases": 8,
+        "passed": 6,
+        "passRate": 0.75,
+        "meanCostUsd": 0.008921374999999999,
+        "totalCostUsd": 0.07137099999999999,
+        "costPerSuccessUsd": 0.011895166666666665,
+        "p50Ms": 4850,
+        "p95Ms": 6970
+      },
+      "classifier": {
+        "cases": 8,
+        "passed": 8,
+        "passRate": 1,
+        "meanCostUsd": 0.008556375,
+        "totalCostUsd": 0.068451,
+        "costPerSuccessUsd": 0.008556375,
+        "p50Ms": 6001,
+        "p95Ms": 7831
+      }
+    }
+  },
+  "aggregate": {
+    "cases": 32,
+    "fixed": {
+      "passed": 26,
+      "passRate": 0.8125,
+      "totalCostUsd": 0.8323846500000002,
+      "costPerSuccessUsd": 0.032014794230769236
+    },
+    "classifier": {
+      "passed": 27,
+      "passRate": 0.84375,
+      "totalCostUsd": 0.9758917,
+      "costPerSuccessUsd": 0.03614413703703704
+    }
+  }
+}

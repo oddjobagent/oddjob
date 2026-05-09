@@ -25,8 +25,10 @@ import {
   withResultTruncation,
 } from "./lib/truncate-result.ts";
 import { compactHistory, persistCollapsedSegment, planCompaction } from "./compaction.ts";
+import { makeSeqCursor } from "./run-events.ts";
 import { resolveStrategy } from "./routing/index.ts";
 import type { RoutingContext, RoutingDecision } from "./routing/index.ts";
+import { createTaskTool, type TaskParentContext } from "./tools/task.ts";
 
 // Per-(provider, baseUrl, modelId) circuit breakers. Sharing a single
 // breaker across all runs would let a failing OpenAI route open the
@@ -183,6 +185,33 @@ export interface RunOnceOptions {
    * a channel-dispatch hub so users get notified to re-run `oddjob mcp auth`.
    */
   onMcpReauthNeeded?: (tokenKey: string) => Promise<void> | void;
+  /**
+   * Sub-agent dispatch (Phase 3.2). Set to 1 by the parent's `task` tool
+   * when invoking a child runOnce. Children with depth >= 1 reject any
+   * `task` tool call (no recursive sub-agents in v1). Default 0.
+   */
+  subagentDepth?: number;
+  /**
+   * Step-id of the parent step that spawned this run. Threaded into the
+   * child's recordStep calls as `parentStepId` so the dashboard waterfall
+   * can render the sub-agent tree. Set by the `task` tool's wrapper.
+   */
+  parentStepId?: string;
+  /**
+   * Concurrency tracker for the `task` tool. Map keyed by ROOT runId;
+   * each entry tracks in-flight children. Cap is 3 per parent. Shared
+   * across all task() invocations of one tree so the cap is global, not
+   * per-leaf. Created at the root run; child runs receive the parent's
+   * tracker by reference. Phase 3.2.
+   */
+  taskConcurrencyTracker?: Map<string, number>;
+  /**
+   * Root run-id of this run's tree (climbs parent_run_id chain). Used
+   * to key the task concurrency tracker. Set by the `task` tool when
+   * invoking child runOnce; root run leaves it undefined and resolves
+   * to its own runId.
+   */
+  rootRunId?: string;
 }
 
 export interface ConfirmRequest {
@@ -349,12 +378,19 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   const recordStep = (rec: StepRecord): void => {
     const provider = opts.step;
     if (!provider) return;
+    // Default child runs' step rows to the parent step that spawned
+    // them (the tool_call step on the parent's trace) — codex round-19
+    // #2. Caller-supplied parentStepId always wins.
+    const effective: StepRecord =
+      rec.parentStepId === undefined && opts.parentStepId
+        ? { ...rec, parentStepId: opts.parentStepId }
+        : rec;
     const prev = stepChain.get(rec.stepId) ?? Promise.resolve();
     // Wrap the call in `Promise.resolve().then(...)` so a synchronous throw
     // from a custom provider becomes a normal rejection, not an unhandled.
     const next = prev.then(() =>
       Promise.resolve()
-        .then(() => provider.recordStep(rec))
+        .then(() => provider.recordStep(effective))
         .catch((err) => {
           append({
             timestamp: Date.now(),
@@ -541,12 +577,86 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const wrap = <T extends AgentTool<TSchema>>(t: T): T =>
       withResultTruncation(t, truncateStore) as T;
     const showToolResultTool = createShowToolResultTool(truncateStore) as AgentTool<TSchema>;
+
+    // Phase 3.2: `task` tool registration. The blueprint opts in via
+    // `tools = ["task", ...]`. Built here (not via buildInternalTool)
+    // because it needs the full parent context — see task.ts.
+    const taskRequested = blueprint.tools.includes("task");
+    const taskConcurrencyTracker =
+      opts.taskConcurrencyTracker ?? new Map<string, number>();
+    const rootRunId = opts.rootRunId ?? runId;
+    // Per-run replay cursor for run_events. Used by the task tool's
+    // withRunEvent wrapper. (script-mode has its own cursor; agent-mode
+    // gets one here so task calls can be recorded/replayed.)
+    const agentSeqCursor = makeSeqCursor(0);
+    // Track current iteration's step id for nested-waterfall plumbing.
+    // Task tool reads this lazily so children's step rows reference the
+    // parent step that fired the task call. (codex round-18 #6)
+    let currentParentStepId: string | undefined = opts.parentStepId;
+    let taskTool: AgentTool<TSchema> | undefined;
+    if (taskRequested) {
+      const taskParent: TaskParentContext = {
+        parentRunId: runId,
+        parentBlueprint: blueprint,
+        // Lazy: routing reassigns `llm` AFTER tools are built, so child
+        // must see the post-routing model. (codex round-19 #1)
+        parentLlmFn: () => llm,
+        parentEnvironment: opts.environment,
+        parentSession: session,
+        ...(opts.engine ? { parentEngine: opts.engine } : {}),
+        ...(opts.plugins ? { parentPlugins: opts.plugins } : {}),
+        ...(opts.secrets ? { parentSecrets: opts.secrets } : {}),
+        ...(opts.state ? { parentState: opts.state } : {}),
+        ...(opts.log ? { parentLog: opts.log } : {}),
+        ...(opts.step ? { parentStep: opts.step } : {}),
+        ...(opts.messages ? { parentMessages: opts.messages } : {}),
+        ...(opts.runEvents ? { parentRunEvents: opts.runEvents } : {}),
+        ...(opts.limits?.budgetUsd !== undefined
+          ? { parentBudgetUsd: opts.limits.budgetUsd }
+          : {}),
+        parentTotalCostFn: () => usageTotal?.cost?.total ?? 0,
+        ...(opts.limits ? { parentLimits: opts.limits } : {}),
+        parentDepth: opts.subagentDepth ?? 0,
+        taskConcurrencyTracker,
+        rootRunId,
+        parentSeqCursor: agentSeqCursor,
+        currentParentStepIdFn: () => currentParentStepId,
+        onChildResult: (childRunId, costDelta, _finalText) => {
+          // Roll child cost into parent usage so the parent's budget
+          // gating sees the spend (codex round-18 #1). We synthesize a
+          // Usage entry that only carries the cost delta — token counts
+          // are omitted because they're already captured in the child's
+          // own step rows + persisted run record.
+          if (costDelta > 0) {
+            usageTotal = sumUsage(usageTotal, {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: costDelta },
+            });
+          }
+          // Emit a `subagent` step on the parent's trace so the
+          // dashboard waterfall renders the dispatch row.
+          emitPointStep("subagent", {
+            costUsd: costDelta,
+            meta: { childRunId, rootRunId },
+          });
+        },
+        ...(signal ? { signal } : {}),
+        onLog: append,
+      };
+      taskTool = createTaskTool(taskParent) as AgentTool<TSchema>;
+    }
+
     const tools = [
       ...resolvedTools.map(wrap),
       ...scriptTools.map(wrap),
       ...mcpRuntime.tools.map(wrap),
       ...(skillTool ? [wrap(skillTool)] : []),
       ...(reportStatusTool ? [reportStatusTool] : []),
+      ...(taskTool ? [wrap(taskTool)] : []),
       showToolResultTool,
     ];
 
@@ -673,6 +783,11 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         const toolStartedAt = Date.now();
         const argsHash = hashArgs(ctx.args);
         toolStepIndex.set(ctx.toolCall.id, { stepId, startedAt: toolStartedAt });
+        // Track the firing tool's step id so the task tool can stamp it
+        // onto child runs as parentStepId — dashboard waterfall renders
+        // sub-agent rows nested under their dispatching tool_call.
+        // (codex round-19 #2)
+        currentParentStepId = stepId;
         recordStep({
           stepId,
           runId,
@@ -681,6 +796,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           startedAt: toolStartedAt,
           toolName: ctx.toolCall.name,
           toolArgsHash: argsHash,
+          ...(opts.parentStepId ? { parentStepId: opts.parentStepId } : {}),
         });
         // Closes the open tool_call step row when a gate (limit / approval)
         // blocks execution before afterToolCall fires. Without this the row

@@ -17,6 +17,13 @@ export const INTERNAL_TOOL_NAMES = [
   "python",
   "notes_append",
   "notes_read",
+  // `task` is an internal tool BY NAME (validator allows it, blueprints
+  // opt-in via `tools = ["task", ...]`) but it CANNOT be built via the
+  // shared `buildInternalTool(name, ctx)` path — it needs the parent's
+  // runOnce options (llm, environment, limits, engine, providers) which
+  // ToolBuildContext doesn't carry. The agent loop special-cases it
+  // alongside `report_status` and `show_tool_result`. (Phase 3.2)
+  "task",
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number];

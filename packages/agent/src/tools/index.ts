@@ -99,6 +99,13 @@ export function buildInternalTool(
       return createNotesAppendTool({ environment: ctx.environment }) as AgentTool<TSchema>;
     case "notes_read":
       return createNotesReadTool({ environment: ctx.environment }) as AgentTool<TSchema>;
+    case "task":
+      // Phase 3.2: `task` is an internal tool by name but the agent loop
+      // builds it directly with parent context (parent llm, environment,
+      // engine, limits, run-event provider, depth/concurrency trackers).
+      // Returning undefined here lets loop.ts opt-out of the standard
+      // resolution path and special-case the registration.
+      return undefined;
     default: {
       const _exhaustive: never = name;
       return _exhaustive;

@@ -129,6 +129,24 @@ bun apps/cli/src/index.ts eval evals/web-research   --out evals/.runs/vN-web-res
 bun scripts/aggregate-baselines.ts --version vN --out evals/baselines/vN.json
 ```
 
+## v4 (2026-05-09)
+
+**First baseline with `--strategy` support (Phase 2).** 32 cases × 2 strategies = 64 runs total. Same dataset as v3; only the strategy axis is new.
+
+| Profile | fixed pass | classifier pass | fixed $/succ | classifier $/succ | winner |
+| --- | --- | --- | --- | --- | --- |
+| coding | 8/8 (100%) | 8/8 (100%) | $0.0324 | $0.0427 | **fixed** |
+| data-extract | 5/8 (63%) | 4/8 (50%) | $0.0180 | $0.0224 | **fixed** |
+| long-horizon | 7/8 (88%) | 7/8 (88%) | $0.0588 | $0.0681 | **fixed** |
+| web-research | 6/8 (75%) | 8/8 (100%) | $0.0119 | $0.0086 | **classifier** |
+| **aggregate** | **26/32 (81%)** | **27/32 (84%)** | **$0.0320** | **$0.0361** | per-profile pick |
+
+**Tier ladder:** simple/standard/complex = `anthropic/claude-haiku-4.5` / `anthropic/claude-haiku-4.5` / `anthropic/claude-sonnet-4.5` (all on Anthropic via OpenRouter).
+
+**Headline finding:** classifier strategy is per-profile, not a global win. It pays for itself on `web-research` (8/8 vs 6/8 + 28% cheaper $/success — Sonnet escalation is genuinely needed for harder synthesis cases). It loses on `coding` and `long-horizon` (Haiku already passes everything; classifier overhead is pure tax). Eval-compare lets users pick the right strategy per blueprint.
+
+Some of v4 vs v3 jitter is stochastic — `data-extract` 5/8 here vs 5/8 v3 fixed (same), but `web-research` fixed dropped to 6/8 from v3's 7/8. The 32-case n is small relative to per-case stochasticity.
+
 ## Open follow-ups
 
 - `data-extract/003` — currency case is real difficulty; either a v2
