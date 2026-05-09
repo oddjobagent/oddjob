@@ -1,8 +1,17 @@
-// @oddjob/sdk — author-side ergonomics for plugin authors.
+// @oddjob/sdk — author-side ergonomics for plugin AND blueprint authors.
 //
-// Re-exports the plugin contract from @oddjob/core and provides a builder
-// helper. Plugin authors should depend ONLY on this package — never on
-// @oddjob/core directly — so we can swap the underlying types later.
+// BROWSER-SAFE — pure types + tiny runtime helpers. Do NOT import Bun
+// built-ins (`bun:sqlite`, `Bun.serve`, etc.) or node:* modules here.
+// This package ships standalone so blueprint authors can `bun add
+// @oddjob/sdk` and write `main.ts` against `defineRun` + `Context`
+// without pulling the runtime.
+//
+// Re-exports the plugin contract from @oddjob/core and provides:
+//   - `definePlugin` — builder for plugin authors (existing).
+//   - `defineRun` — wrapper for script-mode blueprint authors (B2.2).
+//   - `Context` — the surface a `main.ts` sees at runtime.
+//   - `RetryableError` / `PermanentError` — control-flow errors.
+//   - `IpcCall` / `IpcResponse` — wire format for the future Python port.
 
 export type {
   Plugin,
@@ -37,6 +46,50 @@ export type {
 } from "@oddjob/core";
 
 export { STANDARD_ROLES } from "@oddjob/core";
+
+// ---------------------------------------------------------------------------
+// Script-mode SDK surface (B2.2).
+// ---------------------------------------------------------------------------
+
+export { defineRun, isRunDefinition, ODDJOB_RUN_MARKER } from "./define-run.ts";
+export type { DefineRunOptions, RunDefinition, RunFn } from "./define-run.ts";
+
+export { assertSerial } from "./context.ts";
+export type {
+  Context,
+  ForkOptions,
+  McpHandle,
+  MemoryNamespace,
+  MemoryOptions,
+  RunAgentOptions,
+  ScratchNamespace,
+  SerialDispatcher,
+} from "./context.ts";
+
+export { PermanentError, RetryableError } from "./errors.ts";
+export type { RetryableErrorOptions } from "./errors.ts";
+
+export { IPC_CALL_KINDS } from "./dispatch-protocol.ts";
+export type {
+  ApprovalArgs,
+  ForkArgs,
+  ForkResult,
+  IpcCall,
+  IpcCallKind,
+  IpcErrorBody,
+  IpcResponse,
+  IpcResultMap,
+  McpArgs,
+  MemoryGetArgs,
+  MemorySetArgs,
+  NotifyArgs,
+  RunAgentArgs,
+  ScratchGetArgs,
+  ScratchSetArgs,
+  SleepArgs,
+  ToolArgs,
+  WaitForRunArgs,
+} from "./dispatch-protocol.ts";
 
 import type {
   ChannelService,

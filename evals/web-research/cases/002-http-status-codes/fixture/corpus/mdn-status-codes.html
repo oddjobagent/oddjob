@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HTTP response status codes - HTTP | MDN</title>
+</head>
+<body>
+<main>
+<h1>HTTP response status codes</h1>
+<p>HTTP response status codes indicate whether a specific HTTP request has been successfully completed.</p>
+
+<h2 id="information_responses">Information responses (1xx)</h2>
+<dl>
+  <dt><code>100 Continue</code></dt>
+  <dd>The server has received the request headers and the client should proceed.</dd>
+  <dt><code>101 Switching Protocols</code></dt>
+  <dd>The requester has asked the server to switch protocols.</dd>
+</dl>
+
+<h2 id="successful_responses">Successful responses (2xx)</h2>
+<dl>
+  <dt><code>200 OK</code></dt>
+  <dd>The request has succeeded.</dd>
+  <dt><code>201 Created</code></dt>
+  <dd>The request has succeeded and a new resource has been created.</dd>
+  <dt><code>204 No Content</code></dt>
+  <dd>The server fulfilled the request but does not need to return a body.</dd>
+</dl>
+
+<h2 id="redirects">Redirection messages (3xx)</h2>
+<dl>
+  <dt><code>301 Moved Permanently</code></dt>
+  <dd>The URL of the requested resource has been changed permanently.</dd>
+  <dt><code>302 Found</code></dt>
+  <dd>The URI of requested resource has been changed temporarily.</dd>
+  <dt><code>304 Not Modified</code></dt>
+  <dd>The cached response is still good — use it.</dd>
+</dl>
+
+<h2 id="client_errors">Client error responses (4xx)</h2>
+<dl>
+  <dt><code>400 Bad Request</code></dt>
+  <dd>The server cannot or will not process the request due to a client error (malformed syntax, deceptive routing, etc.).</dd>
+  <dt><code>401 Unauthorized</code></dt>
+  <dd>Although the HTTP standard specifies "unauthorized", semantically this response means "unauthenticated" — the client must authenticate itself to get the requested response.</dd>
+  <dt><code>402 Payment Required</code></dt>
+  <dd>Reserved for future use; sometimes returned by digital payment systems.</dd>
+  <dt><code>403 Forbidden</code></dt>
+  <dd>The client does not have access rights to the content; the server is refusing to give the requested resource.</dd>
+  <dt><code>404 Not Found</code></dt>
+  <dd>The server cannot find the requested resource.</dd>
+  <dt><code>405 Method Not Allowed</code></dt>
+  <dd>The request method is known by the server but is not supported by the target resource.</dd>
+  <dt><code>406 Not Acceptable</code></dt>
+  <dd>The server cannot produce a response matching the list of acceptable values defined in the request's headers.</dd>
+  <dt><code>407 Proxy Authentication Required</code></dt>
+  <dd>Authentication needs to be done by a proxy.</dd>
+  <dt><code>408 Request Timeout</code></dt>
+  <dd>The server timed out waiting for the request.</dd>
+  <dt><code>409 Conflict</code></dt>
+  <dd>The request conflicts with the current state of the server.</dd>
+  <dt><code>410 Gone</code></dt>
+  <dd>The content has been permanently deleted from the server, with no forwarding address.</dd>
+  <dt><code>411 Length Required</code></dt>
+  <dd>The server rejects the request because Content-Length is required.</dd>
+  <dt><code>412 Precondition Failed</code></dt>
+  <dd>One or more conditions in the request header fields evaluated to false.</dd>
+  <dt><code>413 Payload Too Large</code></dt>
+  <dd>Request entity is larger than limits defined by the server.</dd>
+  <dt><code>414 URI Too Long</code></dt>
+  <dd>The URI requested by the client is longer than the server is willing to interpret.</dd>
+  <dt><code>415 Unsupported Media Type</code></dt>
+  <dd>The media format of the requested data is not supported by the server.</dd>
+  <dt><code>418 I'm a teapot</code></dt>
+  <dd>The server refuses the attempt to brew coffee with a teapot. (RFC 2324.)</dd>
+  <dt><code>422 Unprocessable Entity</code></dt>
+  <dd>The request was well-formed but was unable to be followed due to semantic errors.</dd>
+  <dt><code>425 Too Early</code></dt>
+  <dd>The server is unwilling to risk processing a request that might be replayed.</dd>
+  <dt><code>426 Upgrade Required</code></dt>
+  <dd>The server refuses to perform the request using the current protocol but might be willing after the client upgrades.</dd>
+  <dt><code>428 Precondition Required</code></dt>
+  <dd>The origin server requires the request to be conditional.</dd>
+  <dt><code>429 Too Many Requests</code></dt>
+  <dd>The user has sent too many requests in a given amount of time ("rate limiting").</dd>
+  <dt><code>431 Request Header Fields Too Large</code></dt>
+  <dd>The server is unwilling to process the request because its header fields are too large.</dd>
+  <dt><code>451 Unavailable For Legal Reasons</code></dt>
+  <dd>The user agent requested a resource that cannot legally be provided.</dd>
+</dl>
+
+<h2 id="server_errors">Server error responses (5xx)</h2>
+<dl>
+  <dt><code>500 Internal Server Error</code></dt>
+  <dd>The server has encountered a situation it does not know how to handle.</dd>
+  <dt><code>502 Bad Gateway</code></dt>
+  <dd>The server, while acting as a gateway, received an invalid response from the upstream server.</dd>
+  <dt><code>503 Service Unavailable</code></dt>
+  <dd>The server is not ready to handle the request.</dd>
+  <dt><code>504 Gateway Timeout</code></dt>
+  <dd>The server, while acting as a gateway, did not get a response in time.</dd>
+</dl>
+</main>
+</body>
+</html>

@@ -1,7 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { BlueprintParseError } from "./errors.ts";
 import { parseBlueprint } from "./parse.ts";
+
+async function withDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), "oddjob-bp-parse-"));
+  try {
+    return await fn(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 const MIN_VALID = `
 name = "echo"
@@ -239,7 +251,7 @@ server = "https://example.com"
     expect(() => parseBlueprint(toml, { path: "/tmp/x" })).toThrow();
   });
 
-  test("accepts tools = [{name=\"bash\"}] without explicit confirm", () => {
+  test('accepts tools = [{name="bash"}] without explicit confirm', () => {
     const toml = `${MIN_VALID}
 [[tools]]
 name = "bash"
@@ -258,5 +270,178 @@ retention = "forever"
   test("missing prompt", () => {
     const toml = MIN_VALID.replace('prompt = "Echo the user input."', 'prompt = ""');
     expect(() => parseBlueprint(toml, { path: "/tmp/x" })).toThrow();
+  });
+});
+
+// Script mode: [entry] block + auto-detect from main.{ts,js,py,go} sibling.
+// Pure-TOML blueprints continue to behave exactly as before — the entry
+// surface is purely additive.
+const SCRIPT_META = `
+name = "pipeline"
+version = "0.1.0"
+description = "Script-mode pipeline"
+author = "demo"
+`;
+
+describe("parseBlueprint - script mode (B2.1)", () => {
+  test("[entry] block round-trips through schema + validator", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "bun"
+file = "main.ts"
+input_schema = "main.ts#inputSchema"
+output_schema = "main.ts#outputSchema"
+`;
+    const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
+    expect(b.scriptMode).toBe(true);
+    expect(b.entry?.runtime).toBe("bun");
+    expect(b.entry?.file).toBe("main.ts");
+    expect(b.entry?.inputSchema).toBe("main.ts#inputSchema");
+    expect(b.entry?.outputSchema).toBe("main.ts#outputSchema");
+    expect(b.prompt).toBe("");
+  });
+
+  test("[entry] without optional schema members works", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "python"
+file = "main.py"
+`;
+    const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
+    expect(b.scriptMode).toBe(true);
+    expect(b.entry?.runtime).toBe("python");
+    expect(b.entry?.inputSchema).toBeUndefined();
+  });
+
+  test("auto-detects script mode from main.ts sibling", async () => {
+    await withDir(async (dir) => {
+      const tomlPath = join(dir, "blueprint.toml");
+      await writeFile(tomlPath, SCRIPT_META);
+      await writeFile(join(dir, "main.ts"), "export default {};\n");
+      const b = parseBlueprint(SCRIPT_META, { path: tomlPath });
+      expect(b.scriptMode).toBe(true);
+      expect(b.entry).toBeUndefined();
+    });
+  });
+
+  test("auto-detects script mode from main.py sibling", async () => {
+    await withDir(async (dir) => {
+      const tomlPath = join(dir, "blueprint.toml");
+      await writeFile(tomlPath, SCRIPT_META);
+      await writeFile(join(dir, "main.py"), "def run():\n    pass\n");
+      const b = parseBlueprint(SCRIPT_META, { path: tomlPath });
+      expect(b.scriptMode).toBe(true);
+    });
+  });
+
+  test("script mode + top-level prompt → error with ctx.runAgent hint", () => {
+    const toml = `${SCRIPT_META}
+prompt = "do the thing"
+
+[entry]
+runtime = "bun"
+file = "main.ts"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(
+      /script mode.*ctx\.runAgent/s,
+    );
+  });
+
+  test("script mode + outcomes block → forbidden", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "bun"
+file = "main.ts"
+
+[outcomes]
+success = "we did it"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(
+      /script mode.*'outcomes'/s,
+    );
+  });
+
+  test("script mode keeps tools/skills/connectors/scripts allowed", () => {
+    const toml = `${SCRIPT_META}
+tools = ["bash"]
+skills = ["seo-analyst"]
+
+[entry]
+runtime = "bun"
+file = "main.ts"
+
+[connectors.fs]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+auth = "none"
+
+[scripts]
+helper = "scripts/helper.ts"
+`;
+    const b = parseBlueprint(toml, { path: "/tmp/blueprint.toml" });
+    expect(b.scriptMode).toBe(true);
+    expect(b.tools).toEqual(["bash"]);
+    expect(b.skills).toEqual(["seo-analyst"]);
+    expect(b.connectors.fs?.transport).toBe("stdio");
+    expect(b.scripts.helper).toBe("scripts/helper.ts");
+  });
+
+  test("invalid runtime literal → schema error", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "rust"
+file = "main.rs"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(
+      /entry\.runtime|allowed values/i,
+    );
+  });
+
+  test("missing entry.file → schema error", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "bun"
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(/file/);
+  });
+
+  test("rejects empty entry.file", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "bun"
+file = ""
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(/file/);
+  });
+
+  test("rejects unknown key inside [entry]", () => {
+    const toml = `${SCRIPT_META}
+[entry]
+runtime = "bun"
+file = "main.ts"
+weird = true
+`;
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(
+      /weird|Unrecognized/,
+    );
+  });
+
+  test("pure-TOML (no entry, no main.* sibling) still works as before", () => {
+    // Backwards-compat: existing blueprint with prompt + model parses fine and
+    // is not flagged as script-mode.
+    const b = parseBlueprint(MIN_VALID, { path: "/tmp/blueprint.toml" });
+    expect(b.scriptMode).toBeFalsy();
+    expect(b.entry).toBeUndefined();
+    expect(b.prompt).toBe("Echo the user input.");
+  });
+
+  test("agent-mode with no prompt still rejected", () => {
+    // Removing the prompt line from MIN_VALID — agent mode (no entry, no
+    // main.* sibling) requires a prompt.
+    const toml = SCRIPT_META + 'model = "openrouter/anthropic/claude-sonnet-4"\n';
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(
+      BlueprintParseError,
+    );
+    expect(() => parseBlueprint(toml, { path: "/tmp/blueprint.toml" })).toThrow(/prompt/);
   });
 });

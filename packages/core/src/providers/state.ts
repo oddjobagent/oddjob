@@ -127,6 +127,12 @@ export interface ConnectorTokenRecord {
 export interface RunFilter {
   deploymentId?: string;
   status?: Run["status"];
+  /**
+   * Filter by parent run id (script-mode `ctx.fork` children).
+   * Pass an explicit string to fetch direct children only; the listing is
+   * ordered ascending by createdAt so the dashboard tree renders in fork order.
+   */
+  parentRunId?: string;
   limit?: number;
   cursor?: string;
 }

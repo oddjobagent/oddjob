@@ -1,6 +1,18 @@
+import type { StepKind } from "@oddjob/core";
+
 import type { Runtime } from "../runtime.ts";
 import type { WorkerPool } from "../workers/pool.ts";
 import { type Handler, badRequest, json, notFound, readJson } from "../middleware/index.ts";
+
+const STEP_KINDS: ReadonlySet<StepKind> = new Set([
+  "llm_call",
+  "tool_call",
+  "grader",
+  "verdict",
+  "compaction",
+  "classifier",
+  "subagent",
+]);
 
 export const list =
   (rt: Runtime): Handler =>
@@ -85,6 +97,39 @@ function streamLogs(rt: Runtime, runId: string, sinceParam: number, req: Request
     },
   });
 }
+
+export const steps =
+  (rt: Runtime): Handler =>
+  async (_req, ctx) => {
+    const id = ctx.params.id ?? "";
+    if (!rt.step) return json({ steps: [] });
+    const since = Number(ctx.url.searchParams.get("since") ?? "0");
+    const limit = Number(ctx.url.searchParams.get("limit") ?? "1000");
+    const kindParam = ctx.url.searchParams.get("kind") ?? undefined;
+    const query: { since: number; limit: number; kind?: StepKind } = { since, limit };
+    if (kindParam) {
+      if (!STEP_KINDS.has(kindParam as StepKind)) {
+        return badRequest(`unknown step kind: ${kindParam}`);
+      }
+      query.kind = kindParam as StepKind;
+    }
+    const rows = await rt.step.getSteps(id, query);
+    return json({ steps: rows });
+  };
+
+export const children =
+  (rt: Runtime): Handler =>
+  async (_req, ctx) => {
+    const id = ctx.params.id ?? "";
+    const limit = Number(ctx.url.searchParams.get("limit") ?? "200");
+    // Existence check so the dashboard surfaces 404 instead of empty children
+    // for a typo'd run id. listRuns(parentRunId=...) returns [] when the id
+    // exists but has no children (top-level), which is also the empty state.
+    const parent = await rt.state.getRun(id);
+    if (!parent) return notFound("run not found");
+    const rows = await rt.state.listRuns({ parentRunId: id, limit });
+    return json({ children: rows });
+  };
 
 export const cancel =
   (rt: Runtime, workers: WorkerPool): Handler =>

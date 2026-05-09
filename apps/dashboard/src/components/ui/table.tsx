@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate, type LinkProps } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils.ts";
 
@@ -46,6 +47,70 @@ export const TableRow = React.forwardRef<
   />
 ));
 TableRow.displayName = "TableRow";
+
+/**
+ * Clickable row that navigates on click + Enter/Space. Use for tables where the
+ * sole row action is to open a detail page; pair with `TableRowAction` for any
+ * inline buttons that should NOT trigger navigation.
+ */
+export type TableRowLinkProps = Pick<LinkProps, "to" | "params" | "search"> &
+  Omit<React.HTMLAttributes<HTMLTableRowElement>, "onClick">;
+
+export const TableRowLink = React.forwardRef<HTMLTableRowElement, TableRowLinkProps>(
+  ({ className, to, params, search, children, onKeyDown, ...rest }, ref) => {
+    const navigate = useNavigate();
+    const go = () => {
+      void navigate({ to, params, search } as never);
+    };
+    return (
+      <tr
+        ref={ref}
+        role="link"
+        tabIndex={0}
+        onClick={go}
+        onKeyDown={(e) => {
+          onKeyDown?.(e);
+          if (e.defaultPrevented) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            go();
+          }
+        }}
+        className={cn(
+          "border-b border-(--border-subtle) transition-colors duration-(--duration-fast)",
+          "cursor-pointer hover:bg-(--surface-2) focus:outline-none focus-visible:bg-(--surface-2) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--accent-9)",
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </tr>
+    );
+  },
+);
+TableRowLink.displayName = "TableRowLink";
+
+/**
+ * Wrapper for a button/link that lives inside a TableRowLink and should NOT
+ * propagate its click up to the row navigation. Renders as a `<span>` so it
+ * doesn't add semantics; the inner button keeps a11y.
+ */
+export function TableRowAction({
+  className,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>): React.JSX.Element {
+  return (
+    <span
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      className={cn("contents", className)}
+      {...props}
+    >
+      {children}
+    </span>
+  );
+}
 
 export const TableHead = React.forwardRef<
   HTMLTableCellElement,

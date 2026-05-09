@@ -1,4 +1,4 @@
-import { createRoute, Link } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
 
 import { useRuns } from "../api/queries.ts";
@@ -14,8 +14,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableRowLink,
 } from "../components/ui/table.tsx";
-import { formatCost, formatRelative } from "../lib/format.ts";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
+import { formatCost } from "../lib/format.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -75,18 +77,12 @@ function Runs(): React.JSX.Element {
           </TableHeader>
           <TableBody>
             {runs.map((run) => (
-              <TableRow key={run.id}>
+              <TableRowLink key={run.id} to="/runs/$id" params={{ id: run.id }}>
                 <TableCell>
                   <RunStatusBadge status={run.status} size="sm" />
                 </TableCell>
                 <TableCell>
-                  <Link
-                    to="/runs/$id"
-                    params={{ id: run.id }}
-                    className="font-mono text-xs text-(--accent-9) hover:underline"
-                  >
-                    {run.id.slice(0, 8)}
-                  </Link>
+                  <span className="font-mono text-xs text-(--accent-9)">{run.id}</span>
                   <div className="font-mono text-[11px] text-(--text-muted)">{run.blueprintId}</div>
                 </TableCell>
                 <TableCell className="text-sm text-(--text-muted)">{run.triggeredBy}</TableCell>
@@ -97,9 +93,9 @@ function Runs(): React.JSX.Element {
                   {formatCost(run.costUsd)}
                 </TableCell>
                 <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
-                  {formatRelative(run.startedAt ?? run.createdAt)}
+                  <TimeAgo value={run.startedAt ?? run.createdAt} />
                 </TableCell>
-              </TableRow>
+              </TableRowLink>
             ))}
           </TableBody>
         </Table>

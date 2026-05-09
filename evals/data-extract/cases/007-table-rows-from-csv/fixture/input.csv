@@ -1,0 +1,9 @@
+name,role,city,salary
+Ada Lovelace,Engineer,London,120000
+"Grace Hopper, PhD",Architect,New York,140000
+
+Linus Torvalds,Maintainer,"Portland, OR",
+"Brian ""BK"" Kernighan",Researcher,Princeton,150000,
+,,,
+Margaret Hamilton,Lead,"Boston",125000
+"Donald Knuth",Author,Stanford,

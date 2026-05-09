@@ -1,4 +1,4 @@
-import { createRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createRoute, useNavigate } from "@tanstack/react-router";
 import { Plus, ServerCog } from "lucide-react";
 import * as React from "react";
 
@@ -16,9 +16,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableRowLink,
 } from "../components/ui/table.tsx";
 import { Toolbar } from "../components/ui/toolbar.tsx";
-import { formatRelative } from "../lib/format.ts";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -109,15 +110,9 @@ function Deployments(): React.JSX.Element {
           </TableHeader>
           <TableBody>
             {deployments.map((d) => (
-              <TableRow key={d.id}>
+              <TableRowLink key={d.id} to="/deployments/$id" params={{ id: d.id }}>
                 <TableCell>
-                  <Link
-                    to="/deployments/$id"
-                    params={{ id: d.id }}
-                    className="text-sm font-medium text-(--text) hover:text-(--accent-9) hover:underline"
-                  >
-                    {d.name}
-                  </Link>
+                  <span className="text-sm font-medium text-(--text)">{d.name}</span>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-(--text-muted)">
                   {d.blueprintId}
@@ -135,9 +130,9 @@ function Deployments(): React.JSX.Element {
                   <StatusBadge status={d.status} />
                 </TableCell>
                 <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
-                  {formatRelative(d.updatedAt)}
+                  <TimeAgo value={d.updatedAt} />
                 </TableCell>
-              </TableRow>
+              </TableRowLink>
             ))}
           </TableBody>
         </Table>

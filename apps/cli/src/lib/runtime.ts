@@ -23,13 +23,17 @@ import envProcessPlugin from "@oddjob/plugin-env-process";
 import envLocalStrictPlugin from "@oddjob/plugin-env-local-strict";
 import envDockerPlugin from "@oddjob/plugin-env-docker";
 import envDaytonaPlugin from "@oddjob/plugin-env-daytona";
-import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
+import { LoggingSqliteProvider, StepSqliteProvider } from "@oddjob/logging-sqlite";
 import { McpClientProvider } from "@oddjob/mcp-client";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
 import { SchedulerCronerProvider } from "@oddjob/scheduler-croner";
 import { loadOrCreateMasterKey, SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
 import type { Runtime } from "@oddjob/server";
-import { StateSqliteProvider } from "@oddjob/state-sqlite";
+import {
+  RunEventSqliteProvider,
+  RunMessageSqliteProvider,
+  StateSqliteProvider,
+} from "@oddjob/state-sqlite";
 
 import {
   LOGS_DB,
@@ -53,7 +57,28 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
   const queue = new QueueSqliteProvider({ path: QUEUE_DB });
   const secrets = new SecretsSqliteProvider({ path: SECRETS_DB, masterKey });
   const log = new LoggingSqliteProvider({ path: LOGS_DB });
-  await Promise.all([state.connect(), queue.connect(), secrets.connect(), log.connect()]);
+  // Step trace shares the logs.db file: both providers ship the same idempotent
+  // migration set under `plugins/logging-sqlite/src/migrations/` so the second
+  // connect is a no-op for already-applied migrations. Keeps the user's state
+  // dir from accumulating a separate `steps.db`.
+  const step = new StepSqliteProvider({ path: LOGS_DB });
+  // Run-message log lives next to the state db (run_messages table is in
+  // plugins/state-sqlite). Without this wire-up, B1.3 compaction's
+  // pre-collapse persistence never fires in real CLI/server runs. (review R-002)
+  const messages = new RunMessageSqliteProvider({ path: STATE_DB });
+  // Run-event log (B2.4) — powers script-mode ctx.* durable replay. Same DB
+  // as state/messages; the run_events table lives in plugins/state-sqlite.
+  // (codex round-12 #2)
+  const runEvents = new RunEventSqliteProvider({ path: STATE_DB });
+  await Promise.all([
+    state.connect(),
+    queue.connect(),
+    secrets.connect(),
+    log.connect(),
+    step.connect(),
+    messages.connect(),
+    runEvents.connect(),
+  ]);
 
   const llm = new LlmPiProvider({ secrets });
   const mcp = new McpClientProvider();
@@ -128,6 +153,9 @@ export async function buildRuntime(cfg: OddjobConfig): Promise<Runtime> {
     queue,
     secrets,
     log,
+    step,
+    messages,
+    runEvents,
     llm,
     mcp,
     auth,
@@ -205,31 +233,46 @@ async function buildEngineConfig(
   secrets: SecretsSqliteProvider,
 ): Promise<EngineConfig | undefined> {
   const bt = cfg.builtin_tools;
-  if (!bt) return undefined;
-  const out: EngineConfig = { builtinTools: {} };
-  if (bt.web_search) {
-    const apiKey =
-      (bt.web_search.api_key_secret
-        ? await secrets.get(bt.web_search.api_key_secret)
-        : undefined) ?? bt.web_search.api_key;
-    out.builtinTools!.webSearch = {
-      plugin: bt.web_search.plugin ?? bt.web_search.provider,
-      apiKey,
-      baseUrl: bt.web_search.base_url,
-      maxResults: bt.web_search.max_results,
-    };
+  const compact = cfg.engine?.compaction;
+  // Return undefined when there's NOTHING to configure — the agent loop's
+  // `opts.engine?.compaction` chain handles that cleanly.
+  if (!bt && !compact) return undefined;
+  const out: EngineConfig = {};
+  if (bt) {
+    out.builtinTools = {};
+    if (bt.web_search) {
+      const apiKey =
+        (bt.web_search.api_key_secret
+          ? await secrets.get(bt.web_search.api_key_secret)
+          : undefined) ?? bt.web_search.api_key;
+      out.builtinTools.webSearch = {
+        plugin: bt.web_search.plugin ?? bt.web_search.provider,
+        apiKey,
+        baseUrl: bt.web_search.base_url,
+        maxResults: bt.web_search.max_results,
+      };
+    }
+    if (bt.web_fetch) {
+      out.builtinTools.webFetch = {
+        plugin: bt.web_fetch.plugin ?? "raw",
+        apiKey: bt.web_fetch.api_key_secret
+          ? ((await secrets.get(bt.web_fetch.api_key_secret)) ?? undefined)
+          : bt.web_fetch.api_key,
+        maxBodyMb: bt.web_fetch.max_body_mb,
+        privateIpsAllowed: bt.web_fetch.private_ips_allowed,
+        allowlist: bt.web_fetch.allowlist,
+        blocklist: bt.web_fetch.blocklist,
+        renderJs: bt.web_fetch.render_js,
+      };
+    }
   }
-  if (bt.web_fetch) {
-    out.builtinTools!.webFetch = {
-      plugin: bt.web_fetch.plugin ?? "raw",
-      apiKey: bt.web_fetch.api_key_secret
-        ? ((await secrets.get(bt.web_fetch.api_key_secret)) ?? undefined)
-        : bt.web_fetch.api_key,
-      maxBodyMb: bt.web_fetch.max_body_mb,
-      privateIpsAllowed: bt.web_fetch.private_ips_allowed,
-      allowlist: bt.web_fetch.allowlist,
-      blocklist: bt.web_fetch.blocklist,
-      renderJs: bt.web_fetch.render_js,
+  if (compact) {
+    // snake_case TOML → camelCase EngineConfig
+    out.compaction = {
+      ...(compact.mode !== undefined ? { mode: compact.mode } : {}),
+      ...(compact.trigger_ratio !== undefined ? { triggerRatio: compact.trigger_ratio } : {}),
+      ...(compact.pin_head !== undefined ? { pinHead: compact.pin_head } : {}),
+      ...(compact.pin_tail !== undefined ? { pinTail: compact.pin_tail } : {}),
     };
   }
   return out;
@@ -307,5 +350,8 @@ export async function shutdownRuntime(rt: Runtime): Promise<void> {
     rt.queue.disconnect(),
     rt.secrets.disconnect(),
     rt.log.disconnect(),
+    rt.step?.disconnect() ?? Promise.resolve(),
+    rt.messages?.disconnect() ?? Promise.resolve(),
+    rt.runEvents?.disconnect() ?? Promise.resolve(),
   ]);
 }

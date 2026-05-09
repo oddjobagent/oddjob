@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table.tsx";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -60,12 +61,6 @@ function badgeFor(status: DisplayStatus): React.JSX.Element {
   return <Badge size="sm">not connected</Badge>;
 }
 
-function fmtExpires(ts: number | undefined): string {
-  if (!ts) return "—";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
-}
 
 export function McpPageBody(): React.JSX.Element {
   return McpPage();
@@ -195,7 +190,7 @@ function McpPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell>{badgeFor(display)}</TableCell>
                   <TableCell className="text-sm text-(--text-muted)">
-                    {fmtExpires(row.expiresAt)}
+                    <TimeAgo value={row.expiresAt} />
                   </TableCell>
                   <TableCell className="text-right">
                     {isActive ? (

@@ -1,0 +1,20 @@
+Meeting notes — drafted casually, all dates need normalising to ISO 8601 (YYYY-MM-DD).
+
+The kickoff was held on Jan 3, 2024. Phase 1 wrapped on March 17 2024
+(no comma, common stylistic variant). The mid-cycle review slipped from
+April 2nd to 2024-04-09 due to a vendor delay. Q2 retrospective is on
+07/22/2024 (US format, MM/DD/YYYY).
+
+Side conversation: the team discussed Apr 30, but moved to May 1, 2024
+after a clash with payroll cutoff.
+
+Out-of-scope items mentioned but NOT in scope of date extraction:
+- "by next quarter" (not a date)
+- "Q3" (not a date)
+- "the 90s" (not a date)
+- "Tuesday" alone (not a date)
+- a phone number 03/22/1019 — this is a literal string in a config
+  example, not a date. Skip if you can; OK to include if you cannot
+  reliably distinguish from real dates.
+
+Final cutover: 2024-08-15 (already ISO).

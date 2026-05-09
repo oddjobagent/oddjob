@@ -1,0 +1,8 @@
+{
+  "name": "eval-coding-003",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}

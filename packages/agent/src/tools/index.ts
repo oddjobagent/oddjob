@@ -30,15 +30,12 @@ import { createFindTool } from "./find.ts";
 import { createGrepTool } from "./grep.ts";
 import { createJavascriptTool } from "./javascript.ts";
 import { createLsTool } from "./ls.ts";
+import { createNotesAppendTool, createNotesReadTool } from "./notes.ts";
 import { createPythonTool } from "./python.ts";
 import { createReadTool } from "./read.ts";
 import { createWriteTool } from "./write.ts";
 
-export {
-  INTERNAL_TOOL_NAMES,
-  isInternalToolName,
-  type InternalToolName,
-};
+export { INTERNAL_TOOL_NAMES, isInternalToolName, type InternalToolName };
 
 /**
  * Inputs every internal-tool factory accepts. Subset of the loop's full
@@ -98,6 +95,10 @@ export function buildInternalTool(
         defaultTimeoutMs: builtinCfg?.python?.timeoutMs,
         onLog: ctx.onLog,
       }) as AgentTool<TSchema>;
+    case "notes_append":
+      return createNotesAppendTool({ environment: ctx.environment }) as AgentTool<TSchema>;
+    case "notes_read":
+      return createNotesReadTool({ environment: ctx.environment }) as AgentTool<TSchema>;
     default: {
       const _exhaustive: never = name;
       return _exhaustive;
@@ -112,21 +113,12 @@ export { createFindTool } from "./find.ts";
 export { createGrepTool } from "./grep.ts";
 export { createJavascriptTool } from "./javascript.ts";
 export { createLsTool } from "./ls.ts";
+export { createNotesAppendTool, createNotesReadTool } from "./notes.ts";
 export { createPythonTool } from "./python.ts";
 export { createReadTool } from "./read.ts";
 export { createWriteTool } from "./write.ts";
-export {
-  buildScriptTools,
-  type ScriptToolOptions,
-} from "./scripts.ts";
-export {
-  buildSkillTool,
-  buildSkillSystemPrompt,
-} from "./skills.ts";
-export {
-  buildMcpRuntime,
-  type McpRuntime,
-  type McpToolBuilderOptions,
-} from "./mcp.ts";
+export { buildScriptTools, type ScriptToolOptions } from "./scripts.ts";
+export { buildSkillTool, buildSkillSystemPrompt } from "./skills.ts";
+export { buildMcpRuntime, type McpRuntime, type McpToolBuilderOptions } from "./mcp.ts";
 export { assertSafeUrl, isPrivateV4, isPrivateV6, SsrfBlockedError } from "./security/ssrf.ts";
 export { checkEnvAllowlist, type EnvGateResult } from "./security/egress.ts";

@@ -99,6 +99,25 @@ const SchemaSourceSchema = Type.Object(
 export const OutputSchemaSchema = SchemaSourceSchema;
 export const InputSchemaSchema = SchemaSourceSchema;
 
+// Script-mode entry block. Presence flips the blueprint into "code-first"
+// mode — a `main.{ts,js,py,go}` next to the TOML drives the run via
+// defineRun({...}). Auto-detected from sibling files when [entry] omitted.
+export const EntrySchema = Type.Object(
+  {
+    runtime: Type.Union([
+      Type.Literal("bun"),
+      Type.Literal("node"),
+      Type.Literal("deno"),
+      Type.Literal("python"),
+      Type.Literal("go"),
+    ]),
+    file: Type.String({ minLength: 1 }),
+    input_schema: Type.Optional(Type.String({ minLength: 1 })),
+    output_schema: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
+
 export const GraderSchema = Type.Object(
   {
     rubric_text: Type.Optional(Type.String({ minLength: 1 })),
@@ -142,7 +161,14 @@ export const BlueprintRawSchema = Type.Object(
      * fallback for the "default" role; emits a warning when present.
      */
     model: Type.Optional(Type.String({ minLength: 1 })),
-    prompt: Type.String({ minLength: 1 }),
+    /**
+     * Required for agent-mode blueprints. Forbidden in script-mode (presence
+     * of [entry] block or main.{ts,js,py,go} sibling). The script-mode
+     * required/forbidden rule lives in the path-aware refinement pass.
+     */
+    prompt: Type.Optional(Type.String({ minLength: 1 })),
+    /** Script-mode entry script. Optional; auto-detected when omitted. */
+    entry: Type.Optional(EntrySchema),
     /** Required engine roles a deployment must have configured. */
     requires: Type.Optional(
       Type.Object(
@@ -205,6 +231,83 @@ export const BlueprintRawSchema = Type.Object(
 export type BlueprintRaw = Static<typeof BlueprintRawSchema>;
 export type ConnectorRaw = Static<typeof ConnectorSchema>;
 export type ConnectorAuthRaw = Static<typeof ConnectorAuthSchema>;
+export type EntryRaw = Static<typeof EntrySchema>;
+
+// ---------------------------------------------------------------------------
+// Script-mode detection + script-mode refinement.
+// ---------------------------------------------------------------------------
+
+/** Sibling file names that flip a blueprint into script mode when present. */
+export const SCRIPT_MODE_SIBLINGS = ["main.ts", "main.js", "main.py", "main.go"] as const;
+
+/**
+ * Field names on a raw blueprint that imply agent-mode control flow and are
+ * therefore forbidden in script mode. `prompt` is the canary — it's the only
+ * required-in-agent-mode field. `outcomes` and `output_schema`/`input_schema`
+ * are also agent-loop concerns; the script declares its own schemas via
+ * defineRun({inputSchema, outputSchema}).
+ *
+ * `tools`, `skills`, `connectors`, `scripts` stay allowed because the script
+ * may reach for them via ctx.tool / ctx.mcp / ctx.runAgent.
+ */
+const AGENT_MODE_FORBIDDEN_FIELDS = [
+  "prompt",
+  "outcomes",
+  "output_schema",
+  "input_schema",
+] as const;
+
+/**
+ * Returns true if `raw.entry` is set OR a sibling main.{ts,js,py,go} exists
+ * in `blueprintDir`. Caller supplies an `existsFn` so the schema layer stays
+ * platform-agnostic; load.ts/parse.ts wires in node:fs.existsSync.
+ */
+export function detectScriptMode(
+  raw: BlueprintRaw,
+  blueprintDir: string | undefined,
+  existsFn: (path: string) => boolean,
+): boolean {
+  if (raw.entry) return true;
+  if (!blueprintDir) return false;
+  for (const sibling of SCRIPT_MODE_SIBLINGS) {
+    if (existsFn(`${blueprintDir}/${sibling}`)) return true;
+  }
+  return false;
+}
+
+/**
+ * Script-mode cross-field rules. Run after Ajv + base refinements pass.
+ *
+ * In script mode: agent-control fields are forbidden — move them into
+ * main.{ts,js,py,go} via defineRun({...}) and ctx.runAgent({...}).
+ * In agent mode: `prompt` is required (the schema marks it Optional only so
+ * script-mode blueprints validate; we re-require it here).
+ */
+export function validateScriptModeRefinements(
+  raw: BlueprintRaw,
+  scriptMode: boolean,
+): BlueprintSchemaIssue[] {
+  const issues: BlueprintSchemaIssue[] = [];
+  if (scriptMode) {
+    for (const field of AGENT_MODE_FORBIDDEN_FIELDS) {
+      if ((raw as Record<string, unknown>)[field] !== undefined) {
+        issues.push({
+          path: field,
+          message:
+            `blueprint is in script mode (entry block or main.{ts,js,py,go} sibling); ` +
+            `top-level agent field '${field}' is not allowed — move agent control flow ` +
+            `into main.{ts,js,py,go} via ctx.runAgent({...}).`,
+        });
+      }
+    }
+  } else if (!raw.prompt) {
+    issues.push({
+      path: "prompt",
+      message: "must have required property 'prompt'",
+    });
+  }
+  return issues;
+}
 
 // ---------------------------------------------------------------------------
 // Compiled validators + structural / cross-field validation.
@@ -315,9 +418,7 @@ export function validateBlueprintRaw(input: unknown): ValidateResult {
       // params.additionalProperty; surface it in the message so users get a
       // useful "Unrecognized key 'modelz'" instead of the generic Ajv text.
       const extra = (e.params as { additionalProperty?: string } | undefined)?.additionalProperty;
-      const message = extra
-        ? `Unrecognized key '${extra}'`
-        : (e.message ?? "invalid");
+      const message = extra ? `Unrecognized key '${extra}'` : (e.message ?? "invalid");
       return { path: pointerToPath(e.instancePath), message };
     });
     return { ok: false, issues };

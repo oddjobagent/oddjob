@@ -3,12 +3,15 @@ import type {
   ChannelProvider,
   LogProvider,
   McpProvider,
+  MessageProvider,
   PluginRegistry,
   QueueProvider,
   RoleResolver,
+  RunEventProvider,
   SchedulerProvider,
   SecretsProvider,
   StateProvider,
+  StepProvider,
 } from "@oddjob/core";
 import type { EngineConfig } from "@oddjob/agent";
 import type { LlmPiProvider } from "@oddjob/llm-pi";
@@ -18,6 +21,26 @@ export interface Runtime {
   queue: QueueProvider;
   secrets: SecretsProvider;
   log: LogProvider;
+  /**
+   * Optional structured step-trace provider (Phase A.1). Populated by the CLI
+   * when wiring up `oddjob serve`; tests omit it. The dashboard's
+   * `<RunWaterfall/>` reads from `GET /api/v1/runs/:id/steps` which fans out
+   * to this provider — endpoint returns `{ steps: [] }` when undefined.
+   */
+  step?: StepProvider;
+  /**
+   * Optional run-message log (Phase A.2 / B1.3 review R-002). Populated by
+   * the CLI when wiring up `oddjob serve`. The agent loop's compaction path
+   * persists pre-compaction history here so collapsed transcript segments
+   * stay durable. Tests can omit; failures are swallowed by runOnce.
+   */
+  messages?: MessageProvider;
+  /**
+   * Optional run-event log (Phase B2.4). Powers script-mode `ctx.*` durable
+   * replay. Without it, script-mode runs work but lose their replay log
+   * on restart. Tests can omit.
+   */
+  runEvents?: RunEventProvider;
   llm: LlmPiProvider;
   mcp?: McpProvider;
   auth?: AuthProvider;

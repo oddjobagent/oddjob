@@ -39,6 +39,7 @@ export async function persistConfigFromDb(state: StateProvider): Promise<void> {
         `oddjob: refusing to rewrite ${CONFIG_PATH} — current contents are not valid TOML (${
           (err as Error).message
         }). Fix the file by hand, then retry.`,
+        { cause: err },
       );
     }
     // Keep server, builtin_tools, plugins, and any user-added top-level

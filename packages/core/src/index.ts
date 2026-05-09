@@ -12,3 +12,4 @@ export {
   startEgressProxy,
 } from "./security/index.ts";
 export { openBrowser, type OpenBrowserOptions } from "./utils/open-browser.ts";
+export { newId, isId, idTimestamp, type IdPrefix } from "./utils/id.ts";

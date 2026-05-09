@@ -1,0 +1,10 @@
+{
+  "rows": [
+    { "name": "Ada Lovelace", "role": "Engineer", "city": "London", "salary": "120000" },
+    { "name": "Grace Hopper, PhD", "role": "Architect", "city": "New York", "salary": "140000" },
+    { "name": "Linus Torvalds", "role": "Maintainer", "city": "Portland, OR", "salary": "" },
+    { "name": "Brian \"BK\" Kernighan", "role": "Researcher", "city": "Princeton", "salary": "150000" },
+    { "name": "Margaret Hamilton", "role": "Lead", "city": "Boston", "salary": "125000" },
+    { "name": "Donald Knuth", "role": "Author", "city": "Stanford", "salary": "" }
+  ]
+}

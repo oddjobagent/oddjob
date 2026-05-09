@@ -6,7 +6,11 @@
   "workspaces": [
     "packages/*",
     "plugins/*",
-    "apps/*"
+    "apps/*",
+    "jobs/digest-pipeline",
+    "jobs/digest-pipeline/fetcher",
+    "jobs/digest-pipeline/summarizer",
+    "jobs/digest-pipeline/joiner"
   ],
   "type": "module",
   "scripts": {

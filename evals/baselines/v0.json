@@ -1,0 +1,247 @@
+{
+  "version": "v0",
+  "generatedAt": 1778238728307,
+  "aggregate": {
+    "cases": 7,
+    "passed": 4,
+    "passRate": 0.5714285714285714,
+    "totalCostUsd": 0.130808,
+    "meanCostUsd": 0.018686857142857144
+  },
+  "profiles": {
+    "coding": {
+      "generatedAt": 1778238721772,
+      "cases": 3,
+      "passed": 3,
+      "passRate": 1,
+      "p50Ms": 15062,
+      "p95Ms": 16015,
+      "meanTokensIn": 20457.666666666668,
+      "meanTokensOut": 884.3333333333334,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 0,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.07463800000000001,
+      "meanCostUsd": 0.024879333333333337,
+      "costPerSuccessUsd": 0.024879333333333337,
+      "meanToolCalls": 6.333333333333333,
+      "meanTurns": 7.333333333333333,
+      "perToolErrorRate": {
+        "read": 0,
+        "edit": 0,
+        "bash": 0.625,
+        "write": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-type-error",
+          "passed": true,
+          "durationMs": 16015,
+          "tokensIn": 18566,
+          "tokensOut": 885,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.022990999999999998,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "turns": 7,
+          "perToolCalls": {
+            "read": 3,
+            "edit": 1,
+            "bash": 2
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "002-missing-import",
+          "passed": true,
+          "durationMs": 13820,
+          "tokensIn": 18764,
+          "tokensOut": 819,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.022859,
+          "toolCalls": 6,
+          "toolErrors": 2,
+          "turns": 7,
+          "perToolCalls": {
+            "read": 2,
+            "bash": 3,
+            "write": 1
+          },
+          "perToolErrors": {
+            "bash": 2
+          }
+        },
+        {
+          "caseId": "003-off-by-one",
+          "passed": true,
+          "durationMs": 15062,
+          "tokensIn": 24043,
+          "tokensOut": 949,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.028788,
+          "toolCalls": 7,
+          "toolErrors": 2,
+          "turns": 8,
+          "perToolCalls": {
+            "read": 3,
+            "bash": 3,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 2
+          }
+        }
+      ]
+    },
+    "data-extract": {
+      "generatedAt": 1778238663644,
+      "cases": 2,
+      "passed": 1,
+      "passRate": 0.5,
+      "p50Ms": 4937,
+      "p95Ms": 5545,
+      "meanTokensIn": 4715,
+      "meanTokensOut": 462.5,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 0,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.014055000000000002,
+      "meanCostUsd": 0.007027500000000001,
+      "costPerSuccessUsd": 0.014055000000000002,
+      "meanToolCalls": 1,
+      "meanTurns": 2,
+      "perToolErrorRate": {
+        "read": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-emails-from-html",
+          "passed": true,
+          "durationMs": 5545,
+          "tokensIn": 4703,
+          "tokensOut": 474,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007073,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "002-dates-from-text",
+          "passed": false,
+          "durationMs": 4937,
+          "tokensIn": 4727,
+          "tokensOut": 451,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.006982,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        }
+      ]
+    },
+    "long-horizon": {
+      "generatedAt": 1778238340250,
+      "cases": 1,
+      "passed": 0,
+      "passRate": 0,
+      "p50Ms": 17845,
+      "p95Ms": 17845,
+      "meanTokensIn": 16479,
+      "meanTokensOut": 1349,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 4272,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.028564000000000003,
+      "meanCostUsd": 0.028564000000000003,
+      "costPerSuccessUsd": null,
+      "meanToolCalls": 7,
+      "meanTurns": 6,
+      "perToolErrorRate": {
+        "ls": 0,
+        "read": 0,
+        "write": 0,
+        "report_status": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-plan-execute-verify",
+          "passed": false,
+          "durationMs": 17845,
+          "tokensIn": 16479,
+          "tokensOut": 1349,
+          "cacheRead": 0,
+          "cacheWrite": 4272,
+          "costUsd": 0.028564000000000003,
+          "toolCalls": 7,
+          "toolErrors": 0,
+          "turns": 6,
+          "perToolCalls": {
+            "ls": 1,
+            "read": 4,
+            "write": 1,
+            "report_status": 1
+          },
+          "perToolErrors": {}
+        }
+      ]
+    },
+    "web-research": {
+      "generatedAt": 1778238331655,
+      "cases": 1,
+      "passed": 0,
+      "passRate": 0,
+      "p50Ms": 8569,
+      "p95Ms": 8569,
+      "meanTokensIn": 10436,
+      "meanTokensOut": 623,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 0,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.013551,
+      "meanCostUsd": 0.013551,
+      "costPerSuccessUsd": null,
+      "meanToolCalls": 2,
+      "meanTurns": 3,
+      "perToolErrorRate": {
+        "read": 0,
+        "report_status": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-rfc-2119-keywords",
+          "passed": false,
+          "durationMs": 8569,
+          "tokensIn": 10436,
+          "tokensOut": 623,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.013551,
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 3,
+          "perToolCalls": {
+            "read": 1,
+            "report_status": 1
+          },
+          "perToolErrors": {}
+        }
+      ]
+    }
+  }
+}

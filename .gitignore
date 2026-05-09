@@ -20,3 +20,5 @@ plans/
 .tanstack/
 .wrangler/
 .vite/
+evals/.runs/
+.claude/scheduled_tasks.lock

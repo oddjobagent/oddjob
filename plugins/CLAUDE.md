@@ -5,31 +5,36 @@ Concrete provider/tool/channel/llm implementations. Bundled at build time (CLI i
 ## Inventory (post April 2026 re-arch)
 
 ### Tools (2 bundles)
+
 - `tools-web-fetch` — `web_fetch` tool (real dispatcher) + 4 backends (raw, browserbase, firecrawl, scrapingbee). Backend selected via engine config `[builtin_tools.web_fetch] plugin = "..."`. Backends import SSRF + egress utilities from `@oddjob/agent`.
 - `tools-web-search` — `web_search` tool (real dispatcher) + 5 providers (brave, tavily, searxng, exa, serpapi).
 
 **Internal tools** (bash, read, write, edit, grep, find, ls, datetime, javascript, python) ship inside `@oddjob/agent` (`packages/agent/src/tools/`). They are NOT plugins; they bypass the registry and are not overridable. The previous `tools-core` and `tools-coding` shim plugins are gone — pure-shim plugins were a backwards-compat artifact for hypothetical external `@oddjob/agent` consumers, and we have none.
 
 ### Model providers (2)
+
 - `pi-models` — single plugin registering a `ModelProviderService` for every pi-ai built-in provider (~25 providers, ~880 models). Replaces the deleted plugin-{anthropic,openai,openrouter} trio. `createClient` delegates to `pi-ai.getModel`; passthrough providers (openrouter, vercel-ai-gateway, huggingface, fireworks, opencode, opencode-go) synthesise a Model when pi-ai's registry lacks the id (uses the provider's exemplar to pick api + baseUrl).
 - `llama-local` — Ollama / LM Studio (OpenAI-compatible local endpoint). Kept separate because it isn't in pi-ai's registry and has a distinct local-endpoint default (`http://127.0.0.1:11434/v1`).
 
 ### Channels (5)
+
 - `channels-core` — meta-bundle that re-registers console / slack / email / webhook in one plugin. Each individual `channel-{console,slack,email,webhook}` plugin still ships independently for users who want them à la carte.
 
 ### Environments (4)
+
 - `env-process` — Bun.spawn + tempdir. Trusted-local only.
 - `env-docker` — container per Run with workdir bind-mount.
 - `env-daytona` — Daytona Firecracker remote VMs (snapshot/fork/preview-URL caps).
 - `env-local-strict` — seatbelt (macOS) / bwrap (Linux) / appcontainer (Windows) OS-level sandboxing.
 
 ### Stores + supporting providers
+
 - `state-sqlite`, `queue-sqlite`, `queue-memory`, `secrets-sqlite`, `logging-sqlite` — SQLite-backed providers with embedded migrations.
 - `scheduler-croner` — croner-based cron triggers with `protect: true` (no overlaps).
 - `mcp-client` — stdio + Streamable HTTP + SSE + OAuth lifecycle.
 - `auth-local` — OAuth lifecycle for MCP reauth.
 - `storage-local` — stub (Phase 13+).
-- `llm-pi` — pi-ai bridge (used by server's `Runtime.llm`; provides the actual stream/chat). Distinct from `pi-models` — `llm-pi` is the *provider implementation* (called per Run), `pi-models` is the *plugin* that registers ModelProviderServices for the registry.
+- `llm-pi` — pi-ai bridge (used by server's `Runtime.llm`; provides the actual stream/chat). Distinct from `pi-models` — `llm-pi` is the _provider implementation_ (called per Run), `pi-models` is the _plugin_ that registers ModelProviderServices for the registry.
 
 ## Plugin author conventions
 
@@ -40,7 +45,7 @@ Concrete provider/tool/channel/llm implementations. Bundled at build time (CLI i
 ## Plugin registry semantics (post Phase J)
 
 - Internal tools (bash, read, write, edit, grep, find, ls, datetime, javascript, python) are dispatched directly by `runOnce` via `buildInternalTool`. They do NOT go through the registry and are NOT overridable by plugins.
-- Plugin-contributed tool/channel/web-* services use last-wins registration. Local plugins override bundled by registering second.
+- Plugin-contributed tool/channel/web-\* services use last-wins registration. Local plugins override bundled by registering second.
 - Tool resolution at run time: `isInternalToolName(name)` first → internal direct; else `plugins.toolFor(name)` → service if enabled; else `plugins.hasTool(name)` → warn + skip (disabled); else warn + skip.
 - Plugin tool names available for blueprint validation: `registry.allToolNames()` returns the names of enabled plugin-contributed tools.
 

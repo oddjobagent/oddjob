@@ -198,6 +198,21 @@ export function useRunSteps(id: string | undefined, live: boolean) {
 }
 
 /**
+ * Direct children (`ctx.fork`) of a run. Each level of the dashboard run-tree
+ * mounts its own query so polling is granular: rows whose own status is
+ * terminal stop polling while the parent's still-live siblings keep ticking.
+ * Pair `enabled` with the depth cap in the consuming component.
+ */
+export function useRunChildren(id: string | undefined, live: boolean, enabled = true) {
+  return useQuery<{ children: Run[] }>({
+    queryKey: ["runs", id, "children"],
+    queryFn: () => api.runs.children(id!),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: live ? fast : false,
+  });
+}
+
+/**
  * Subscribe to a run's logs via SSE while the run is live. Updates the same
  * query cache as `useRunLogs` so consumers don't have to choose. Falls back to
  * polling when SSE drops or the run terminates.

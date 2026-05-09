@@ -2,13 +2,13 @@
 
 Backend packages. Each has its own `package.json`, `tsconfig.json`, `src/`. All depend on `@oddjob/core` for types and provider interfaces.
 
-| Package      | Purpose                                                                                                          | Notes                                                                                |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `core`       | Types, provider interfaces, blueprint/deployment/env parsers, plugin loader, security utils                       | Browser-safe (no Bun built-ins reachable from types)                                 |
-| `agent`      | Agent loop, tool registry, system-prompt, output validation, grader, MCP+skill wiring                             | Depends on core; consumed by server + cli                                            |
-| `api-client` | Browser-safe typed HTTP client with `createApi({baseUrl, bearerToken})`                                          | Used by both CLI and dashboard. **Pure fetch** — no Bun, no fs.                      |
-| `server`     | `Bun.serve` HTTP API + worker pool + webhook ingress + optional dashboard mount                                  | Owns the dashboard mount point — see `dashboard-mount.ts`                            |
-| `sdk`        | Stub re-export for future plugin authors                                                                          |                                                                                      |
+| Package      | Purpose                                                                                     | Notes                                                           |
+| ------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `core`       | Types, provider interfaces, blueprint/deployment/env parsers, plugin loader, security utils | Browser-safe (no Bun built-ins reachable from types)            |
+| `agent`      | Agent loop, tool registry, system-prompt, output validation, grader, MCP+skill wiring       | Depends on core; consumed by server + cli                       |
+| `api-client` | Browser-safe typed HTTP client with `createApi({baseUrl, bearerToken})`                     | Used by both CLI and dashboard. **Pure fetch** — no Bun, no fs. |
+| `server`     | `Bun.serve` HTTP API + worker pool + webhook ingress + optional dashboard mount             | Owns the dashboard mount point — see `dashboard-mount.ts`       |
+| `sdk`        | Stub re-export for future plugin authors                                                    |                                                                 |
 
 Provider/tool/channel implementations now live in `plugins/*` (see `../plugins/CLAUDE.md` if present).
 

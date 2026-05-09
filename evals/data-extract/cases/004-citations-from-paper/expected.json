@@ -1,0 +1,59 @@
+{
+  "citations": [
+    {
+      "authors": ["Lewis"],
+      "year": 2020,
+      "title": "Retrieval-augmented generation for knowledge-intensive NLP tasks"
+    },
+    {
+      "authors": ["Karpukhin"],
+      "year": 2020,
+      "title": "Dense passage retrieval for open-domain question answering"
+    },
+    {
+      "authors": ["Nogueira", "Cho"],
+      "year": 2019,
+      "title": "Passage re-ranking with BERT"
+    },
+    {
+      "authors": ["Voorhees"],
+      "year": 1999,
+      "title": "The TREC-8 question answering track report"
+    },
+    {
+      "authors": ["Robertson", "Zaragoza"],
+      "year": 2009,
+      "title": "The probabilistic relevance framework: BM25 and beyond"
+    },
+    {
+      "authors": ["Ma"],
+      "year": 2021,
+      "title": "A replication study of dense passage retrieval"
+    },
+    {
+      "authors": ["Devlin"],
+      "year": 2018,
+      "title": "BERT: pre-training of deep bidirectional transformers for language understanding"
+    },
+    {
+      "authors": ["Mialon"],
+      "year": 2023,
+      "title": "Augmented language models: a survey"
+    },
+    {
+      "authors": ["Borgeaud"],
+      "year": 2022,
+      "title": "Improving language models by retrieving from trillions of tokens"
+    },
+    {
+      "authors": ["Petroni"],
+      "year": 2021,
+      "title": "KILT: a benchmark for knowledge-intensive language tasks"
+    },
+    {
+      "authors": ["Bender", "Koller"],
+      "year": 2020,
+      "title": "Climbing towards NLU: on meaning, form, and understanding in the age of data"
+    }
+  ]
+}

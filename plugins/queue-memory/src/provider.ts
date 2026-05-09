@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-
 import type { AckResult, QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
+import { newId } from "@oddjob/core";
 
 interface Slot {
   runId: string;
@@ -24,7 +23,7 @@ export class QueueMemoryProvider implements QueueProvider {
   }
 
   async enqueue(config: RunConfig): Promise<string> {
-    const runId = randomUUID();
+    const runId = newId("run");
     const now = Date.now();
     this.slots.set(runId, {
       runId,

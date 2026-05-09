@@ -1,0 +1,7 @@
+{
+  "expected_qps": 50000,
+  "p99_latency_budget_ms": 5,
+  "data_size_gb": 200,
+  "consistency": "eventual",
+  "notes": "Read-heavy workload, ~99% reads. Hot keys (top 1%) drive ~80% of traffic."
+}

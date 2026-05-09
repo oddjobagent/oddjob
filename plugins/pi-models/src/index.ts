@@ -27,9 +27,18 @@ import { applyCustomBaseUrl, readCustomBaseUrl, toModelInfo } from "./convert.ts
 
 // Per-provider hint metadata for the dashboard credential form.
 const PROVIDER_DISPLAY: Record<string, { displayName: string; authHint: string }> = {
-  anthropic: { displayName: "Anthropic", authHint: "ANTHROPIC_API_KEY (optionally baseUrl for proxy)." },
-  "amazon-bedrock": { displayName: "Amazon Bedrock", authHint: "AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY." },
-  "azure-openai-responses": { displayName: "Azure OpenAI", authHint: "AZURE_OPENAI_API_KEY + baseUrl." },
+  anthropic: {
+    displayName: "Anthropic",
+    authHint: "ANTHROPIC_API_KEY (optionally baseUrl for proxy).",
+  },
+  "amazon-bedrock": {
+    displayName: "Amazon Bedrock",
+    authHint: "AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY.",
+  },
+  "azure-openai-responses": {
+    displayName: "Azure OpenAI",
+    authHint: "AZURE_OPENAI_API_KEY + baseUrl.",
+  },
   cerebras: { displayName: "Cerebras", authHint: "CEREBRAS_API_KEY." },
   deepseek: { displayName: "DeepSeek", authHint: "DEEPSEEK_API_KEY." },
   fireworks: { displayName: "Fireworks", authHint: "FIREWORKS_API_KEY." },
@@ -44,11 +53,17 @@ const PROVIDER_DISPLAY: Record<string, { displayName: string; authHint: string }
   minimax: { displayName: "MiniMax", authHint: "MINIMAX_API_KEY." },
   "minimax-cn": { displayName: "MiniMax (CN)", authHint: "MINIMAX_API_KEY." },
   mistral: { displayName: "Mistral", authHint: "MISTRAL_API_KEY." },
-  openai: { displayName: "OpenAI", authHint: "OPENAI_API_KEY (optionally baseUrl for Azure / proxy)." },
+  openai: {
+    displayName: "OpenAI",
+    authHint: "OPENAI_API_KEY (optionally baseUrl for Azure / proxy).",
+  },
   "openai-codex": { displayName: "OpenAI Codex", authHint: "OPENAI_API_KEY." },
   opencode: { displayName: "OpenCode", authHint: "OPENCODE_API_KEY." },
   "opencode-go": { displayName: "OpenCode Go", authHint: "OPENCODE_API_KEY." },
-  openrouter: { displayName: "OpenRouter", authHint: "OPENROUTER_API_KEY (multi-vendor passthrough)." },
+  openrouter: {
+    displayName: "OpenRouter",
+    authHint: "OPENROUTER_API_KEY (multi-vendor passthrough).",
+  },
   "vercel-ai-gateway": { displayName: "Vercel AI Gateway", authHint: "AI_GATEWAY_API_KEY." },
   xai: { displayName: "X.AI (Grok)", authHint: "XAI_API_KEY." },
   zai: { displayName: "Z.AI", authHint: "ZAI_API_KEY." },
@@ -65,10 +80,7 @@ const PASSTHROUGH_PROVIDERS: ReadonlySet<string> = new Set([
   "opencode-go",
 ]);
 
-function tryRegistry<TApi extends Api>(
-  provider: string,
-  modelId: string,
-): Model<TApi> | undefined {
+function tryRegistry<TApi extends Api>(provider: string, modelId: string): Model<TApi> | undefined {
   try {
     return piGetModel(provider as never, modelId as never) as Model<TApi>;
   } catch {

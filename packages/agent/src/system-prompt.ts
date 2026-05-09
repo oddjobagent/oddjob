@@ -11,7 +11,9 @@ After your plan completes, call \`report_status({ outcome, reason })\` to record
   - "warning" — the goal was NOT achieved, but the failure is transient (network, rate-limit, MCP hiccup); the harness may retry the run
   - "error" — the goal was NOT achieved and retry will not help (auth, config, schema mismatch, missing input)
 
-If the Blueprint declares an [outcomes] block, the warning / error definitions there are authoritative — match against them.`;
+If the Blueprint declares an [outcomes] block, the warning / error definitions there are authoritative — match against them.
+
+Tool results larger than 8KB are truncated to ~4KB head with a marker like \`[truncated — N bytes total. Call show_tool_result({toolUseId: "..."})...]\`. Use the \`show_tool_result\` tool to fetch additional bytes only when you actually need them — most tasks don't.`;
 
 export interface AssembleSystemPromptOptions {
   blueprint: Blueprint;
@@ -24,31 +26,67 @@ export interface AssembleSystemPromptOptions {
   dynamicChannels?: readonly DynamicChannelDescriptor[];
 }
 
-export function assembleSystemPrompt(opts: AssembleSystemPromptOptions): string {
+/**
+ * Three-zone system-prompt layout for prompt caching:
+ *
+ *   - **stable**: harness preamble + blueprint prompt + I/O schemas + outcomes
+ *     + tool descriptions. Identical across every run of the same blueprint.
+ *   - **semiStable**: skill bodies + dynamic-channel contracts. Stable per
+ *     deployment but may shift when channels rebind or skills update.
+ *   - **volatile**: caller-supplied `extra` (deployment addendum).
+ *
+ * Per-run input never appears here — it lives in the user message.
+ *
+ * Today pi-ai applies a single cache_control breakpoint to the joined system
+ * prompt (Anthropic-style for OpenRouter+anthropic/* models). The zone split
+ * is structural so a future enhancement can place separate breakpoints per
+ * zone for finer cache invalidation. The current string return preserves the
+ * pi-agent-core `Context.systemPrompt: string` contract.
+ *
+ * **Caching threshold caveat:** Anthropic Haiku 4.5 requires ≥2048 tokens of
+ * cacheable content before cache_write fires. Smaller prompts won't show
+ * cache hits even though markers are correctly applied. Real-world skill-rich
+ * blueprints comfortably exceed this; small synthetic eval blueprints often
+ * don't.
+ */
+export interface SystemPromptZones {
+  stable: string;
+  semiStable: string;
+  volatile: string;
+}
+
+export function assembleSystemPromptZones(opts: AssembleSystemPromptOptions): SystemPromptZones {
   const { blueprint, skills, extra, preamble = true, dynamicChannels } = opts;
-  const parts: string[] = [];
-  if (preamble) parts.push(HARNESS_PREAMBLE);
 
-  parts.push("## Blueprint");
-  parts.push(blueprint.prompt.trim());
-
+  const stableParts: string[] = [];
+  if (preamble) stableParts.push(HARNESS_PREAMBLE);
+  stableParts.push("## Blueprint");
+  stableParts.push(blueprint.prompt.trim());
   const inputBlock = describeSchema(blueprint.inputSchema, "Input");
-  if (inputBlock) parts.push(inputBlock);
-
+  if (inputBlock) stableParts.push(inputBlock);
   const outputBlock = describeSchema(blueprint.outputSchema, "Output");
-  if (outputBlock) parts.push(outputBlock);
-
-  const channelsBlock = describeDynamicChannels(dynamicChannels ?? []);
-  if (channelsBlock) parts.push(channelsBlock);
-
+  if (outputBlock) stableParts.push(outputBlock);
   const outcomesBlock = describeOutcomes(blueprint);
-  if (outcomesBlock) parts.push(outcomesBlock);
+  if (outcomesBlock) stableParts.push(outcomesBlock);
 
+  const semiStableParts: string[] = [];
+  const channelsBlock = describeDynamicChannels(dynamicChannels ?? []);
+  if (channelsBlock) semiStableParts.push(channelsBlock);
   const skillsBlock = buildSkillSystemPrompt(skills);
-  if (skillsBlock) parts.push(skillsBlock);
+  if (skillsBlock) semiStableParts.push(skillsBlock);
 
-  if (extra) parts.push(extra);
+  return {
+    stable: stableParts.join("\n\n"),
+    semiStable: semiStableParts.join("\n\n"),
+    volatile: extra ?? "",
+  };
+}
 
+export function assembleSystemPrompt(opts: AssembleSystemPromptOptions): string {
+  const z = assembleSystemPromptZones(opts);
+  const parts = [z.stable];
+  if (z.semiStable) parts.push(z.semiStable);
+  if (z.volatile) parts.push(z.volatile);
   return parts.join("\n\n");
 }
 

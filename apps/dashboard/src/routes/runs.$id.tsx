@@ -1,9 +1,16 @@
 import { createRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Loader2, X as XIcon } from "lucide-react";
 
-import { useCancelRun, useRun, useRunLogs, useRunLogsStream } from "../api/queries.ts";
+import {
+  useCancelRun,
+  useRun,
+  useRunChildren,
+  useRunLogs,
+  useRunLogsStream,
+} from "../api/queries.ts";
 import { PageContainer } from "../components/layout/PageContainer.tsx";
 import { RunStatusBadge } from "../components/runs/RunStatusBadge.tsx";
+import { RunTree } from "../components/runs/run-tree.tsx";
 import { RunWaterfall } from "../components/runs/run-waterfall.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { DataList } from "../components/ui/data-list.tsx";
@@ -12,7 +19,8 @@ import { Section } from "../components/ui/section.tsx";
 import { Stat } from "../components/ui/stat.tsx";
 import { Surface } from "../components/ui/surface.tsx";
 import { useToast } from "../components/ui/toast.tsx";
-import { formatCost, formatDuration, formatTimestamp } from "../lib/format.ts";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
+import { formatCost, formatDuration } from "../lib/format.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -31,6 +39,11 @@ function RunDetail(): React.JSX.Element {
   const status = run.data?.status;
   const live = status === "running" || status === "queued";
   useRunLogsStream(id, live);
+  // Fetch direct children so we can decorate the cost stat with a "rollup"
+  // hint when this run has descendants. The same query feeds <RunTree/>;
+  // TanStack Query dedupes on the shared key.
+  const childrenQ = useRunChildren(id, live);
+  const hasChildren = (childrenQ.data?.children?.length ?? 0) > 0;
 
   if (run.isLoading)
     return (
@@ -56,7 +69,7 @@ function RunDetail(): React.JSX.Element {
             <ArrowLeft className="size-3" /> Runs
           </Link>
         }
-        title={<span className="font-mono">{r.id.slice(0, 12)}</span>}
+        title={<span className="font-mono">{r.id}</span>}
         description={`${r.blueprintId} · ${r.triggeredBy}`}
         actions={
           <>
@@ -88,7 +101,15 @@ function RunDetail(): React.JSX.Element {
       />
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-4 [&>*+*]:border-l [&>*+*]:border-(--border-subtle) [&>*+*]:pl-6">
-        <Stat label="Cost" value={formatCost(r.costUsd)} />
+        <Stat
+          label="Cost"
+          value={
+            <span title={hasChildren ? "(includes descendants)" : undefined}>
+              {formatCost(r.costUsd)}
+            </span>
+          }
+          hint={hasChildren ? "incl. descendants" : undefined}
+        />
         <Stat
           label="Tokens"
           value={`${r.tokenInput.toLocaleString()} / ${r.tokenOutput.toLocaleString()}`}
@@ -104,10 +125,10 @@ function RunDetail(): React.JSX.Element {
           </DataList.Item>
           <DataList.Item label="Triggered by">{r.triggeredBy}</DataList.Item>
           <DataList.Item label="Started">
-            {r.startedAt ? formatTimestamp(r.startedAt) : "—"}
+            <TimeAgo value={r.startedAt} />
           </DataList.Item>
           <DataList.Item label="Finished">
-            {r.finishedAt ? formatTimestamp(r.finishedAt) : "—"}
+            <TimeAgo value={r.finishedAt} />
           </DataList.Item>
         </DataList>
       </Section>
@@ -182,14 +203,17 @@ function RunDetail(): React.JSX.Element {
 
       <RunWaterfall runId={r.id} live={live} startedAt={r.startedAt ?? undefined} />
 
+      <RunTree runId={r.id} live={live} />
+
       <Section title="Logs">
         <Surface variant="raised" padding="sm">
           <div className="max-h-96 space-y-0.5 overflow-auto font-mono text-xs">
             {logs.data?.entries.map((entry, idx) => (
               <div key={idx} className="flex gap-3">
-                <span className="shrink-0 text-(--text-muted)">
-                  {formatTimestamp(entry.timestamp)}
-                </span>
+                <TimeAgo
+                  value={entry.timestamp}
+                  className="shrink-0 text-(--text-muted) no-underline"
+                />
                 <span className={levelClass(entry.level)}>{entry.level.padEnd(5)}</span>
                 <span>{entry.message}</span>
               </div>

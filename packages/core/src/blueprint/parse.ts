@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 
 import type {
   Blueprint,
+  BlueprintEntry,
   BlueprintId,
   BlueprintMemory,
   BlueprintOutcomes,
@@ -15,13 +18,16 @@ import type {
   HttpConnector,
   StdioConnector,
 } from "../types/connector.ts";
-import { type BlueprintIssue, BlueprintParseError } from "./errors.ts";
+import { BlueprintParseError } from "./errors.ts";
 import {
   type BlueprintRaw,
   type BlueprintSchemaIssue,
   type ConnectorAuthRaw,
   type ConnectorRaw,
+  type EntryRaw,
+  detectScriptMode,
   validateBlueprintRaw,
+  validateScriptModeRefinements,
 } from "./schema.ts";
 
 export interface ParseOptions {
@@ -44,8 +50,21 @@ export function parseBlueprint(source: string, options: ParseOptions): Blueprint
     );
   }
 
+  // Script-mode detection: [entry] block OR sibling main.{ts,js,py,go}.
+  // Auto-detect needs the blueprint dir; falls back to no-detection when
+  // path isn't a real on-disk file (parser tests pass /tmp/blueprint.toml).
+  const blueprintDir = isAbsolute(options.path) ? dirname(options.path) : undefined;
+  const scriptMode = detectScriptMode(result.data, blueprintDir, existsSync);
+  const scriptIssues = validateScriptModeRefinements(result.data, scriptMode);
+  if (scriptIssues.length > 0) {
+    throw new BlueprintParseError(
+      `Blueprint schema invalid:\n${formatIssues(scriptIssues)}`,
+      scriptIssues,
+    );
+  }
+
   const contentHash = sha256(source);
-  return normalizeBlueprint(result.data, options, contentHash, source);
+  return normalizeBlueprint(result.data, options, contentHash, source, scriptMode);
 }
 
 function normalizeBlueprint(
@@ -53,6 +72,7 @@ function normalizeBlueprint(
   options: ParseOptions,
   contentHash: string,
   sourceToml: string,
+  scriptMode: boolean,
 ): Blueprint {
   const connectors: Record<string, Connector> = {};
   for (const [key, value] of Object.entries(raw.connectors)) {
@@ -111,7 +131,12 @@ function normalizeBlueprint(
     tags: raw.tags,
     license: raw.license,
     model: raw.model,
-    prompt: raw.prompt,
+    // Script-mode blueprints have no top-level prompt; agent control flow
+    // moves into main.{ts,js,py,go} via ctx.runAgent({...}). Default to ""
+    // so the typed surface stays string-not-undefined.
+    prompt: raw.prompt ?? "",
+    entry: raw.entry ? normalizeEntry(raw.entry) : undefined,
+    scriptMode,
     requires: raw.requires?.roles?.length ? { roles: raw.requires.roles } : undefined,
     tools: toolNames,
     toolPolicies: Object.keys(toolPolicies).length > 0 ? toolPolicies : undefined,
@@ -129,6 +154,15 @@ function normalizeBlueprint(
     path: options.path,
     contentHash,
     sourceToml,
+  };
+}
+
+function normalizeEntry(raw: EntryRaw): BlueprintEntry {
+  return {
+    runtime: raw.runtime,
+    file: raw.file,
+    inputSchema: raw.input_schema,
+    outputSchema: raw.output_schema,
   };
 }
 

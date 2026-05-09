@@ -1,0 +1,8 @@
+{
+  "name": "eval-long-horizon-008",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}

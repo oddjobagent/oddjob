@@ -1,0 +1,4 @@
+# This fixture is a deliberately-broken project for the eval harness to
+# run agents against. It is NOT meant to be picked up by the workspace
+# `bun test` — the eval CLI invokes its own `bun test` inside the fixture
+# after the agent attempts a fix.

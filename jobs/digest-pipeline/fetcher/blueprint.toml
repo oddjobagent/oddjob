@@ -1,0 +1,10 @@
+name = "digest-pipeline-fetcher"
+version = "0.1.0"
+description = "Stub fetcher: returns a synthetic body for the given URL. Real fetchers would call ctx.tool('web_fetch')."
+author = "demo"
+tags = ["script-mode", "demo"]
+license = "MIT"
+
+[entry]
+runtime = "bun"
+file = "main.ts"

@@ -18,6 +18,7 @@ export {
   type InternalToolName,
   type EngineConfig,
   type BuiltinToolsConfig,
+  type CompactionConfig,
   type WebSearchConfig,
   type WebFetchConfig,
 } from "./internal-tools.ts";

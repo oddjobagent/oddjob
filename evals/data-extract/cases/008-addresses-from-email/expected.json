@@ -1,0 +1,53 @@
+{
+  "addresses": [
+    {
+      "street": "350 5th Avenue",
+      "city": "New York",
+      "region": "NY",
+      "postal": "10118",
+      "country": "USA"
+    },
+    {
+      "street": "10 Downing Street",
+      "city": "London",
+      "region": "",
+      "postal": "SW1A 2AA",
+      "country": "United Kingdom"
+    },
+    {
+      "street": "Friedrichstraße 110",
+      "city": "Berlin",
+      "region": "",
+      "postal": "10117",
+      "country": "Germany"
+    },
+    {
+      "street": "1-1-2 Marunouchi",
+      "city": "Chiyoda-ku, Tokyo",
+      "region": "",
+      "postal": "100-0005",
+      "country": "Japan"
+    },
+    {
+      "street": "Level 36, Tower One, 100 Barangaroo Avenue",
+      "city": "Sydney",
+      "region": "NSW",
+      "postal": "2000",
+      "country": "Australia"
+    },
+    {
+      "street": "100 Queen Street West",
+      "city": "Toronto",
+      "region": "ON",
+      "postal": "M5H 2N2",
+      "country": "Canada"
+    },
+    {
+      "street": "1600 Amphitheatre Parkway",
+      "city": "Mountain View",
+      "region": "CA",
+      "postal": "94043",
+      "country": "USA"
+    }
+  ]
+}

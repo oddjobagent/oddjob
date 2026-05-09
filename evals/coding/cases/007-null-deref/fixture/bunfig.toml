@@ -1,0 +1,1 @@
+# Deliberately-broken fixture for eval harness; not picked up by workspace `bun test`.

@@ -66,9 +66,35 @@ export interface RoleFileConfig {
   options?: Record<string, unknown>;
 }
 
+/**
+ * `[engine]` block — agent-loop tunables that aren't tool/role/plugin-shaped.
+ *
+ * Today only carries `[engine.compaction]`. New runtime-level toggles land
+ * here (B1.4 truncation cap, B1.6 JIT-skill toggles, etc. are candidates).
+ */
+export interface EngineFileConfig {
+  compaction?: CompactionFileConfig;
+}
+
+/**
+ * `[engine.compaction]` block. Mirrors `CompactionConfig` from `@oddjob/core`
+ * with snake_case TOML field names per Oddjob convention.
+ */
+export interface CompactionFileConfig {
+  /** "auto" | "off". Default "off". */
+  mode?: "auto" | "off";
+  /** Trigger threshold as fraction of model contextWindow. Default 0.7. */
+  trigger_ratio?: number;
+  /** Number of leading messages to pin. Default 2. */
+  pin_head?: number;
+  /** Number of trailing turns to pin. Default 4. */
+  pin_tail?: number;
+}
+
 export interface OddjobConfig {
   server: ServerConfig;
   builtin_tools?: BuiltinToolsFileConfig;
+  engine?: EngineFileConfig;
   plugins?: PluginsFileConfig;
   /** providers.<slug>.<credentialName> */
   providers?: Record<string, Record<string, ProviderCredentialFileConfig>>;
@@ -110,9 +136,7 @@ const ProviderCredentialSchema = Type.Object(
 // Use raw patternProperties + additionalProperties:false so non-matching
 // slugs/credential names are rejected (typebox's Type.Record-with-pattern
 // only adds patternProperties without strict-key enforcement).
-const ProvidersSchema = Type.Unsafe<
-  Record<string, Record<string, ProviderCredentialFileConfig>>
->({
+const ProvidersSchema = Type.Unsafe<Record<string, Record<string, ProviderCredentialFileConfig>>>({
   type: "object",
   patternProperties: {
     [SLUG_PATTERN]: {
@@ -140,10 +164,28 @@ const RolesSchema = Type.Unsafe<Record<string, RoleFileConfig>>({
   additionalProperties: false,
 });
 
+const CompactionSchema = Type.Object(
+  {
+    mode: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("off")])),
+    trigger_ratio: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+    pin_head: Type.Optional(Type.Integer({ minimum: 0 })),
+    pin_tail: Type.Optional(Type.Integer({ minimum: 0 })),
+  },
+  STRICT,
+);
+
+const EngineSchema = Type.Object(
+  {
+    compaction: Type.Optional(CompactionSchema),
+  },
+  STRICT,
+);
+
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validatePlugins: ValidateFunction = ajv.compile(PluginsSchema);
 const validateProviders: ValidateFunction = ajv.compile(ProvidersSchema);
 const validateRoles: ValidateFunction = ajv.compile(RolesSchema);
+const validateEngine: ValidateFunction = ajv.compile(EngineSchema);
 
 function pointerToPath(p: string): string {
   if (!p) return "";
@@ -171,7 +213,9 @@ export async function loadConfig(): Promise<OddjobConfig> {
   try {
     src = await readFile(CONFIG_PATH, "utf8");
   } catch (err) {
-    throw new Error(`oddjob: failed to read ${CONFIG_PATH}: ${(err as Error).message}`);
+    throw new Error(`oddjob: failed to read ${CONFIG_PATH}: ${(err as Error).message}`, {
+      cause: err,
+    });
   }
   let parsed: Record<string, unknown>;
   try {
@@ -180,6 +224,7 @@ export async function loadConfig(): Promise<OddjobConfig> {
     throw new Error(
       `oddjob: ${CONFIG_PATH} is not valid TOML: ${(err as Error).message}\n` +
         `Fix the file or move it aside and let the server scaffold a fresh one.`,
+      { cause: err },
     );
   }
   let plugins: PluginsFileConfig | undefined;
@@ -209,9 +254,19 @@ export async function loadConfig(): Promise<OddjobConfig> {
     }
     roles = parsed.roles as Record<string, RoleFileConfig>;
   }
+  let engine: EngineFileConfig | undefined;
+  if (parsed.engine !== undefined) {
+    if (!validateEngine(parsed.engine)) {
+      throw new Error(
+        `oddjob: ${CONFIG_PATH} schema invalid:\n${formatAjvErrors("engine", validateEngine.errors)}`,
+      );
+    }
+    engine = parsed.engine as EngineFileConfig;
+  }
   return {
     server: { ...DEFAULT_CONFIG.server, ...(parsed.server as object) },
     builtin_tools: parsed.builtin_tools as BuiltinToolsFileConfig | undefined,
+    engine,
     plugins,
     providers,
     roles,

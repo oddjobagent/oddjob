@@ -249,6 +249,7 @@ export class WorkerPool {
       } catch (err) {
         throw new Error(
           `model role resolution failed for deployment ${dep.id}: ${(err as Error).message}`,
+          { cause: err },
         );
       }
       // Grader override at blueprint level still wins when set; otherwise the
@@ -311,6 +312,9 @@ export class WorkerPool {
         llm: { model: resolved.model, apiKey: resolved.apiKey },
         environment: { provider: resolvedEnv.provider, config: resolvedEnv.config },
         log: this.rt.log,
+        step: this.rt.step,
+        messages: this.rt.messages,
+        runEvents: this.rt.runEvents,
         mcp: this.rt.mcp,
         secrets: this.rt.secrets,
         auth: this.rt.auth,

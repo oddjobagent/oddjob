@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { dirname, isAbsolute } from "node:path";
 
 import {
@@ -6,10 +6,41 @@ import {
   type AgentLoopConfig,
   type AgentMessage,
   runAgentLoop,
+  type StreamFn,
 } from "@mariozechner/pi-agent-core";
 import { type AssistantMessage, type Message, streamSimple, type Usage } from "@mariozechner/pi-ai";
 
-import type { LogEntry, LogProvider } from "@oddjob/core";
+import { newId, type LogEntry, type LogProvider } from "@oddjob/core";
+import type { StepKind, StepProvider, StepRecord } from "@oddjob/core";
+import type { MessageProvider } from "@oddjob/core";
+import type { RunEventProvider } from "@oddjob/core";
+
+import { canonicalJsonStringify } from "./lib/canonical-json.ts";
+import { type LlmCallSpan, tracingWrapper } from "./lib/llm-tracing.ts";
+import { maybeRecordingFromEnv } from "./lib/recording.ts";
+import { CircuitBreaker, withRetryAndBreaker } from "./lib/retry.ts";
+import {
+  createShowToolResultTool,
+  makeTruncateStore,
+  withResultTruncation,
+} from "./lib/truncate-result.ts";
+import { compactHistory, persistCollapsedSegment, planCompaction } from "./compaction.ts";
+
+// Per-(provider, baseUrl, modelId) circuit breakers. Sharing a single
+// breaker across all runs would let a failing OpenAI route open the
+// breaker for unrelated Anthropic runs, and a healthy run on one provider
+// would silently reset another's failure streak. Keyed scoping isolates
+// failure domains. (codex round 6 #2)
+const BREAKERS = new Map<string, CircuitBreaker>();
+function breakerFor(llm: ResolvedLLM): CircuitBreaker {
+  const key = `${llm.model.provider}|${llm.model.baseUrl ?? ""}|${llm.model.id}`;
+  let b = BREAKERS.get(key);
+  if (!b) {
+    b = new CircuitBreaker();
+    BREAKERS.set(key, b);
+  }
+  return b;
+}
 import type { AuthProvider } from "@oddjob/core";
 import type { McpProvider } from "@oddjob/core";
 import type { SecretsProvider } from "@oddjob/core";
@@ -60,6 +91,40 @@ export interface RunOnceOptions {
    */
   environment: ResolvedEnvironmentForRun;
   log?: LogProvider;
+  /**
+   * Optional step trace provider. Records llm_call / tool_call / grader /
+   * verdict / compaction / classifier / subagent boundaries so the eval
+   * harness can attribute cost + latency per step. Failures are swallowed —
+   * step-trace MUST never fail a run.
+   */
+  step?: StepProvider;
+  /**
+   * Optional run-message provider. When supplied, the compaction path
+   * persists the original transcript segment to `run_messages` BEFORE
+   * replacing it with the synthetic `<compacted>` summary so replay /
+   * debug can recover what was collapsed. (review R-002) Failures are
+   * swallowed for the same reason as `step`.
+   */
+  messages?: MessageProvider;
+  /**
+   * Optional run-event provider for script-mode `ctx.*` calls (B2.3/B2.4).
+   * Supplied by the CLI buildRuntime. Agent-mode runs ignore this. Script-
+   * mode runs use it to record/replay every ctx call against `run_events`.
+   */
+  runEvents?: RunEventProvider;
+  /**
+   * Set when this Run is a child of another (script-mode `ctx.fork`).
+   * Stamped onto `Run.parentRunId` so cost rollup walks the chain.
+   * Agent-mode runs leave this undefined.
+   */
+  parentRunId?: string;
+  /**
+   * Optional override for the LLM stream function. Defaults to
+   * `maybeRecordingFromEnv(streamSimple)` so `ODDJOB_RECORD_FIXTURE` Just
+   * Works. The eval CLI passes a replay-from-fixture stream here for
+   * token-free regression runs.
+   */
+  streamFn?: StreamFn;
   input?: unknown;
   runId?: RunId;
   deploymentId?: string;
@@ -152,8 +217,16 @@ export interface GraderOverride {
 }
 
 export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
+  // Script-mode delegation (B2.3): blueprints with [entry] OR a sibling
+  // main.{ts,js,py,go} bypass the agent loop entirely. Lazy-imported to
+  // avoid pulling node:url + dynamic-import infrastructure into the
+  // agent-mode hot path.
+  if (opts.blueprint.scriptMode) {
+    const { runScriptOnce } = await import("./script-mode.ts");
+    return runScriptOnce(opts);
+  }
   const { blueprint, llm, environment, log, input, limits, signal, systemPromptExtra } = opts;
-  const runId = opts.runId ?? randomUUID();
+  const runId = opts.runId ?? newId("run");
   const deploymentId = opts.deploymentId ?? `_local:${blueprint.id}`;
   const triggeredBy: Run["triggeredBy"] = opts.triggeredBy ?? "manual";
   const startedAt = Date.now();
@@ -209,6 +282,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     } catch (err) {
       throw new Error(
         `egress proxy unreachable from configured environment: ${(err as Error).message}`,
+        { cause: err },
       );
     }
     const handle = await startEgressProxy({
@@ -256,6 +330,105 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
   let hardFailureVerdict: RunVerdict | undefined;
   let usageTotal: Usage | undefined;
   let mcpRuntime: Awaited<ReturnType<typeof buildMcpRuntime>> | undefined;
+
+  // Step trace plumbing. Writes are serialized per-stepId so an open row
+  // cannot land after its close on async providers, and a per-run pending
+  // queue is awaited in `finally` so `runOnce` doesn't return before the
+  // last writes flush.
+  let iteration = 0;
+  const toolStepIndex = new Map<string, { stepId: string; startedAt: number }>();
+  const stepChain = new Map<string, Promise<unknown>>();
+  const stepPending = new Set<Promise<unknown>>();
+  const recordStep = (rec: StepRecord): void => {
+    const provider = opts.step;
+    if (!provider) return;
+    const prev = stepChain.get(rec.stepId) ?? Promise.resolve();
+    // Wrap the call in `Promise.resolve().then(...)` so a synchronous throw
+    // from a custom provider becomes a normal rejection, not an unhandled.
+    const next = prev.then(() =>
+      Promise.resolve()
+        .then(() => provider.recordStep(rec))
+        .catch((err) => {
+          append({
+            timestamp: Date.now(),
+            level: "warn",
+            message: `step trace write failed: ${(err as Error).message}`,
+          });
+        }),
+    );
+    stepChain.set(rec.stepId, next);
+    stepPending.add(next);
+    // Use then(cleanup, cleanup) instead of finally so the cleanup chain
+    // can't introduce a fresh unhandled rejection.
+    const cleanup = (): void => {
+      stepPending.delete(next);
+      if (stepChain.get(rec.stepId) === next) stepChain.delete(rec.stepId);
+    };
+    void next.then(cleanup, cleanup);
+  };
+  const emitPointStep = (kind: StepKind, fields?: Partial<StepRecord>): void => {
+    const now = Date.now();
+    recordStep({
+      stepId: newId("stp"),
+      runId,
+      iteration,
+      kind,
+      startedAt: now,
+      endedAt: now,
+      ...fields,
+    });
+  };
+  const hashArgs = (args: unknown): string => {
+    try {
+      return createHash("sha256").update(canonicalJsonStringify(args)).digest("hex");
+    } catch {
+      return "";
+    }
+  };
+
+  // LLM stream wrapping. Composition order: tracing OUTSIDE recording so the
+  // span captures the full call (provider RTT + recording IO). For pure
+  // provider-RTT measurement (production runs without ODDJOB_RECORD_FIXTURE),
+  // recording is a no-op pass-through, so the timing reflects RTT only. When
+  // recording IS enabled, llm_call duration is provider+IO (documented).
+  // Replay mode similarly reports replay-read timing — fixture-replay-only
+  // baselines must be flagged as such by the eval harness.
+  // Resolution order: opts.streamFn (eval/replay caller) → ODDJOB_RECORD_FIXTURE → streamSimple
+  const baseStream: StreamFn = opts.streamFn ?? maybeRecordingFromEnv(streamSimple);
+  const tracedStream: StreamFn = tracingWrapper(baseStream, {
+    onStart: (modelId, startedAtTs) => {
+      const stepId = newId("stp");
+      recordStep({
+        stepId,
+        runId,
+        iteration,
+        kind: "llm_call",
+        startedAt: startedAtTs,
+        model: modelId,
+      });
+      return stepId;
+    },
+    onEnd: (span: LlmCallSpan) => {
+      recordStep({
+        stepId: span.stepId,
+        runId,
+        iteration,
+        kind: "llm_call",
+        startedAt: span.startedAt,
+        endedAt: span.endedAt,
+        model: span.modelId,
+        tokensIn: span.usage?.input,
+        tokensOut: span.usage?.output,
+        cacheRead: span.usage?.cacheRead,
+        cacheWrite: span.usage?.cacheWrite,
+        costUsd: span.usage?.cost?.total,
+        error: span.errored ? "stream_error" : undefined,
+        ...(span.firstTokenAt !== undefined
+          ? { meta: { firstTokenLatencyMs: span.firstTokenAt - span.startedAt } }
+          : {}),
+      });
+    },
+  });
   try {
     const skills: LoadedSkill[] = blueprint.skills.length > 0 ? loadSkills(blueprint) : [];
     const skillTool = buildSkillTool({ skills, onLog: append });
@@ -349,15 +522,25 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
               level: v.outcome === "success" ? "info" : v.outcome === "warning" ? "warn" : "error",
               message: `verdict: ${v.outcome} — ${v.reason}`,
             });
+            emitPointStep("verdict", { meta: { outcome: v.outcome, reason: v.reason } });
           },
         })
       : undefined;
+    // Per-run truncate store. Every tool result text block over
+    // MAX_RESULT_BYTES is capped + the overflow stashed here, retrievable
+    // via the `show_tool_result` tool (auto-included below). Bypasses
+    // report_status because its result is small.
+    const truncateStore = makeTruncateStore();
+    const wrap = <T extends AgentTool<TSchema>>(t: T): T =>
+      withResultTruncation(t, truncateStore) as T;
+    const showToolResultTool = createShowToolResultTool(truncateStore) as AgentTool<TSchema>;
     const tools = [
-      ...resolvedTools,
-      ...scriptTools,
-      ...mcpRuntime.tools,
-      ...(skillTool ? [skillTool] : []),
+      ...resolvedTools.map(wrap),
+      ...scriptTools.map(wrap),
+      ...mcpRuntime.tools.map(wrap),
+      ...(skillTool ? [wrap(skillTool)] : []),
       ...(reportStatusTool ? [reportStatusTool] : []),
+      showToolResultTool,
     ];
 
     // When dynamic channels are present, compose their contracts into the
@@ -389,8 +572,42 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       apiKey: llm.apiKey,
       beforeToolCall: async (ctx) => {
         toolCalls++;
+        // Mark that a tool fired so retry-with-jitter cannot re-run this
+        // invocation if a downstream LLM error happens later in the turn.
+        toolsFiredInThisInvocation = true;
+        const stepId = newId("stp");
+        const toolStartedAt = Date.now();
+        const argsHash = hashArgs(ctx.args);
+        toolStepIndex.set(ctx.toolCall.id, { stepId, startedAt: toolStartedAt });
+        recordStep({
+          stepId,
+          runId,
+          iteration,
+          kind: "tool_call",
+          startedAt: toolStartedAt,
+          toolName: ctx.toolCall.name,
+          toolArgsHash: argsHash,
+        });
+        // Closes the open tool_call step row when a gate (limit / approval)
+        // blocks execution before afterToolCall fires. Without this the row
+        // would dangle with null endedAt + null error.
+        const closeBlocked = (reason: string): void => {
+          const endedAt = Date.now();
+          toolStepIndex.delete(ctx.toolCall.id);
+          recordStep({
+            stepId,
+            runId,
+            iteration,
+            kind: "tool_call",
+            startedAt: toolStartedAt,
+            endedAt,
+            toolName: ctx.toolCall.name,
+            toolArgsHash: argsHash,
+            error: reason,
+          });
+        };
         append({
-          timestamp: Date.now(),
+          timestamp: toolStartedAt,
           level: "info",
           message: `tool call ${ctx.toolCall.name}`,
           meta: { args: deepRedact(ctx.args), toolCalls },
@@ -406,6 +623,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
               level: "error",
               message: `tool call limit ${limits.toolCalls} exceeded (enforced, aborting)`,
             });
+            closeBlocked(`blocked: limit exceeded tool_calls ${toolCalls}/${limits.toolCalls}`);
             return {
               block: true,
               reason: `limit exceeded: tool_calls ${toolCalls}/${limits.toolCalls}`,
@@ -449,6 +667,9 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
             meta: { toolUseId: ctx.toolCall.id, denyMessage: resolution.denyMessage },
           });
           if (!resolution.allow) {
+            closeBlocked(
+              `denied by user${resolution.denyMessage ? `: ${resolution.denyMessage}` : ""}`,
+            );
             return {
               block: true,
               reason: `denied by user${resolution.denyMessage ? `: ${resolution.denyMessage}` : ""}`,
@@ -463,8 +684,24 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           lastToolErrorName = ctx.toolCall.name;
           lastToolError = `${ctx.toolCall.name}: ${extractErrorText(ctx.result)}`;
         }
+        const endedAt = Date.now();
+        const open = toolStepIndex.get(ctx.toolCall.id);
+        if (open) {
+          toolStepIndex.delete(ctx.toolCall.id);
+          recordStep({
+            stepId: open.stepId,
+            runId,
+            iteration,
+            kind: "tool_call",
+            startedAt: open.startedAt,
+            endedAt,
+            toolName: ctx.toolCall.name,
+            toolResultSize: estimateResultSize(ctx.result),
+            error: ctx.isError ? extractErrorText(ctx.result) : undefined,
+          });
+        }
         append({
-          timestamp: Date.now(),
+          timestamp: endedAt,
           level: ctx.isError ? "error" : "debug",
           message: `tool ${ctx.toolCall.name} done`,
           meta: { isError: ctx.isError },
@@ -482,18 +719,204 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       if (e.type === "message_end" && e.message.role === "assistant") {
         const u = (e.message as AssistantMessage).usage;
         if (u) usageTotal = sumUsage(usageTotal, u);
+        // Per-call llm_call step is emitted by the tracingWrapper around the
+        // StreamFn (see tracedStream above). Don't double-emit here.
       }
     };
 
+    // Single seam for invoking the agent harness. Both the initial run and
+    // each grader-revision pass go through this. Wrapped with retry-with-
+    // jitter + a process-wide circuit breaker (B1.2). Pre-call compaction
+    // (B1.3) collapses message history when it exceeds the configured ratio
+    // of the model's contextWindow. Off by default — flip rule documented
+    // in compaction.ts.
+    let toolsFiredInThisInvocation = false;
+    const compactionCfg = opts.engine?.compaction;
+    const compactionLlm: ResolvedLLM = opts.grader?.llm ?? llm;
+    const invokeAgent = async (
+      newPrompts: AgentMessage[],
+      priorMessages: AgentMessage[],
+    ): Promise<AgentMessage[]> => {
+      toolsFiredInThisInvocation = false;
+      // Compaction check happens here so the SAME messages array gets fed
+      // into runAgentLoop. Compaction can fire on the second+ invokeAgent
+      // call (grader revision) since the first call passes priorMessages=[]
+      // — there's nothing to compact on the initial pass.
+      let effectivePrior = priorMessages;
+      if (compactionCfg?.mode === "auto" && priorMessages.length > 0) {
+        const decision = planCompaction(priorMessages, llm.model.contextWindow, compactionCfg);
+        if (decision.shouldCompact) {
+          const compactStepId = newId("stp");
+          const compactStartedAt = Date.now();
+          recordStep({
+            stepId: compactStepId,
+            runId,
+            iteration,
+            kind: "compaction",
+            startedAt: compactStartedAt,
+            meta: {
+              estimatedTokens: decision.estimatedTokens,
+              threshold: decision.threshold,
+              contextWindow: decision.contextWindow,
+            },
+          });
+          try {
+            const result = await compactHistory(
+              priorMessages,
+              {
+                llm: compactionLlm,
+                // Reuse the traced/recorded stream so the summarization
+                // call's tokens + cost get attributed AND fixture replay /
+                // recording are honored. (codex round 6 #4)
+                streamFn: tracedStream,
+                ...(signal ? { signal } : {}),
+              },
+              compactionCfg,
+            );
+            // Persist the collapsed segment to run_messages BEFORE we
+            // replace it on the in-memory side. Once `effectivePrior =
+            // result.messages` lands, the originals are gone from the
+            // active conversation. Replay / debug needs to recover them.
+            // (review R-002)
+            if (opts.messages) {
+              await persistCollapsedSegment(
+                runId,
+                priorMessages,
+                result,
+                opts.messages,
+                (err, seq) => {
+                  append({
+                    timestamp: Date.now(),
+                    level: "warn",
+                    message: `run-message persist failed at seq ${seq}: ${err.message}`,
+                  });
+                },
+              );
+            }
+            effectivePrior = result.messages;
+            // Roll the summarization usage into the run total — otherwise
+            // compaction is invisible to cost reporting.
+            if (result.usage) {
+              usageTotal = sumUsage(usageTotal, {
+                input: result.usage.input,
+                output: result.usage.output,
+                cacheRead: result.usage.cacheRead ?? 0,
+                cacheWrite: result.usage.cacheWrite ?? 0,
+                totalTokens: result.usage.input + result.usage.output,
+                cost: result.usage.costUsd
+                  ? {
+                      input: 0,
+                      output: 0,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      total: result.usage.costUsd,
+                    }
+                  : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              });
+            }
+            append({
+              timestamp: Date.now(),
+              level: "info",
+              message: `compaction: collapsed ${result.collapsedRange[1] - result.collapsedRange[0]} messages (${result.collapsedTokens} → ${result.compactedTokens} estimated tokens)`,
+            });
+            recordStep({
+              stepId: compactStepId,
+              runId,
+              iteration,
+              kind: "compaction",
+              startedAt: compactStartedAt,
+              endedAt: Date.now(),
+              model: compactionLlm.model.id,
+              tokensIn: result.usage?.input,
+              tokensOut: result.usage?.output,
+              cacheRead: result.usage?.cacheRead,
+              cacheWrite: result.usage?.cacheWrite,
+              costUsd: result.usage?.costUsd,
+              meta: {
+                estimatedTokens: decision.estimatedTokens,
+                threshold: decision.threshold,
+                contextWindow: decision.contextWindow,
+                collapsedRange: result.collapsedRange,
+                collapsedTokens: result.collapsedTokens,
+                compactedTokens: result.compactedTokens,
+              },
+            });
+          } catch (err) {
+            // Compaction failure is non-fatal — fall through with the
+            // un-compacted history. The agent loop may then hit a hard
+            // context-window limit on the next call, which is no worse
+            // than skipping compaction in the first place.
+            append({
+              timestamp: Date.now(),
+              level: "warn",
+              message: `compaction failed, continuing without: ${(err as Error).message}`,
+            });
+            recordStep({
+              stepId: compactStepId,
+              runId,
+              iteration,
+              kind: "compaction",
+              startedAt: compactStartedAt,
+              endedAt: Date.now(),
+              error: (err as Error).message,
+            });
+          }
+        }
+      }
+      return withRetryAndBreaker(
+        async () => {
+          const out = await runAgentLoop(
+            newPrompts,
+            { systemPrompt, messages: effectivePrior, tools },
+            config,
+            onEvent,
+            signal,
+            tracedStream,
+          );
+          // Pi-agent-core's stream wrappers synthesize terminal `error`
+          // events rather than throwing — so withRetry never sees the
+          // failure. Inspect the final assistant message; if stopReason is
+          // a non-tool error AND no tool fired, throw a structured error
+          // so retry+breaker can fire. (codex round 6 #1)
+          const last = out[out.length - 1];
+          if (
+            last &&
+            (last as { role?: string }).role === "assistant" &&
+            !toolsFiredInThisInvocation
+          ) {
+            const stop = (last as { stopReason?: string }).stopReason;
+            const errMsg = (last as { errorMessage?: string }).errorMessage;
+            if (stop === "error" || stop === "aborted") {
+              const err = new Error(
+                `provider stream ${stop}: ${errMsg ?? "no error message"}`,
+              ) as Error & { code?: string; status?: number };
+              // Heuristic classification so withRetry's status/code matchers
+              // get a chance to retry. retry.ts's regex on the message
+              // catches "529"/"503"/"timeout"/"reset" patterns too.
+              if (errMsg && /\b5(29|03|02|04)\b/.test(errMsg)) {
+                err.status = Number(errMsg.match(/\b5(29|03|02|04)\b/)?.[0] ?? 502);
+              }
+              throw err;
+            }
+          }
+          return out;
+        },
+        breakerFor(llm),
+        {
+          toolsFiredInTurn: () => toolsFiredInThisInvocation,
+          onRetry: (attempt, err, delayMs) => {
+            append({
+              timestamp: Date.now(),
+              level: "warn",
+              message: `agent retry ${attempt + 1}: ${(err as Error).message ?? "unknown"} — sleeping ${delayMs}ms`,
+            });
+          },
+        },
+      );
+    };
+
     // Initial agent invocation. May iterate when [outcomes.grader] is set.
-    let messages = await runAgentLoop(
-      [userPrompt],
-      { systemPrompt, messages: [], tools },
-      config,
-      onEvent,
-      signal,
-      streamSimple,
-    );
+    let messages = await invokeAgent([userPrompt], []);
 
     // Grader iteration loop. Only fires when blueprint.outcomes.grader is set
     // AND a rubric is available (rubricLoaded for file-backed, rubricText otherwise).
@@ -514,8 +937,19 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       }
       const maxIter = graderCfg.maxIterations;
       for (let iter = 0; iter < maxIter; iter++) {
+        iteration = iter + 1;
         const lastAssistant = lastAssistantMessage(messages);
         const artifact = artifactSnapshot(lastAssistant, effectiveBlueprint);
+        const graderStepId = newId("stp");
+        const graderStartTs = Date.now();
+        recordStep({
+          stepId: graderStepId,
+          runId,
+          iteration,
+          kind: "grader",
+          startedAt: graderStartTs,
+          model: graderLlm.model.id,
+        });
         const evaluation = await runGrader({
           blueprint,
           llm: graderLlm,
@@ -525,6 +959,19 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           log,
           runId,
           signal,
+        });
+        recordStep({
+          stepId: graderStepId,
+          runId,
+          iteration,
+          kind: "grader",
+          startedAt: graderStartTs,
+          endedAt: Date.now(),
+          model: graderLlm.model.id,
+          tokensIn: evaluation.usage?.input,
+          tokensOut: evaluation.usage?.output,
+          costUsd: evaluation.usage?.cost,
+          meta: { result: evaluation.result },
         });
         graderEvaluations.push(evaluation);
         if (evaluation.usage) {
@@ -554,14 +1001,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           level: "info",
           message: `grader needs_revision; injecting feedback for iteration ${iter + 1}/${maxIter}`,
         });
-        messages = await runAgentLoop(
-          [revision],
-          { systemPrompt, messages, tools },
-          config,
-          onEvent,
-          signal,
-          streamSimple,
-        );
+        messages = await invokeAgent([revision], messages);
       }
     }
 
@@ -683,6 +1123,7 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       startedAt,
       finishedAt,
       createdAt: startedAt,
+      ...(opts.parentRunId ? { parentRunId: opts.parentRunId } : {}),
     };
 
     return {
@@ -709,6 +1150,12 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       }
     } finally {
       await egressProxy?.stop().catch(() => undefined);
+      // Flush pending step writes so callers (eval CLI, dashboard) see the
+      // final tool_call/llm_call/grader/verdict rows. allSettled means a
+      // single failed write can't block the others.
+      if (stepPending.size > 0) {
+        await Promise.allSettled(Array.from(stepPending));
+      }
     }
   }
 }
@@ -838,6 +1285,17 @@ function extractErrorText(
     }
   }
   return "";
+}
+
+function estimateResultSize(
+  result: { content?: Array<{ type: string; text?: string }> } | undefined,
+): number {
+  if (!result?.content) return 0;
+  let total = 0;
+  for (const block of result.content) {
+    if (typeof block.text === "string") total += block.text.length;
+  }
+  return total;
 }
 
 function sumUsage(prev: Usage | undefined, next: Usage): Usage {

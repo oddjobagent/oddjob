@@ -29,7 +29,7 @@ describe("QueueSqliteProvider", () => {
       blueprintId: "demo/echo",
       triggeredBy: "manual",
     });
-    expect(id).toMatch(/^[0-9a-f-]+$/);
+    expect(id).toMatch(/^run_[0-9a-hjkmnp-tv-z]{14}$/);
 
     const claimed = await q.dequeue(W1, 5000);
     expect(claimed?.runId).toBe(id);

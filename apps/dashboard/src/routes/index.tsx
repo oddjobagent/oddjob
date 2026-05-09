@@ -14,7 +14,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableRowLink,
 } from "../components/ui/table.tsx";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
 import { Activity } from "lucide-react";
 
 import { Route as RootRoute } from "./__root.tsx";
@@ -107,28 +109,22 @@ export function Overview(): React.JSX.Element {
             </TableHeader>
             <TableBody>
               {recentRuns.data.runs.map((r) => (
-                <TableRow key={r.id}>
+                <TableRowLink key={r.id} to="/runs/$id" params={{ id: r.id }}>
                   <TableCell>
                     <Badge tone={statusTone(r.status)} size="sm">
                       {r.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Link
-                      to="/runs/$id"
-                      params={{ id: r.id }}
-                      className="font-mono text-xs text-(--accent-9) hover:underline"
-                    >
-                      {r.id.slice(0, 12)}…
-                    </Link>
+                    <span className="font-mono text-xs text-(--accent-9)">{r.id}</span>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-(--text-muted)">
                     {r.deploymentId ?? "—"}
                   </TableCell>
                   <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
-                    {fmtRelative(r.startedAt)}
+                    <TimeAgo value={r.startedAt} />
                   </TableCell>
-                </TableRow>
+                </TableRowLink>
               ))}
             </TableBody>
           </Table>
@@ -155,12 +151,3 @@ function fmtUptime(ms: number | undefined): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
-function fmtRelative(ts: number | undefined): string {
-  if (!ts) return "—";
-  const diff = Date.now() - ts;
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return new Date(ts).toLocaleDateString();
-}

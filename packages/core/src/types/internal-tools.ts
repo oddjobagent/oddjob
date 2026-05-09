@@ -15,6 +15,8 @@ export const INTERNAL_TOOL_NAMES = [
   "datetime",
   "javascript",
   "python",
+  "notes_append",
+  "notes_read",
 ] as const;
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number];
@@ -25,6 +27,26 @@ export function isInternalToolName(name: string): name is InternalToolName {
 
 export interface EngineConfig {
   builtinTools?: BuiltinToolsConfig;
+  /**
+   * In-loop history compaction (B1.3). When `"auto"`, the agent loop
+   * summarizes prior messages into a synthetic compacted user message at
+   * inter-invocation boundaries (initial → grader revision) once history
+   * crosses `triggerRatio * model.contextWindow` tokens. Default `"off"`
+   * until eval-green (per plan: flip rule = lowest mean $/success at no
+   * pass-rate regression across all 4 datasets).
+   */
+  compaction?: CompactionConfig;
+}
+
+export interface CompactionConfig {
+  /** "auto" enables compaction; "off" disables. Default "off". */
+  mode?: "auto" | "off";
+  /** Trigger threshold as fraction of model contextWindow. Default 0.7. */
+  triggerRatio?: number;
+  /** Number of leading messages to pin (always include the original prompt). Default 2. */
+  pinHead?: number;
+  /** Number of trailing turns to pin (recent context the agent is actively using). Default 4. */
+  pinTail?: number;
 }
 
 export interface BuiltinToolsConfig {

@@ -35,7 +35,8 @@ import {
   TableRow,
 } from "../components/ui/table.tsx";
 import { useToast } from "../components/ui/toast.tsx";
-import { formatCost, formatRelative } from "../lib/format.ts";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
+import { formatCost } from "../lib/format.ts";
 
 import { Route as RootRoute } from "./__root.tsx";
 import { StatusBadge } from "./deployments.tsx";
@@ -218,11 +219,13 @@ function DeploymentDetail(): React.JSX.Element {
         <Stat
           label="Next cron run"
           value={
-            hasCron && nextRun.data?.nextRun
-              ? new Date(nextRun.data.nextRun).toLocaleString()
-              : hasCron && d.status !== "active"
-                ? "(paused)"
-                : "—"
+            hasCron && nextRun.data?.nextRun ? (
+              <TimeAgo value={nextRun.data.nextRun} />
+            ) : hasCron && d.status !== "active" ? (
+              "(paused)"
+            ) : (
+              "—"
+            )
           }
         />
       </div>
@@ -314,7 +317,7 @@ function DeploymentDetail(): React.JSX.Element {
                       params={{ id: r.id }}
                       className="font-mono text-xs text-(--accent-9) hover:underline"
                     >
-                      {r.id.slice(0, 8)}
+                      {r.id}
                     </Link>
                   </TableCell>
                   <TableCell className="text-sm text-(--text-muted)">{r.triggeredBy}</TableCell>
@@ -322,7 +325,7 @@ function DeploymentDetail(): React.JSX.Element {
                     {formatCost(r.costUsd)}
                   </TableCell>
                   <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
-                    {formatRelative(r.startedAt ?? r.createdAt)}
+                    <TimeAgo value={r.startedAt ?? r.createdAt} />
                   </TableCell>
                   <TableCell className="text-right">
                     {cancellable ? (
@@ -352,8 +355,12 @@ function DeploymentDetail(): React.JSX.Element {
 
       <Section title="Metadata">
         <DataList>
-          <DataList.Item label="Created">{formatRelative(d.createdAt)}</DataList.Item>
-          <DataList.Item label="Updated">{formatRelative(d.updatedAt)}</DataList.Item>
+          <DataList.Item label="Created">
+            <TimeAgo value={d.createdAt} />
+          </DataList.Item>
+          <DataList.Item label="Updated">
+            <TimeAgo value={d.updatedAt} />
+          </DataList.Item>
           <DataList.Item label="ID" mono>
             {d.id}
           </DataList.Item>

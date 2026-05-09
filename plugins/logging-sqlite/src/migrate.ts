@@ -1,13 +1,17 @@
 import type { Database } from "bun:sqlite";
 
 import sql0001 from "./migrations/0001_logs.sql" with { type: "text" };
+import sql0002 from "./migrations/0002_run_steps.sql" with { type: "text" };
 
 interface Migration {
   version: string;
   sql: string;
 }
 
-const MIGRATIONS: Migration[] = [{ version: "0001_logs.sql", sql: sql0001 }];
+const MIGRATIONS: Migration[] = [
+  { version: "0001_logs.sql", sql: sql0001 },
+  { version: "0002_run_steps.sql", sql: sql0002 },
+];
 
 export async function runMigrations(db: Database): Promise<void> {
   db.exec(

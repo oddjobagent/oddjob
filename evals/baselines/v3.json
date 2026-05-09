@@ -1,0 +1,728 @@
+{
+  "version": "v3",
+  "generatedAt": 1778286401758,
+  "aggregate": {
+    "cases": 32,
+    "passed": 27,
+    "passRate": 0.84375,
+    "totalCostUsd": 0.70037655,
+    "meanCostUsd": 0.0218867671875
+  },
+  "profiles": {
+    "coding": {
+      "generatedAt": 1778286291687,
+      "cases": 8,
+      "passed": 8,
+      "passRate": 1,
+      "p50Ms": 18261,
+      "p95Ms": 24719,
+      "meanTokensIn": 18310.75,
+      "meanTokensOut": 1121.875,
+      "meanCacheRead": 9364.875,
+      "meanCacheWrite": 3343.125,
+      "cacheHitRatio": 0.338379892053025,
+      "totalCostUsd": 0.23228415000000002,
+      "meanCostUsd": 0.029035518750000003,
+      "costPerSuccessUsd": 0.029035518750000003,
+      "meanToolCalls": 7.125,
+      "meanTurns": 7.625,
+      "perToolErrorRate": {
+        "read": 0,
+        "edit": 0,
+        "bash": 0.2727272727272727,
+        "write": 0,
+        "find": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-type-error",
+          "passed": true,
+          "durationMs": 16608,
+          "tokensIn": 22553,
+          "tokensOut": 849,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.026798,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "turns": 7,
+          "perToolCalls": {
+            "read": 3,
+            "edit": 1,
+            "bash": 2
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "002-missing-import",
+          "passed": true,
+          "durationMs": 13520,
+          "tokensIn": 19210,
+          "tokensOut": 681,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.022615,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "turns": 6,
+          "perToolCalls": {
+            "read": 2,
+            "write": 1,
+            "bash": 2
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "003-off-by-one",
+          "passed": true,
+          "durationMs": 22949,
+          "tokensIn": 21292,
+          "tokensOut": 1080,
+          "cacheRead": 3562,
+          "cacheWrite": 4676,
+          "costUsd": 0.032893200000000004,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "turns": 8,
+          "perToolCalls": {
+            "bash": 4,
+            "read": 3,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "004-large-log-needle",
+          "passed": true,
+          "durationMs": 24719,
+          "tokensIn": 10937,
+          "tokensOut": 1438,
+          "cacheRead": 40065,
+          "cacheWrite": 6791,
+          "costUsd": 0.03062225,
+          "toolCalls": 11,
+          "toolErrors": 1,
+          "turns": 10,
+          "perToolCalls": {
+            "read": 5,
+            "bash": 5,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "005-async-race",
+          "passed": true,
+          "durationMs": 16112,
+          "tokensIn": 24562,
+          "tokensOut": 969,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.029407,
+          "toolCalls": 6,
+          "toolErrors": 1,
+          "turns": 7,
+          "perToolCalls": {
+            "read": 3,
+            "bash": 2,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "006-shadowed-var",
+          "passed": true,
+          "durationMs": 18261,
+          "tokensIn": 14714,
+          "tokensOut": 1484,
+          "cacheRead": 8587,
+          "cacheWrite": 4878,
+          "costUsd": 0.029090200000000004,
+          "toolCalls": 5,
+          "toolErrors": 0,
+          "turns": 7,
+          "perToolCalls": {
+            "read": 3,
+            "edit": 1,
+            "bash": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "007-null-deref",
+          "passed": true,
+          "durationMs": 19152,
+          "tokensIn": 15074,
+          "tokensOut": 1316,
+          "cacheRead": 13208,
+          "cacheWrite": 5093,
+          "costUsd": 0.02934105,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "turns": 8,
+          "perToolCalls": {
+            "bash": 3,
+            "read": 4,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "008-wrong-constant",
+          "passed": true,
+          "durationMs": 22114,
+          "tokensIn": 18144,
+          "tokensOut": 1158,
+          "cacheRead": 9497,
+          "cacheWrite": 5307,
+          "costUsd": 0.031517449999999995,
+          "toolCalls": 8,
+          "toolErrors": 1,
+          "turns": 8,
+          "perToolCalls": {
+            "read": 3,
+            "find": 1,
+            "bash": 3,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        }
+      ]
+    },
+    "data-extract": {
+      "generatedAt": 1778286200834,
+      "cases": 8,
+      "passed": 5,
+      "passRate": 0.625,
+      "p50Ms": 6020,
+      "p95Ms": 19027,
+      "meanTokensIn": 6866.625,
+      "meanTokensOut": 640.5,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 0,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.08055300000000001,
+      "meanCostUsd": 0.010069125000000002,
+      "costPerSuccessUsd": 0.016110600000000003,
+      "meanToolCalls": 1.125,
+      "meanTurns": 2.125,
+      "perToolErrorRate": {
+        "read": 0,
+        "bash": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-emails-from-html",
+          "passed": false,
+          "durationMs": 7863,
+          "tokensIn": 5902,
+          "tokensOut": 409,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007947,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "002-dates-from-text",
+          "passed": true,
+          "durationMs": 4384,
+          "tokensIn": 5926,
+          "tokensOut": 401,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007931,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "003-currency-from-receipt",
+          "passed": false,
+          "durationMs": 4615,
+          "tokensIn": 6183,
+          "tokensOut": 386,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.008113,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "004-citations-from-paper",
+          "passed": true,
+          "durationMs": 6571,
+          "tokensIn": 6875,
+          "tokensOut": 984,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.011795,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "005-semver-from-changelog",
+          "passed": true,
+          "durationMs": 4868,
+          "tokensIn": 6371,
+          "tokensOut": 389,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.008316,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "006-urls-from-newsletter",
+          "passed": true,
+          "durationMs": 6020,
+          "tokensIn": 6502,
+          "tokensOut": 496,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.008982,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "007-table-rows-from-csv",
+          "passed": true,
+          "durationMs": 19027,
+          "tokensIn": 10581,
+          "tokensOut": 1176,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.016461,
+          "toolCalls": 2,
+          "toolErrors": 0,
+          "turns": 3,
+          "perToolCalls": {
+            "read": 1,
+            "bash": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "008-addresses-from-email",
+          "passed": false,
+          "durationMs": 8637,
+          "tokensIn": 6593,
+          "tokensOut": 883,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.011008,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        }
+      ]
+    },
+    "long-horizon": {
+      "generatedAt": 1778286383369,
+      "cases": 8,
+      "passed": 7,
+      "passRate": 0.875,
+      "p50Ms": 27627,
+      "p95Ms": 40716,
+      "meanTokensIn": 20712.75,
+      "meanTokensOut": 2074.25,
+      "meanCacheRead": 24150.5,
+      "meanCacheWrite": 5344.5,
+      "cacheHitRatio": 0.538313653157094,
+      "totalCostUsd": 0.32143740000000004,
+      "meanCostUsd": 0.040179675000000005,
+      "costPerSuccessUsd": 0.045919628571428575,
+      "meanToolCalls": 14,
+      "meanTurns": 10.75,
+      "perToolErrorRate": {
+        "find": 0,
+        "ls": 0,
+        "read": 0.03773584905660377,
+        "write": 0,
+        "bash": 0.2692307692307692,
+        "notes_append": 0,
+        "edit": 0,
+        "grep": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-plan-execute-verify",
+          "passed": true,
+          "durationMs": 23727,
+          "tokensIn": 23495,
+          "tokensOut": 1151,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.02925,
+          "toolCalls": 8,
+          "toolErrors": 0,
+          "turns": 7,
+          "perToolCalls": {
+            "find": 1,
+            "ls": 2,
+            "read": 4,
+            "write": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "002-source-synthesis",
+          "passed": true,
+          "durationMs": 40716,
+          "tokensIn": 12078,
+          "tokensOut": 2724,
+          "cacheRead": 0,
+          "cacheWrite": 4655,
+          "costUsd": 0.03151675,
+          "toolCalls": 8,
+          "toolErrors": 0,
+          "turns": 4,
+          "perToolCalls": {
+            "ls": 1,
+            "read": 6,
+            "write": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "003-plan-with-notes",
+          "passed": true,
+          "durationMs": 27585,
+          "tokensIn": 25778,
+          "tokensOut": 1507,
+          "cacheRead": 17341,
+          "cacheWrite": 4988,
+          "costUsd": 0.0412821,
+          "toolCalls": 11,
+          "toolErrors": 2,
+          "turns": 12,
+          "perToolCalls": {
+            "read": 3,
+            "bash": 4,
+            "notes_append": 3,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "bash": 2
+          }
+        },
+        {
+          "caseId": "004-refactor-with-tests",
+          "passed": true,
+          "durationMs": 32241,
+          "tokensIn": 20433,
+          "tokensOut": 2589,
+          "cacheRead": 28888,
+          "cacheWrite": 6490,
+          "costUsd": 0.04437930000000001,
+          "toolCalls": 18,
+          "toolErrors": 1,
+          "turns": 12,
+          "perToolCalls": {
+            "bash": 2,
+            "read": 10,
+            "ls": 1,
+            "notes_append": 2,
+            "edit": 3
+          },
+          "perToolErrors": {
+            "read": 1
+          }
+        },
+        {
+          "caseId": "005-multi-file-grep-fix",
+          "passed": true,
+          "durationMs": 27532,
+          "tokensIn": 29479,
+          "tokensOut": 1551,
+          "cacheRead": 13201,
+          "cacheWrite": 5515,
+          "costUsd": 0.04544784999999999,
+          "toolCalls": 11,
+          "toolErrors": 2,
+          "turns": 12,
+          "perToolCalls": {
+            "bash": 3,
+            "read": 5,
+            "ls": 1,
+            "grep": 1,
+            "edit": 1
+          },
+          "perToolErrors": {
+            "read": 1,
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "006-stage-by-stage-build",
+          "passed": true,
+          "durationMs": 33429,
+          "tokensIn": 16448,
+          "tokensOut": 2486,
+          "cacheRead": 61461,
+          "cacheWrite": 7156,
+          "costUsd": 0.0439691,
+          "toolCalls": 20,
+          "toolErrors": 1,
+          "turns": 15,
+          "perToolCalls": {
+            "read": 10,
+            "ls": 1,
+            "edit": 3,
+            "bash": 6
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "007-explore-then-decide",
+          "passed": true,
+          "durationMs": 34590,
+          "tokensIn": 20150,
+          "tokensOut": 2190,
+          "cacheRead": 35524,
+          "cacheWrite": 7156,
+          "costUsd": 0.043597399999999994,
+          "toolCalls": 12,
+          "toolErrors": 1,
+          "turns": 12,
+          "perToolCalls": {
+            "read": 5,
+            "write": 2,
+            "bash": 5
+          },
+          "perToolErrors": {
+            "bash": 1
+          }
+        },
+        {
+          "caseId": "008-batch-rename",
+          "passed": false,
+          "durationMs": 27627,
+          "tokensIn": 17841,
+          "tokensOut": 2396,
+          "cacheRead": 36789,
+          "cacheWrite": 6796,
+          "costUsd": 0.041994899999999995,
+          "toolCalls": 24,
+          "toolErrors": 2,
+          "turns": 12,
+          "perToolCalls": {
+            "bash": 6,
+            "grep": 2,
+            "read": 10,
+            "edit": 6
+          },
+          "perToolErrors": {
+            "bash": 2
+          }
+        }
+      ]
+    },
+    "web-research": {
+      "generatedAt": 1778286183194,
+      "cases": 8,
+      "passed": 7,
+      "passRate": 0.875,
+      "p50Ms": 4724,
+      "p95Ms": 9129,
+      "meanTokensIn": 6342.75,
+      "meanTokensOut": 384,
+      "meanCacheRead": 0,
+      "meanCacheWrite": 0,
+      "cacheHitRatio": 0,
+      "totalCostUsd": 0.066102,
+      "meanCostUsd": 0.00826275,
+      "costPerSuccessUsd": 0.009443142857142857,
+      "meanToolCalls": 1,
+      "meanTurns": 2,
+      "perToolErrorRate": {
+        "read": 0
+      },
+      "rows": [
+        {
+          "caseId": "001-rfc-2119-keywords",
+          "passed": true,
+          "durationMs": 9129,
+          "tokensIn": 6491,
+          "tokensOut": 379,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.008386000000000001,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "002-http-status-codes",
+          "passed": true,
+          "durationMs": 6905,
+          "tokensIn": 7148,
+          "tokensOut": 794,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.011118,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "003-rfc-dates",
+          "passed": true,
+          "durationMs": 4805,
+          "tokensIn": 6223,
+          "tokensOut": 326,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007852999999999999,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "004-mdn-css-properties",
+          "passed": false,
+          "durationMs": 4723,
+          "tokensIn": 6216,
+          "tokensOut": 334,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007886,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "005-wikipedia-bibliography",
+          "passed": true,
+          "durationMs": 4724,
+          "tokensIn": 6267,
+          "tokensOut": 304,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.007787,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "006-changelog-versions",
+          "passed": true,
+          "durationMs": 3990,
+          "tokensIn": 6125,
+          "tokensOut": 284,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.0075450000000000005,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "007-pricing-page",
+          "passed": true,
+          "durationMs": 4128,
+          "tokensIn": 6159,
+          "tokensOut": 225,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.0072840000000000005,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        },
+        {
+          "caseId": "008-faq-questions",
+          "passed": true,
+          "durationMs": 6034,
+          "tokensIn": 6113,
+          "tokensOut": 426,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "costUsd": 0.008243,
+          "toolCalls": 1,
+          "toolErrors": 0,
+          "turns": 2,
+          "perToolCalls": {
+            "read": 1
+          },
+          "perToolErrors": {}
+        }
+      ]
+    }
+  }
+}

@@ -196,7 +196,9 @@ export function validateBlueprint(
 
   // Either `model` (legacy) or `requires.roles` must declare what model the
   // blueprint expects. A blueprint with neither is unusable at dispatch.
-  if (!blueprint.model && !blueprint.requires?.roles?.length) {
+  // Script-mode blueprints declare models inside main.* via ctx.runAgent({...}),
+  // so the top-level requirement is skipped.
+  if (!blueprint.scriptMode && !blueprint.model && !blueprint.requires?.roles?.length) {
     issues.push({
       path: "model",
       message:

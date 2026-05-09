@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-
 import { Database } from "bun:sqlite";
 
+import { newId } from "@oddjob/core";
 import type { AckResult, QueueDepth, QueueProvider, QueuedRun, RunConfig } from "@oddjob/core";
 
 import { runMigrations } from "./migrate.ts";
@@ -40,7 +39,7 @@ export class QueueSqliteProvider implements QueueProvider {
   }
 
   async enqueue(config: RunConfig): Promise<string> {
-    const runId = randomUUID();
+    const runId = newId("run");
     this.db
       .query(
         `INSERT INTO queued_runs (run_id, config_json, status, attempts, enqueued_at)

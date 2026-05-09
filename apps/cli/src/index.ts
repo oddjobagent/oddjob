@@ -33,6 +33,7 @@ const main = defineCommand({
     providers: () => import("./commands/providers.ts").then((m) => m.default),
     roles: () => import("./commands/roles.ts").then((m) => m.default),
     config: () => import("./commands/config.ts").then((m) => m.default),
+    eval: () => import("./commands/eval.ts").then((m) => m.default),
   },
 });
 

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { PluginRegistry, RoleResolver, registerBundled } from "@oddjob/core";
 import { LlmPiProvider } from "@oddjob/llm-pi";
-import { LoggingSqliteProvider } from "@oddjob/logging-sqlite";
+import { LoggingSqliteProvider, StepSqliteProvider } from "@oddjob/logging-sqlite";
 import { QueueSqliteProvider } from "@oddjob/queue-sqlite";
 import { ProcessEnvironmentProvider } from "@oddjob/plugin-env-process";
 import { SecretsSqliteProvider } from "@oddjob/secrets-sqlite";
@@ -30,10 +30,12 @@ beforeAll(async () => {
   const queue = new QueueSqliteProvider({ path: join(dir, "queue.db") });
   const secrets = new SecretsSqliteProvider({ path: join(dir, "secrets.db"), masterKey });
   const log = new LoggingSqliteProvider({ path: join(dir, "logs.db") });
+  const step = new StepSqliteProvider({ path: join(dir, "logs.db") });
   await state.connect();
   await queue.connect();
   await secrets.connect();
   await log.connect();
+  await step.connect();
 
   const llm = new LlmPiProvider({ secrets, modelOverrides: new Map() });
   // Wire the registered faux model so the worker pool's resolveModel can find it.
@@ -78,6 +80,7 @@ beforeAll(async () => {
     queue,
     secrets,
     log,
+    step,
     llm,
     plugins,
     roleResolver,
@@ -101,6 +104,7 @@ afterAll(async () => {
   await runtime.queue.disconnect();
   await runtime.secrets.disconnect();
   await runtime.log.disconnect();
+  await runtime.step?.disconnect();
   fauxReg.unregister();
   await rm(dir, { recursive: true, force: true });
 });
@@ -213,7 +217,7 @@ describe("server end-to-end", () => {
     const versionsR = await fetch(`${BASE()}/api/v1/blueprints/demo/echo/versions`);
     expect(versionsR.status).toBe(200);
     const versions = (await versionsR.json()) as { versions: Array<{ version: string }> };
-    expect(versions.versions.map((v) => v.version).sort()).toEqual(["0.1.0", "0.1.1"]);
+    expect(versions.versions.map((v) => v.version).toSorted()).toEqual(["0.1.0", "0.1.1"]);
 
     // List tags. After two pushes, latest -> 0.1.1.
     const tagsR = await fetch(`${BASE()}/api/v1/blueprints/demo/echo/tags`);
@@ -462,5 +466,130 @@ allow_mcp_servers = true
     const list = await fetch(`${BASE()}/api/v1/secrets`);
     const j = (await list.json()) as { secrets: string[] };
     expect(j.secrets).toContain("MY_KEY");
+  });
+
+  test("GET /api/v1/runs/:id/children returns direct fork children", async () => {
+    // Reuse the blueprint pushed earlier; if absent (test isolation), push it.
+    let bp = await runtime.state.getBlueprint("demo/echo");
+    if (!bp) {
+      const toml = await readFile("./jobs/echo/blueprint.toml", "utf8");
+      await fetch(`${BASE()}/api/v1/blueprints`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ toml, path: "./jobs/echo/blueprint.toml" }),
+      });
+      bp = await runtime.state.getBlueprint("demo/echo");
+    }
+    expect(bp).toBeTruthy();
+
+    // Dedicated deployment so we don't trample other tests' runs.
+    const dep = await runtime.state.createDeployment({
+      blueprintId: bp!.id,
+      blueprintTag: "latest",
+      name: "children-endpoint-dep",
+      triggers: [],
+      channels: [],
+    });
+
+    const now = Date.now();
+    const mkRun = (id: string, parentRunId?: string, costUsd?: number) => ({
+      id,
+      deploymentId: dep.id,
+      blueprintId: bp!.id,
+      blueprintHash: bp!.contentHash ?? "synthetic",
+      blueprintVersion: bp!.version,
+      triggeredBy: "manual" as const,
+      status: "complete" as const,
+      tokenInput: 0,
+      tokenOutput: 0,
+      toolCalls: 0,
+      createdAt: now,
+      ...(parentRunId ? { parentRunId } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
+    });
+
+    // Fan-out: 1 parent → 2 children, child-1 has 1 grandchild.
+    await runtime.state.createRun(mkRun("p-tree", undefined, 0.05));
+    await runtime.state.createRun(mkRun("c-tree-1", "p-tree", 0.02));
+    await runtime.state.createRun(mkRun("c-tree-2", "p-tree", 0.01));
+    await runtime.state.createRun(mkRun("g-tree-1", "c-tree-1", 0.005));
+
+    // Direct children of the parent — exactly two, ordered ASC by createdAt.
+    const r = await fetch(`${BASE()}/api/v1/runs/p-tree/children`);
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { children: Array<{ id: string; parentRunId?: string }> };
+    expect(body.children.map((c) => c.id)).toEqual(["c-tree-1", "c-tree-2"]);
+    expect(body.children.every((c) => c.parentRunId === "p-tree")).toBe(true);
+
+    // Grandchild surface only via the child id, not via the parent — confirms
+    // the endpoint returns direct children only (recursion is client-side).
+    const grand = await fetch(`${BASE()}/api/v1/runs/c-tree-1/children`);
+    const grandBody = (await grand.json()) as { children: Array<{ id: string }> };
+    expect(grandBody.children.map((c) => c.id)).toEqual(["g-tree-1"]);
+
+    // Leaf returns empty array (not 404).
+    const leaf = await fetch(`${BASE()}/api/v1/runs/g-tree-1/children`);
+    expect(leaf.status).toBe(200);
+    const leafBody = (await leaf.json()) as { children: unknown[] };
+    expect(leafBody.children).toEqual([]);
+
+    // Unknown run → 404 so the dashboard surfaces the bad id.
+    const miss = await fetch(`${BASE()}/api/v1/runs/no-such-run/children`);
+    expect(miss.status).toBe(404);
+  });
+
+  test("GET /api/v1/runs/:id/steps returns inserted step rows", async () => {
+    const runId = "run-step-test";
+    await runtime.step?.recordStep({
+      stepId: "s-tool",
+      runId,
+      iteration: 1,
+      kind: "tool_call",
+      startedAt: 1000,
+      endedAt: 1042,
+      toolName: "bash",
+      toolArgsHash: "deadbeef",
+      toolResultSize: 256,
+    });
+    await runtime.step?.recordStep({
+      stepId: "s-llm",
+      runId,
+      iteration: 0,
+      kind: "llm_call",
+      startedAt: 900,
+      endedAt: 990,
+      tokensIn: 100,
+      tokensOut: 25,
+      costUsd: 0.0002,
+      model: "faux/echo",
+    });
+
+    const r = await fetch(`${BASE()}/api/v1/runs/${runId}/steps`);
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { steps: Array<{ stepId: string; kind: string }> };
+    expect(body.steps).toHaveLength(2);
+    expect(body.steps[0]?.stepId).toBe("s-llm"); // ordered by started_at ASC
+    expect(body.steps[1]?.stepId).toBe("s-tool");
+
+    // kind filter
+    const tools = await fetch(`${BASE()}/api/v1/runs/${runId}/steps?kind=tool_call`);
+    const t = (await tools.json()) as { steps: Array<{ kind: string }> };
+    expect(t.steps).toHaveLength(1);
+    expect(t.steps[0]?.kind).toBe("tool_call");
+
+    // since cursor
+    const since = await fetch(`${BASE()}/api/v1/runs/${runId}/steps?since=1000`);
+    const s = (await since.json()) as { steps: Array<{ stepId: string }> };
+    expect(s.steps.map((x) => x.stepId)).toEqual(["s-tool"]);
+
+    // unknown kind → 400
+    const bad = await fetch(`${BASE()}/api/v1/runs/${runId}/steps?kind=banana`);
+    expect(bad.status).toBe(400);
+
+    // Empty for unknown run → []
+    const empty = await fetch(`${BASE()}/api/v1/runs/no-such-run/steps`);
+    expect(empty.status).toBe(200);
+    const e = (await empty.json()) as { steps: unknown[] };
+    expect(e.steps).toEqual([]);
   });
 });

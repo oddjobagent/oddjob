@@ -23,7 +23,7 @@ describe("tools-web-fetch plugin", () => {
     const ids = plugin.services
       .filter((s) => s.kind === "web-fetch")
       .map((s) => (s.kind === "web-fetch" ? s.id : ""))
-      .sort();
+      .toSorted();
     expect(ids).toEqual(["browserbase", "firecrawl", "raw", "scrapingbee"]);
   });
 });

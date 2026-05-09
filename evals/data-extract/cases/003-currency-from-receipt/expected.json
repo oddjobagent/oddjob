@@ -1,0 +1,11 @@
+{
+  "transactions": [
+    { "label": "Coffee, large", "amount_usd": 4.5 },
+    { "label": "Almond croissant", "amount_usd": 3.75 },
+    { "label": "Loyalty discount (member)", "amount_usd": -0.85 },
+    { "label": "Service charge", "amount_usd": 0.95 },
+    { "label": "Net", "amount_usd": 8.35 },
+    { "label": "Tax (8%)", "amount_usd": 0.67 },
+    { "label": "TOTAL", "amount_usd": 9.02 }
+  ]
+}

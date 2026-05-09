@@ -16,7 +16,21 @@ export interface Blueprint {
    * Resolves to the "default" role at dispatch when no role assignment exists.
    */
   model?: string;
+  /**
+   * Agent-mode prompt. Empty string in script-mode blueprints (top-level
+   * `prompt` is forbidden when `[entry]` is set or a `main.{ts,js,py,go}`
+   * sibling exists). Validation enforces non-empty in agent mode.
+   */
   prompt: string;
+  /**
+   * Set when the blueprint declared `[entry]` OR a sibling
+   * `main.{ts,js,py,go}` was auto-detected at parse time. Script-mode
+   * blueprints drive the run via `defineRun({...})` in `main.*`; the TOML
+   * stays metadata-only (cron, channels, sandbox, secrets, imports).
+   */
+  scriptMode?: boolean;
+  /** Resolved [entry] block. Set when present in the TOML; auto-detect doesn't synthesize one. */
+  entry?: BlueprintEntry;
   /** Required engine roles ("default" / "advisor" / "grader" / custom). */
   requires?: { roles: string[] };
   /**
@@ -67,6 +81,18 @@ export interface Blueprint {
 export interface BlueprintMemory {
   store: "kv" | "vector" | "both";
   retention: string;
+}
+
+/**
+ * Script-mode entry-script declaration. Pairs with a sibling
+ * `main.{ts,js,py,go}` referenced by `file`. `inputSchema`/`outputSchema`
+ * point at exported members of that file (e.g. `"main.ts#inputSchema"`).
+ */
+export interface BlueprintEntry {
+  runtime: "bun" | "node" | "deno" | "python" | "go";
+  file: string;
+  inputSchema?: string;
+  outputSchema?: string;
 }
 
 export interface BlueprintOutputSchema {

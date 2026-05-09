@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { Database } from "bun:sqlite";
 
 import type {
@@ -26,7 +24,7 @@ import type {
   StateProvider,
   UpsertBlueprintOptions,
 } from "@oddjob/core";
-import { BlueprintTagNotFoundError, BlueprintVersionExistsError } from "@oddjob/core";
+import { BlueprintTagNotFoundError, BlueprintVersionExistsError, newId } from "@oddjob/core";
 
 import { runMigrations } from "./migrate.ts";
 
@@ -366,7 +364,7 @@ export class StateSqliteProvider implements StateProvider {
   }
 
   async createDeployment(input: DeploymentInput): Promise<Deployment> {
-    const id = randomUUID();
+    const id = newId("dep");
     const now = Date.now();
     const limits = { warnThresholdPct: 80, ...input.limits };
     const dep: Deployment = {
@@ -482,8 +480,9 @@ export class StateSqliteProvider implements StateProvider {
         `INSERT INTO runs (id, deployment_id, blueprint_id, blueprint_hash, blueprint_version, triggered_by, status,
                            input_json, output_json, output_validation_json, error, cost_usd,
                            token_input, token_output, tool_calls,
-                           started_at, finished_at, created_at, environment_snapshot_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                           started_at, finished_at, created_at, environment_snapshot_json,
+                           parent_run_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         run.id,
@@ -505,6 +504,7 @@ export class StateSqliteProvider implements StateProvider {
         run.finishedAt ?? null,
         run.createdAt,
         run.environmentSnapshot ? JSON.stringify(run.environmentSnapshot) : null,
+        run.parentRunId ?? null,
       );
   }
 
@@ -515,6 +515,18 @@ export class StateSqliteProvider implements StateProvider {
 
   async listRuns(filter?: RunFilter): Promise<Run[]> {
     const limit = filter?.limit ?? 50;
+    // parent_run_id filter is its own branch — children listings always sort
+    // ASC by created_at so the dashboard tree renders in fork order. Combined
+    // filters (parentRunId + deploymentId/status) are intentionally not yet
+    // supported; callers want one or the other.
+    if (filter?.parentRunId) {
+      const rows = this.db
+        .query<RunRow, [string, number]>(
+          "SELECT * FROM runs WHERE parent_run_id = ? ORDER BY created_at ASC LIMIT ?",
+        )
+        .all(filter.parentRunId, limit);
+      return rows.map(rowToRun);
+    }
     if (filter?.deploymentId && filter?.status) {
       const rows = this.db
         .query<RunRow, [string, string, number]>(
@@ -1050,6 +1062,7 @@ interface RunRow {
   finished_at: number | null;
   created_at: number;
   environment_snapshot_json: string | null;
+  parent_run_id: string | null;
 }
 
 function rowToDeployment(row: DeploymentRow): Deployment {
@@ -1184,5 +1197,6 @@ function rowToRun(row: RunRow): Run {
     environmentSnapshot: row.environment_snapshot_json
       ? (JSON.parse(row.environment_snapshot_json) as Run["environmentSnapshot"])
       : undefined,
+    parentRunId: row.parent_run_id ?? undefined,
   };
 }

@@ -38,6 +38,11 @@ export interface Run {
   finishedAt?: number;
   createdAt: number;
   /**
+   * Set when this Run is a child of another (script-mode `ctx.fork`).
+   * The runs table has the FK; cost rollup walks this chain. (B2.3)
+   */
+  parentRunId?: string;
+  /**
    * Snapshot of the resolved Environment at dispatch. Persists provenance so
    * historical runs survive later edits to environment records / engine
    * defaults. `id` is the source Environment row (when ref- or default-

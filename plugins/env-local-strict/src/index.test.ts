@@ -8,7 +8,7 @@ describe("env-local-strict plugin", () => {
     const ids = plugin.services
       .filter((s) => s.kind === "environment")
       .map((s) => (s.kind === "environment" ? s.id : ""))
-      .sort();
+      .toSorted();
     expect(ids).toEqual(["appcontainer", "bwrap", "seatbelt"]);
   });
 

@@ -36,7 +36,7 @@ export const list =
         const tok = tokenById.get(connectorId);
         const liveStatus = rt.auth
           ? await rt.auth.status(connectorId)
-          : tok?.status ?? "not_configured";
+          : (tok?.status ?? "not_configured");
         rows.push({
           connectorId,
           deploymentId: dep.id,

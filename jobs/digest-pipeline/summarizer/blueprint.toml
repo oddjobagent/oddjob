@@ -1,0 +1,10 @@
+name = "digest-pipeline-summarizer"
+version = "0.1.0"
+description = "Stub summarizer: returns a one-sentence summary. Real summarizers would call ctx.runAgent or an LLM tool."
+author = "demo"
+tags = ["script-mode", "demo"]
+license = "MIT"
+
+[entry]
+runtime = "bun"
+file = "main.ts"

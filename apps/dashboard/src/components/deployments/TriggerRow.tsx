@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import type { Trigger } from "@oddjob/core";
 
 import { useCronPreview } from "../../api/queries.ts";
+import { TimeAgo } from "../ui/time-ago.tsx";
 import { Button } from "../ui/button.tsx";
 import { Field } from "../ui/form.tsx";
 import { Input } from "../ui/input.tsx";
@@ -103,7 +104,7 @@ function CronFields({
           <ul className="text-xs text-muted-foreground space-x-2">
             {preview.data.nextRuns.slice(0, 5).map((t) => (
               <li key={t} className="inline">
-                {new Date(t).toLocaleString()}
+                <TimeAgo value={t} />
               </li>
             ))}
           </ul>

@@ -118,6 +118,34 @@
         "vite": "^8.0.0",
       },
     },
+    "jobs/digest-pipeline": {
+      "name": "@oddjob-jobs/digest-pipeline",
+      "version": "0.1.0",
+      "dependencies": {
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "jobs/digest-pipeline/fetcher": {
+      "name": "@oddjob-jobs/digest-pipeline-fetcher",
+      "version": "0.1.0",
+      "dependencies": {
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "jobs/digest-pipeline/joiner": {
+      "name": "@oddjob-jobs/digest-pipeline-joiner",
+      "version": "0.1.0",
+      "dependencies": {
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
+    "jobs/digest-pipeline/summarizer": {
+      "name": "@oddjob-jobs/digest-pipeline-summarizer",
+      "version": "0.1.0",
+      "dependencies": {
+        "@oddjob/sdk": "workspace:*",
+      },
+    },
     "packages/agent": {
       "name": "@oddjob/agent",
       "version": "0.0.0",
@@ -136,6 +164,7 @@
       },
       "devDependencies": {
         "@oddjob/plugin-env-process": "workspace:*",
+        "@oddjob/state-sqlite": "workspace:*",
         "@types/js-yaml": "^4.0.9",
         "@types/turndown": "^5.0.5",
       },
@@ -719,6 +748,14 @@
     "@nodelib/fs.stat": ["@nodelib/fs.stat@2.0.5", "", {}, "sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A=="],
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
+
+    "@oddjob-jobs/digest-pipeline": ["@oddjob-jobs/digest-pipeline@workspace:jobs/digest-pipeline"],
+
+    "@oddjob-jobs/digest-pipeline-fetcher": ["@oddjob-jobs/digest-pipeline-fetcher@workspace:jobs/digest-pipeline/fetcher"],
+
+    "@oddjob-jobs/digest-pipeline-joiner": ["@oddjob-jobs/digest-pipeline-joiner@workspace:jobs/digest-pipeline/joiner"],
+
+    "@oddjob-jobs/digest-pipeline-summarizer": ["@oddjob-jobs/digest-pipeline-summarizer@workspace:jobs/digest-pipeline/summarizer"],
 
     "@oddjob/agent": ["@oddjob/agent@workspace:packages/agent"],
 

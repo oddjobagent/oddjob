@@ -1,0 +1,11 @@
+{
+  "emails": [
+    "sales@example.com",
+    "dev-team@foo-bar.io",
+    "eng+oncall@foo-bar.io",
+    "hr@example.org",
+    "no-reply@legacy.example",
+    "media@example.co.uk",
+    "support@example.com"
+  ]
+}

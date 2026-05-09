@@ -8,20 +8,20 @@
 
 ## Where things are
 
-| | |
-|---|---|
-| Spec (canonical) | `plans/SPEC.md` |
-| Implementation plan + Phase 13 (dashboard) | `~/.claude/plans/we-re-going-to-start-compressed-leaf.md` |
-| **Implementation status + gotchas + remaining work** | `plans/STATUS.md` ← read this first |
-| Workspace README + walkthrough | `README.md` |
-| Per-area conventions | `**/CLAUDE.md` |
+|                                                      |                                                           |
+| ---------------------------------------------------- | --------------------------------------------------------- |
+| Spec (canonical)                                     | `plans/SPEC.md`                                           |
+| Implementation plan + Phase 13 (dashboard)           | `~/.claude/plans/we-re-going-to-start-compressed-leaf.md` |
+| **Implementation status + gotchas + remaining work** | `plans/STATUS.md` ← read this first                       |
+| Workspace README + walkthrough                       | `README.md`                                               |
+| Per-area conventions                                 | `**/CLAUDE.md`                                            |
 
 ## Stack invariants
 
 - **Runtime:** Bun ≥ 1.3 only. `bun:sqlite`, `Bun.serve`, `Bun.spawn` used everywhere.
 - **Language:** TypeScript strict + `noUncheckedIndexedAccess` + `verbatimModuleSyntax` + `allowImportingTsExtensions` (we import `./foo.ts` literally).
 - **Tests:** `bun:test` only. Unit tests next to file as `*.test.ts`.
-- **Type check:** `tsgo` (native preview). `bun run typecheck` from root chains `tsgo --noEmit` for backend + `bun run --cwd apps/dashboard typecheck` for dashboard, because root tsconfig **does not include `apps/**`** (different lib + paths).
+- **Type check:** `tsgo` (native preview). `bun run typecheck` from root chains `tsgo --noEmit` for backend + `bun run --cwd apps/dashboard typecheck` for dashboard, because root tsconfig **does not include `apps/**`\*\* (different lib + paths).
 - **Lint/format:** `oxlint` + `oxfmt`. ~32 warnings remain by design (no-await-in-loop in sequential migration runners). 0 errors required.
 - **Workspaces:** `packages/*`, `plugins/*`, `apps/*`. Workspace deps use `"workspace:*"`.
 

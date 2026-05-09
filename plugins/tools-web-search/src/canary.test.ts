@@ -7,7 +7,7 @@ describe("tools-web-search canary", () => {
     const tools = plugin.services.filter((s) => s.kind === "tool");
     expect(tools.map((t) => t.kind === "tool" && t.name)).toEqual(["web_search"]);
     const services = plugin.services.filter((s) => s.kind === "web-search");
-    const ids = services.map((s) => (s.kind === "web-search" ? s.id : "")).sort();
+    const ids = services.map((s) => (s.kind === "web-search" ? s.id : "")).toSorted();
     expect(ids).toEqual(["brave", "exa", "searxng", "serpapi", "tavily"]);
   });
 

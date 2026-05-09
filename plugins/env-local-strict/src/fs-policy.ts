@@ -60,6 +60,7 @@ export async function validateStrictWorkdir(workdir: string): Promise<void> {
   } catch (err) {
     throw new Error(
       `env-local-strict: workdir does not exist or is not accessible: ${workdir} (${(err as Error).message})`,
+      { cause: err },
     );
   }
   for (const forbidden of FORBIDDEN_ROOTS) {

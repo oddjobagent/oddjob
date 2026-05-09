@@ -1,0 +1,41 @@
+From: ops@example.com
+To: jamie@example.com
+Subject: Q3 office moves — addresses to confirm
+
+Hi Jamie,
+
+Quick rundown of the office moves we discussed. Please confirm each
+address against the lease docs.
+
+1. NYC office is moving to 350 5th Avenue, New York, NY 10118, USA.
+   Lease starts Aug 1.
+
+2. The London satellite stays at 10 Downing Street, London, SW1A 2AA,
+   United Kingdom — no change. (Postal code is "SW1A 2AA" with a space;
+   please don't strip it.)
+
+3. New Berlin office: Friedrichstraße 110, Berlin, 10117, Germany.
+   This one took six months of negotiation.
+
+4. Tokyo: 1-1-2 Marunouchi, Chiyoda-ku, Tokyo, 100-0005, Japan.
+
+5. Old SF address (do NOT include — we vacated in March):
+      One Market Plaza, San Francisco, CA 94105, USA.
+   The lease there is fully terminated.
+
+6. Sydney: Level 36, Tower One, 100 Barangaroo Avenue, Sydney, NSW 2000,
+   Australia.
+
+7. Toronto: 100 Queen Street West, Toronto, ON M5H 2N2, Canada.
+
+A couple of NEAR-MISSES — these are NOT real postal addresses and should
+be skipped:
+- "P.O. Box 7777, USA" — no city, no state. Not a deliverable address.
+- "Somewhere in Manhattan" — no street.
+- "Old SF address" above — explicitly vacated.
+
+Also for reference, our HQ remains 1600 Amphitheatre Parkway,
+Mountain View, CA 94043, USA.
+
+Thanks,
+Ops

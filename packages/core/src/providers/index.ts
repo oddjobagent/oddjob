@@ -9,5 +9,8 @@ export type * from "./secrets.ts";
 export type * from "./channel.ts";
 export type * from "./storage.ts";
 export type * from "./logging.ts";
+export type * from "./step.ts";
+export type * from "./run-message.ts";
+export type * from "./run-event.ts";
 export type * from "./auth.ts";
 export type * from "./mcp.ts";

@@ -132,9 +132,7 @@ function makeScriptTool(
           uploaded = true;
         } catch (err) {
           return {
-            content: [
-              { type: "text", text: `script upload failed: ${(err as Error).message}` },
-            ],
+            content: [{ type: "text", text: `script upload failed: ${(err as Error).message}` }],
             details: {
               exitCode: -1,
               durationMs: 0,

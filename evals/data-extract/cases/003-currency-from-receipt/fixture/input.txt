@@ -1,0 +1,24 @@
+RECEIPT — Acme Co. — 2026-04-12
+
+Item                                            Subtotal
+----------------------------------------------------------
+Coffee, large                                    $4.50
+Almond croissant                                 $3.75
+Loyalty discount (member)                       -$0.85
+Service charge                                   $0.95
+                                                ------
+                                       Net      $8.35
+                                       Tax (8%)  $0.67
+                                       TOTAL     $9.02
+
+Paid: card ending 4242 — txn 14829-AB
+Tip jar (optional, NOT part of total): $1.00 cash
+
+Footer notice: refund window is $0.00 if more than 7 days
+have passed (this is a fixed-amount notice, not a charge).
+
+Promotion banner: "Spend $50.00 next visit, get $5.00 off!"
+(both numbers are advertising copy, not transactions)
+
+Adjacent staff note (struck through, ignore):
+~~Manager override: $2.00 was waived for the cracked saucer~~

@@ -142,4 +142,26 @@ describe("validateBlueprint", () => {
       }),
     ).toThrow(/collides/);
   });
+
+  test("script mode skips the model/requires.roles requirement", () => {
+    // Script-mode blueprints declare models inside main.* via ctx.runAgent({...}),
+    // so the top-level requirement is waived.
+    expect(() =>
+      validateBlueprint(
+        fixture({
+          model: undefined,
+          prompt: "",
+          scriptMode: true,
+          entry: { runtime: "bun", file: "main.ts" },
+        }),
+        { checkFs: false },
+      ),
+    ).not.toThrow();
+  });
+
+  test("agent-mode without model + without requires.roles still rejected", () => {
+    expect(() =>
+      validateBlueprint(fixture({ model: undefined }), { checkFs: false }),
+    ).toThrow(/declare a model/);
+  });
 });

@@ -11,6 +11,9 @@ import sql0008 from "./migrations/0008_config_provenance.sql" with { type: "text
 import sql0009 from "./migrations/0009_environment_wiring.sql" with { type: "text" };
 import sql0010 from "./migrations/0010_source_check.sql" with { type: "text" };
 import sql0011 from "./migrations/0011_run_environment_snapshot.sql" with { type: "text" };
+import sql0012 from "./migrations/0012_run_events.sql" with { type: "text" };
+import sql0013 from "./migrations/0013_run_messages.sql" with { type: "text" };
+import sql0014 from "./migrations/0014_runs_parent_id.sql" with { type: "text" };
 
 interface Migration {
   version: string;
@@ -29,6 +32,9 @@ const MIGRATIONS: Migration[] = [
   { version: "0009_environment_wiring.sql", sql: sql0009 },
   { version: "0010_source_check.sql", sql: sql0010 },
   { version: "0011_run_environment_snapshot.sql", sql: sql0011 },
+  { version: "0012_run_events.sql", sql: sql0012 },
+  { version: "0013_run_messages.sql", sql: sql0013 },
+  { version: "0014_runs_parent_id.sql", sql: sql0014 },
 ];
 
 export async function runMigrations(db: Database): Promise<void> {

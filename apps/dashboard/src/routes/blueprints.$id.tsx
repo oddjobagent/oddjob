@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table.tsx";
+import { TimeAgo } from "../components/ui/time-ago.tsx";
 
 import { Route as RootRoute } from "./__root.tsx";
 
@@ -180,7 +181,7 @@ function BlueprintDetail(): React.JSX.Element {
                   {v.contentHash.slice(0, 12)}
                 </TableCell>
                 <TableCell className="text-right text-xs tabular-nums text-(--text-muted)">
-                  {new Date(v.createdAt).toLocaleString()}
+                  <TimeAgo value={v.createdAt} />
                 </TableCell>
               </TableRow>
             ))}

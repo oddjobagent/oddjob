@@ -65,7 +65,7 @@ describe("blueprint versioning + tags", () => {
   test("second push moves latest pointer + retains old version", async () => {
     await p.upsertBlueprint(baseFixture("0.1.1", "b".repeat(64)));
     const versions = await p.listBlueprintVersions("demo/tagged");
-    expect(versions.map((v) => v.version).sort()).toEqual(["0.1.0", "0.1.1"]);
+    expect(versions.map((v) => v.version).toSorted()).toEqual(["0.1.0", "0.1.1"]);
 
     const latest = await p.getBlueprint("demo/tagged", { tag: "latest" });
     expect(latest?.version).toBe("0.1.1");

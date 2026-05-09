@@ -5,6 +5,7 @@ Agent runtime: the loop, tool registry, system-prompt assembly, output validatio
 ## Public surface
 
 `packages/agent/src/index.ts` re-exports:
+
 - `runOnce`, `RunOnceOptions`, `RunOnceResult`, `ResolvedLLM`, `GraderOverride` (loop)
 - `validateOutput`, `composeOutputSchemaWithChannels` (output)
 - `assembleSystemPrompt` (prompt)
@@ -48,6 +49,7 @@ src/
 ## Tool resolution flow
 
 For each name in `blueprint.tools`:
+
 1. `isInternalToolName(name)` → `buildInternalTool(name, ctx)`. Internal tools bypass the plugin registry; not overridable.
 2. else `opts.plugins?.toolFor(name)` → `svc.build(ctx)`. Plugin-contributed tools.
 3. else if `opts.plugins?.hasTool(name)` → claimed but disabled → warn + skip.

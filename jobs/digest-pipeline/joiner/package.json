@@ -1,0 +1,9 @@
+{
+  "name": "@oddjob-jobs/digest-pipeline-joiner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@oddjob/sdk": "workspace:*"
+  }
+}

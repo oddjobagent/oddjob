@@ -177,6 +177,12 @@ export interface OddjobApi {
       id: string,
       opts?: { since?: number; limit?: number; kind?: StepKind },
     ) => Promise<{ steps: StepRecord[] }>;
+    /**
+     * Direct children of a run (`ctx.fork` descendants live one level deep
+     * each). Returns ASC-by-createdAt so the dashboard tree renders in fork
+     * order. Recurse client-side for deeper levels.
+     */
+    children: (id: string, opts?: { limit?: number }) => Promise<{ children: Run[] }>;
     cancel: (id: string) => Promise<{ runId: string; result: string }>;
   };
 
@@ -509,6 +515,12 @@ export function createApi(opts: TransportOptions): OddjobApi {
         if (opts?.kind) q.set("kind", opts.kind);
         const qs = q.toString();
         return r("GET", `/api/v1/runs/${id}/steps${qs ? `?${qs}` : ""}`);
+      },
+      children: (id, opts) => {
+        const q = new URLSearchParams();
+        if (opts?.limit) q.set("limit", String(opts.limit));
+        const qs = q.toString();
+        return r("GET", `/api/v1/runs/${id}/children${qs ? `?${qs}` : ""}`);
       },
       cancel: (id) => r("POST", `/api/v1/runs/${id}/cancel`),
     },

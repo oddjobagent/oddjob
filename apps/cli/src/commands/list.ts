@@ -65,7 +65,7 @@ export default defineCommand({
           tagsByVersion.set(t.version, arr);
         }
         for (const v of versions.versions) {
-          const labels = tagsByVersion.get(v.version)?.sort().join(", ") ?? "";
+          const labels = tagsByVersion.get(v.version)?.toSorted().join(", ") ?? "";
           process.stdout.write(
             `${v.version.padEnd(12)}  ${labels.padEnd(20)}  ${v.contentHash.slice(0, 12)}  ${new Date(v.createdAt).toISOString()}\n`,
           );

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>CSS Flexbox properties — MDN</title></head>
+<body>
+<main>
+<h1>CSS Flexbox properties</h1>
+<p>The properties below are defined by the CSS Flexible Box Layout module
+(level 1). For each, MDN provides the property name, the values it
+accepts, and a short description.</p>
+
+<h2 id="container-properties">Container properties</h2>
+<dl>
+  <dt><code>display</code></dt>
+  <dd>Set to <code>flex</code> or <code>inline-flex</code> to enable
+  flexbox layout on a container.</dd>
+
+  <dt><code>flex-direction</code></dt>
+  <dd>Defines the main axis. Values: row | row-reverse | column |
+  column-reverse.</dd>
+
+  <dt><code>flex-wrap</code></dt>
+  <dd>Whether items wrap to a new line when they overflow.</dd>
+
+  <dt><code>flex-flow</code></dt>
+  <dd>Shorthand for <code>flex-direction</code> + <code>flex-wrap</code>.</dd>
+
+  <dt><code>justify-content</code></dt>
+  <dd>Aligns items along the main axis.</dd>
+
+  <dt><code>align-items</code></dt>
+  <dd>Aligns items along the cross axis.</dd>
+
+  <dt><code>align-content</code></dt>
+  <dd>Aligns wrapped lines (only applies when there is wrapping).</dd>
+
+  <dt><code>gap</code></dt>
+  <dd>Shorthand for row-gap + column-gap.</dd>
+</dl>
+
+<h2 id="item-properties">Item properties</h2>
+<dl>
+  <dt><code>flex-grow</code></dt>
+  <dd>How much an item can grow relative to siblings.</dd>
+
+  <dt><code>flex-shrink</code></dt>
+  <dd>How much an item can shrink relative to siblings.</dd>
+
+  <dt><code>flex-basis</code></dt>
+  <dd>Initial size before grow/shrink.</dd>
+
+  <dt><code>flex</code></dt>
+  <dd>Shorthand for grow + shrink + basis.</dd>
+
+  <dt><code>order</code></dt>
+  <dd>Reorders items independent of source order.</dd>
+
+  <dt><code>align-self</code></dt>
+  <dd>Overrides <code>align-items</code> for a single item.</dd>
+</dl>
+
+<h2 id="see-also">See also</h2>
+<p>Related — but NOT defined here — are the Grid properties:
+<code>grid-template-columns</code>, <code>grid-area</code>, and
+<code>grid-gap</code>. Do not include those.</p>
+
+<p>The deprecated property <code>box-flex</code> from the old "flexible
+box" model is also out of scope for this page.</p>
+</main>
+</body>
+</html>

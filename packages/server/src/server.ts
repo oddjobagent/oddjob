@@ -253,6 +253,8 @@ function buildRoutes(rt: Runtime, workers: WorkerPool): Route[] {
     r("GET", "/api/v1/runs", Runs.list(rt)),
     r("GET", "/api/v1/runs/:id", Runs.get(rt)),
     r("GET", "/api/v1/runs/:id/logs", Runs.logs(rt)),
+    r("GET", "/api/v1/runs/:id/steps", Runs.steps(rt)),
+    r("GET", "/api/v1/runs/:id/children", Runs.children(rt)),
     r("POST", "/api/v1/runs/:id/cancel", Runs.cancel(rt, workers)),
     r("GET", "/api/v1/runs/:id/confirmations", Runs.listConfirmations(rt, workers)),
     r("POST", "/api/v1/runs/:id/confirm", Runs.confirm(rt, workers)),
