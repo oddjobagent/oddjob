@@ -192,6 +192,18 @@ export interface RunOnceOptions {
    */
   onMcpReauthNeeded?: (tokenKey: string) => Promise<void> | void;
   /**
+   * Script-mode `ctx.requestApproval` resolution callback. Mirrors
+   * `onConfirmRequest` but for the script-mode HITL primitive (Phase C
+   * of COMPOSABLE_BLUEPRINTS). The worker pool wires this to the
+   * server's pending-approvals registry; CLI / API / channel resolvers
+   * unblock the promise via `POST /api/v1/runs/:id/approval`.
+   *
+   * When undefined in script-mode, `ctx.requestApproval` AUTO-DENIES
+   * with reason `"no approval handler configured"` so scripts don't
+   * hang in environments without HITL plumbing.
+   */
+  onApprovalRequest?: import("./script-mode.ts").ApprovalRequestHandler;
+  /**
    * Sub-agent dispatch (Phase 3.2). Set to 1 by the parent's `task` tool
    * when invoking a child runOnce. Children with depth >= 1 reject any
    * `task` tool call (no recursive sub-agents in v1). Default 0.

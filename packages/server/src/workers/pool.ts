@@ -47,6 +47,13 @@ interface PoolState {
   /** Per-run map of pending confirmation requests waiting on user input. */
   pendingConfirmations: Map<string, Map<string, PendingConfirmation>>;
   /**
+   * Per-run pending `ctx.requestApproval` request waiting on resolution
+   * (CLI / API / channel). v1 supports ONE in-flight approval per run
+   * (script-mode dispatcher serializes ctx.* calls), so a single Map
+   * entry suffices. (COMPOSABLE_BLUEPRINTS Phase 2)
+   */
+  pendingApprovals: Map<string, PendingApproval>;
+  /**
    * Last-fired timestamp per `<deploymentId>:<connectorName>` for reauth
    * notifications. Throttles concurrent runs sharing the same connector so
    * we only nag the user once per window.
@@ -62,6 +69,15 @@ interface PendingConfirmation {
   args: unknown;
   resolve: (resolution: { allow: boolean; denyMessage?: string }) => void;
   createdAt: number;
+}
+
+interface PendingApproval {
+  prompt: string;
+  channel?: string;
+  resolve: (resolution: { approved: boolean; reason?: string; resolver?: string }) => void;
+  createdAt: number;
+  /** Optional timeout handle so /api/v1/runs/:id/approval can clear it on resolve. */
+  timeoutHandle?: ReturnType<typeof setTimeout>;
 }
 
 export interface ConfirmationOutcome {
@@ -82,6 +98,7 @@ export class WorkerPool {
       heartbeats: new Map(),
       abortControllers: new Map(),
       pendingConfirmations: new Map(),
+      pendingApprovals: new Map(),
       reauthNotifiedAt: new Map(),
     };
   }
@@ -101,6 +118,57 @@ export class WorkerPool {
       args: p.args,
       createdAt: p.createdAt,
     }));
+  }
+
+  /**
+   * Snapshot of the pending `ctx.requestApproval` for a run, when one
+   * exists. Used by GET /api/v1/runs/:id/approval. (COMPOSABLE_BLUEPRINTS Phase 2)
+   */
+  pendingApprovalFor(
+    runId: string,
+  ): { prompt: string; channel?: string; createdAt: number } | undefined {
+    const p = this.state.pendingApprovals.get(runId);
+    if (!p) return undefined;
+    return {
+      prompt: p.prompt,
+      ...(p.channel ? { channel: p.channel } : {}),
+      createdAt: p.createdAt,
+    };
+  }
+
+  /**
+   * Resolve a pending approval. Returns ok=false when no such pending
+   * entry exists. (COMPOSABLE_BLUEPRINTS Phase 2)
+   */
+  resolveApproval(
+    runId: string,
+    result: { approved: boolean; reason?: string; resolver?: string },
+  ): ConfirmationOutcome {
+    const entry = this.state.pendingApprovals.get(runId);
+    if (!entry) return { ok: false, reason: "no pending approval for that run_id" };
+    this.state.pendingApprovals.delete(runId);
+    if (entry.timeoutHandle) clearTimeout(entry.timeoutHandle);
+    entry.resolve(result);
+    // Only flip status back to running when the run is actually still
+    // active. cancelRun may have already moved the row to terminal —
+    // overwriting that with "running" would corrupt operator visibility.
+    // (codex round-24 HIGH)
+    void this.flipBackToRunningIfActive(runId);
+    return { ok: true };
+  }
+
+  private async flipBackToRunningIfActive(runId: string): Promise<void> {
+    if (!this.state.abortControllers.has(runId)) return; // worker already torn down
+    const current = await this.rt.state.getRun(runId).catch(() => null);
+    if (!current) return;
+    if (
+      current.status === "cancelled" ||
+      current.status === "complete" ||
+      current.status === "failed"
+    ) {
+      return;
+    }
+    await this.rt.state.updateRun(runId, { status: "running" }).catch(() => undefined);
   }
 
   /**
@@ -348,6 +416,42 @@ export class WorkerPool {
             this.state.pendingConfirmations.set(runId, map);
           });
         },
+        // Script-mode `ctx.requestApproval` resolution. Mirrors the
+        // confirm flow but at the run level (one pending approval per
+        // run; v1 ctx.* serial dispatcher means there's never more
+        // than one in flight). (COMPOSABLE_BLUEPRINTS Phase 2)
+        onApprovalRequest: async (req) => {
+          await this.rt.state.updateRun(runId, { status: "awaiting_confirmation" });
+          // codex round-24 MED: register the pending entry FIRST, then
+          // notify channels. A fast resolver triggered from the
+          // notification could otherwise race the pending registration
+          // and find no approval to resolve.
+          const promise = new Promise<{ approved: boolean; reason?: string; resolver?: string }>(
+            (resolve) => {
+              const entry: PendingApproval = {
+                prompt: req.prompt,
+                ...(req.channel ? { channel: req.channel } : {}),
+                resolve,
+                createdAt: Date.now(),
+              };
+              if (req.timeoutMs && req.timeoutMs > 0) {
+                entry.timeoutHandle = setTimeout(() => {
+                  if (this.state.pendingApprovals.get(runId) === entry) {
+                    this.state.pendingApprovals.delete(runId);
+                    void this.flipBackToRunningIfActive(runId);
+                    resolve({ approved: false, reason: "timeout", resolver: "system:timeout" });
+                  }
+                }, req.timeoutMs);
+              }
+              this.state.pendingApprovals.set(runId, entry);
+            },
+          );
+          // Notify channels AFTER registration so any incoming POST
+          // /approval can find the pending entry. await the notify
+          // before returning the promise so blocking is documented.
+          await this.notifyPendingApproval(dep, req);
+          return promise;
+        },
       });
 
       // If this attempt failed but is retry-eligible, persist as `retrying`
@@ -496,6 +600,21 @@ export class WorkerPool {
   async cancelRun(runId: string): Promise<"running" | "queued" | "unknown"> {
     const abort = this.state.abortControllers.get(runId);
     if (abort) {
+      // codex round-24 HIGH: a run blocked on ctx.requestApproval has
+      // an unresolved Promise inside onApprovalRequest. abort() alone
+      // doesn't unblock it. Resolve the pending approval as a
+      // system-cancellation so the script-mode loop unblocks and the
+      // worker can cleanly tear down.
+      const pendingApproval = this.state.pendingApprovals.get(runId);
+      if (pendingApproval) {
+        this.state.pendingApprovals.delete(runId);
+        if (pendingApproval.timeoutHandle) clearTimeout(pendingApproval.timeoutHandle);
+        pendingApproval.resolve({
+          approved: false,
+          reason: "cancelled",
+          resolver: "system:cancel",
+        });
+      }
       abort.abort();
       await this.rt.state.updateRun(runId, {
         status: "cancelled",
@@ -639,6 +758,56 @@ export class WorkerPool {
             kind: "approval_request",
             toolName: req.toolName,
             toolUseId: req.toolUseId,
+            channelConfig: ch,
+          },
+        });
+      } catch (err) {
+        await this.rt.log.log(req.runId, {
+          timestamp: Date.now(),
+          level: "warn",
+          message: `approval-request channel ${ch.type} delivery failed: ${(err as Error).message}`,
+        });
+      }
+    }
+  }
+
+  private async notifyPendingApproval(
+    dep: import("@oddjob/core").Deployment,
+    req: { runId: string; prompt: string; channel?: string; timeoutMs?: number },
+  ): Promise<void> {
+    await this.rt.log.log(req.runId, {
+      timestamp: Date.now(),
+      level: "warn",
+      message: `awaiting approval: ${req.prompt.slice(0, 200)}`,
+    });
+    const body = [
+      `**Approval needed** for run \`${req.runId}\``,
+      `deployment: \`${dep.name}\``,
+      "",
+      `> ${req.prompt}`,
+      "",
+      `Approve: \`POST /api/v1/runs/${req.runId}/approval\` { approved: true, reason?: "...", resolver?: "..." }`,
+      `Deny:    \`POST /api/v1/runs/${req.runId}/approval\` { approved: false, reason: "..." }`,
+      `CLI:     \`oddjob approve ${req.runId}\` / \`oddjob deny ${req.runId} --reason "..."\``,
+    ].join("\n");
+    // If a specific channel was requested, only deliver via that one;
+    // otherwise broadcast to all of the deployment's channels (matches
+    // the "any channel can resolve" plan semantic).
+    const targetChannels = req.channel
+      ? dep.channels.filter((c) => c.type === req.channel)
+      : dep.channels;
+    for (const ch of targetChannels) {
+      const provider = this.rt.channelFor(ch.type);
+      if (!provider) continue;
+      try {
+        await provider.send({
+          body,
+          format: "markdown",
+          meta: {
+            runId: req.runId,
+            deploymentId: dep.id,
+            kind: "approval_request",
+            scope: "script",
             channelConfig: ch,
           },
         });

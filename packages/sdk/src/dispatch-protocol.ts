@@ -191,7 +191,7 @@ export interface IpcResultMap {
   mcp: unknown;
   tool: unknown;
   sleep: void;
-  approval: { approved: boolean; reason?: string };
+  approval: { approved: boolean; reason?: string; resolver?: string };
   runAgent: unknown;
   notify: void;
   now: string; // ISO-8601 UTC

@@ -32,6 +32,22 @@ export interface MemoryOptions {
   ttlMs?: number;
 }
 
+export interface ApprovalOptions {
+  /** Channel slug for the approval request (slack/email/console/...). Defaults to blueprint config. */
+  channel?: string;
+  /** Per-approval timeout (ms). Default = no timeout (wait forever or until terminal failure). */
+  timeoutMs?: number;
+}
+
+export interface ApprovalResult {
+  /** Resolution: true when an approver clicked allow / typed `oddjob approve`; false on deny / timeout. */
+  approved: boolean;
+  /** Free-form reason supplied by the approver (or `"timeout"` when timeoutMs fired). */
+  reason?: string;
+  /** Identity of the resolver (Slack user, CLI invocation, API caller). Best-effort populated by the resolution path. */
+  resolver?: string;
+}
+
 export interface RunAgentOptions {
   /** Free-form agent prompt. */
   prompt: string;
@@ -111,6 +127,18 @@ export interface Context<TInputs = unknown> {
 
   /** Inline agent loop. Returns the validated output. */
   runAgent<TResult = unknown>(opts: RunAgentOptions): Promise<TResult>;
+
+  /**
+   * Pause the run; route an approval prompt through `[channels].on_approval_needed`
+   * channels; resume on resolution. Resolution paths in v1:
+   *   - CLI: `oddjob approve <run-id> [--reason "..."]` / `oddjob deny <run-id>`
+   *   - API: `POST /api/v1/runs/:id/approval`
+   *   - Channels: any [channels] entry receives a notification with the run id
+   *
+   * If `timeoutMs` fires, returns `{approved: false, reason: "timeout"}`.
+   * Recorded in `run_events` so replay returns the recorded resolution.
+   */
+  requestApproval(prompt: string, opts?: ApprovalOptions): Promise<ApprovalResult>;
 
   /** Send a message via a configured channel. */
   notify(channel: string, message: unknown): Promise<void>;

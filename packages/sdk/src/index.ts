@@ -56,6 +56,8 @@ export type { DefineRunOptions, RunDefinition, RunFn } from "./define-run.ts";
 
 export { assertSerial } from "./context.ts";
 export type {
+  ApprovalOptions,
+  ApprovalResult,
   Context,
   ForkOptions,
   McpHandle,

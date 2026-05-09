@@ -119,6 +119,7 @@ export async function runScriptOnce(opts: RunOnceOptions): Promise<RunOnceResult
     step: opts.step,
     messages: opts.messages,
     deploymentId,
+    ...(opts.onApprovalRequest ? { onApprovalRequest: opts.onApprovalRequest } : {}),
   });
 
   let runError: string | undefined;
@@ -258,7 +259,21 @@ interface BuildContextArgs {
   step: RunOnceOptions["step"];
   messages: RunOnceOptions["messages"];
   deploymentId: string;
+  // Phase C — ctx.requestApproval handler. When undefined, ctx.requestApproval
+  // auto-denies so scripts don't hang in environments without HITL wiring.
+  onApprovalRequest?: ApprovalRequestHandler;
 }
+
+export interface ApprovalRequest {
+  runId: string;
+  prompt: string;
+  channel?: string;
+  timeoutMs?: number;
+}
+
+export type ApprovalRequestHandler = (
+  req: ApprovalRequest,
+) => Promise<{ approved: boolean; reason?: string; resolver?: string }>;
 
 function buildContext(args: BuildContextArgs): Context {
   const { runId, blueprintDir, session, scratchStore, dispatcher, runEvents, seqCursor } = args;
@@ -526,6 +541,36 @@ function buildContext(args: BuildContextArgs): Context {
     async notify(channel: string, message: unknown) {
       return callViaDispatcher("notify", `ctx.notify(${channel})`, { channel, message }, async () => {
         // No-op in v1 — proper channel routing lands with B2.6.
+      });
+    },
+
+    async requestApproval(
+      prompt: string,
+      approvalOpts?: import("@oddjob/sdk").ApprovalOptions,
+    ): Promise<import("@oddjob/sdk").ApprovalResult> {
+      // Recorded so replay returns the original resolution without
+      // re-pausing for human input.
+      const dispatchArgs: { prompt: string; channel?: string; timeoutMs?: number } = { prompt };
+      if (approvalOpts?.channel !== undefined) dispatchArgs.channel = approvalOpts.channel;
+      if (approvalOpts?.timeoutMs !== undefined) dispatchArgs.timeoutMs = approvalOpts.timeoutMs;
+      return callViaDispatcher("approval", "ctx.requestApproval", dispatchArgs, async () => {
+        const onApprovalRequest = args.onApprovalRequest;
+        if (!onApprovalRequest) {
+          // No resolver wired — auto-deny so script-mode doesn't hang
+          // forever in environments without channel/CLI/API integration.
+          // Document loud in the SDK README.
+          return {
+            approved: false,
+            reason: "no approval handler configured (RunOnceOptions.onApprovalRequest is unset)",
+          };
+        }
+        const req: ApprovalRequest = {
+          runId,
+          prompt,
+          ...(approvalOpts?.channel !== undefined ? { channel: approvalOpts.channel } : {}),
+          ...(approvalOpts?.timeoutMs !== undefined ? { timeoutMs: approvalOpts.timeoutMs } : {}),
+        };
+        return onApprovalRequest(req);
       });
     },
 

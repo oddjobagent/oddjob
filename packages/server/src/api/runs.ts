@@ -179,3 +179,42 @@ export const confirm =
     if (!outcome.ok) return badRequest(outcome.reason ?? "no pending confirmation");
     return json({ runId: id, toolUseId, result: body.result });
   };
+
+// COMPOSABLE_BLUEPRINTS Phase 2 — script-mode `ctx.requestApproval` resolution.
+// Mirrors the confirm flow but at the run level (one pending approval per run).
+
+interface ApprovalBody {
+  approved: boolean;
+  reason?: string;
+  resolver?: string;
+}
+
+export const getApproval =
+  (rt: Runtime, workers: WorkerPool): Handler =>
+  async (_req, ctx) => {
+    const id = ctx.params.id ?? "";
+    const run = await rt.state.getRun(id);
+    if (!run) return notFound("run not found");
+    const pending = workers.pendingApprovalFor(id);
+    return json({ pending: pending ?? null });
+  };
+
+export const resolveApproval =
+  (rt: Runtime, workers: WorkerPool): Handler =>
+  async (req, ctx) => {
+    const id = ctx.params.id ?? "";
+    const body = await readJson<ApprovalBody>(req);
+    if (!body) return badRequest("body required");
+    if (typeof body.approved !== "boolean") {
+      return badRequest("approved (boolean) required");
+    }
+    const run = await rt.state.getRun(id);
+    if (!run) return notFound("run not found");
+    const outcome = workers.resolveApproval(id, {
+      approved: body.approved,
+      ...(body.reason !== undefined ? { reason: body.reason } : {}),
+      ...(body.resolver !== undefined ? { resolver: body.resolver } : {}),
+    });
+    if (!outcome.ok) return badRequest(outcome.reason ?? "no pending approval");
+    return json({ runId: id, approved: body.approved });
+  };

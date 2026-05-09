@@ -35,6 +35,8 @@ const main = defineCommand({
     config: () => import("./commands/config.ts").then((m) => m.default),
     eval: () => import("./commands/eval.ts").then((m) => m.default),
     "eval-compare": () => import("./commands/eval-compare.ts").then((m) => m.default),
+    approve: () => import("./commands/approve.ts").then((m) => m.default),
+    deny: () => import("./commands/deny.ts").then((m) => m.default),
   },
 });
 

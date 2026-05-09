@@ -160,6 +160,9 @@ describe("@oddjob/sdk B2.2 — Context type instantiation", () => {
       tool: anyAsyncWithArgs,
       async sleep() {},
       runAgent: anyAsync,
+      async requestApproval() {
+        return { approved: false, reason: "mock" };
+      },
       async notify() {},
       async now() {
         return new Date(0);
