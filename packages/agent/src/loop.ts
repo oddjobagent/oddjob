@@ -24,6 +24,12 @@ import {
   makeTruncateStore,
   withResultTruncation,
 } from "./lib/truncate-result.ts";
+import {
+  DEDUP_ALLOWLIST,
+  makeDedupCache,
+  shouldInvalidateCacheFor,
+  withDedup,
+} from "./lib/dedup.ts";
 import { compactHistory, persistCollapsedSegment, planCompaction } from "./compaction.ts";
 import { makeSeqCursor } from "./run-events.ts";
 import { resolveStrategy } from "./routing/index.ts";
@@ -574,8 +580,66 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     // via the `show_tool_result` tool (auto-included below). Bypasses
     // report_status because its result is small.
     const truncateStore = makeTruncateStore();
-    const wrap = <T extends AgentTool<TSchema>>(t: T): T =>
-      withResultTruncation(t, truncateStore) as T;
+    // Phase 3.3: tool-call dedup. Allowlist-only — read/grep/find/ls
+    // are cached by (toolName + canonical-args-hash) within the run.
+    // ANY non-allowlisted tool call (bash, write, edit, python, javascript,
+    // MCP, web_*, task) clears the cache via withCacheInvalidate, so a
+    // mutation can't serve stale reads. Composition: withDedup OUTER,
+    // withResultTruncation INNER — cache stores the user-visible
+    // (already-truncated) result. (codex round-20)
+    const dedupCache = makeDedupCache();
+    // Per-toolUseId dedup metadata. Populated by `onDedupHit` during
+    // `execute()`, consumed by `afterToolCall` to attach metadata to
+    // the SAME `tool_call` step row (no separate point row — codex
+    // round-22 #1).
+    const dedupHitMeta = new Map<
+      string,
+      { originalToolUseId: string; originalStepId?: string }
+    >();
+    // Map tool_use_id → step_id (recorded in beforeToolCall). Used by
+    // the dedup wrapper to attribute originalStepId to the EXECUTING
+    // tool's step rather than to a shared "currentStepId" — under
+    // pi-agent-core's parallel batch dispatch, multiple beforeToolCall
+    // hooks can fire before any execute() resolves, so a shared
+    // mutable variable would point to the wrong step. (codex round-23
+    // R-003)
+    const stepIdByToolUseId = new Map<string, string>();
+    const onDedupHit = (info: {
+      toolName: string;
+      toolUseId: string;
+      originalToolUseId: string;
+      originalStepId?: string;
+    }): void => {
+      const meta: { originalToolUseId: string; originalStepId?: string } = {
+        originalToolUseId: info.originalToolUseId,
+      };
+      if (info.originalStepId) meta.originalStepId = info.originalStepId;
+      dedupHitMeta.set(info.toolUseId, meta);
+      append({
+        timestamp: Date.now(),
+        level: "debug",
+        message: `dedup hit: ${info.toolName} (${info.toolUseId}) → ${info.originalToolUseId}`,
+      });
+    };
+    const wrap = <T extends AgentTool<TSchema>>(t: T): T => {
+      const truncated = withResultTruncation(t, truncateStore);
+      if (DEDUP_ALLOWLIST.has(t.name)) {
+        return withDedup(truncated, {
+          cache: dedupCache,
+          truncateStore,
+          // Look up step_id by THIS call's tool_use_id, not a shared
+          // mutable. Under parallel dispatch, currentParentStepId can
+          // point to a sibling call's step. (codex round-23 R-003)
+          stepIdForToolUseId: (toolUseId) => stepIdByToolUseId.get(toolUseId),
+          recordHit: onDedupHit,
+        }) as T;
+      }
+      // Non-allowlisted tools clear cache via beforeToolCall (below)
+      // BEFORE parallel batch dispatch starts, not from inside execute().
+      // The wrapper itself is now a no-op for invalidation; we keep the
+      // truncation wrap in place. (codex round-23 R-002)
+      return truncated as T;
+    };
     const showToolResultTool = createShowToolResultTool(truncateStore) as AgentTool<TSchema>;
 
     // Phase 3.2: `task` tool registration. The blueprint opts in via
@@ -788,6 +852,20 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         // sub-agent rows nested under their dispatching tool_call.
         // (codex round-19 #2)
         currentParentStepId = stepId;
+        // Per-id step-id mapping for the dedup wrapper. (codex round-23
+        // R-003) Under pi-agent-core's parallel batch dispatch, multiple
+        // beforeToolCall hooks can fire before any execute() resolves —
+        // a shared mutable would point to the wrong step.
+        stepIdByToolUseId.set(ctx.toolCall.id, stepId);
+        // Phase 3.3 cache invalidation. Clear the dedup cache BEFORE
+        // pi-agent-core dispatches the parallel batch, not from inside
+        // a mutating tool's execute(). Otherwise a same-batch
+        // `[read("x"), bash("modify x")]` could see the cached read
+        // resolve before the bash invalidator fires. (codex round-23
+        // R-002)
+        if (shouldInvalidateCacheFor(ctx.toolCall.name)) {
+          dedupCache.clear();
+        }
         recordStep({
           stepId,
           runId,
@@ -898,6 +976,13 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
         const open = toolStepIndex.get(ctx.toolCall.id);
         if (open) {
           toolStepIndex.delete(ctx.toolCall.id);
+          // codex round-22 #1: dedup hits attach metadata to the SAME
+          // tool_call row instead of emitting a separate point row.
+          // Eval-compare can attribute saved time by counting steps
+          // with `meta.dedup: true`.
+          const dedupMeta = dedupHitMeta.get(ctx.toolCall.id);
+          dedupHitMeta.delete(ctx.toolCall.id);
+          stepIdByToolUseId.delete(ctx.toolCall.id);
           recordStep({
             stepId: open.stepId,
             runId,
@@ -908,6 +993,17 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
             toolName: ctx.toolCall.name,
             toolResultSize: estimateResultSize(ctx.result),
             error: ctx.isError ? extractErrorText(ctx.result) : undefined,
+            ...(dedupMeta
+              ? {
+                  meta: {
+                    dedup: true,
+                    dedupOfToolUseId: dedupMeta.originalToolUseId,
+                    ...(dedupMeta.originalStepId
+                      ? { dedupOfStepId: dedupMeta.originalStepId }
+                      : {}),
+                  },
+                }
+              : {}),
           });
         }
         append({
@@ -1127,6 +1223,56 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
 
     // Initial agent invocation. May iterate when [outcomes.grader] is set.
     let messages = await invokeAgent([userPrompt], []);
+    // Preserve a snapshot of the message list AT THE END of the
+    // initial invocation. This is the canonical artifact source for
+    // output extraction. If finalizer recovery (Phase 3.4) re-invokes,
+    // its synthetic-prompt turn will append a `report_status`-only
+    // assistant message that wouldn't carry the original output JSON;
+    // we must NOT lose the artifact from the first turn. (codex
+    // round-23 R-001)
+    let artifactMessages = messages;
+
+    // Phase 3.4: missing-required-finalizer recovery. When the
+    // blueprint declares [outcomes] WITHOUT a grader and the agent
+    // finished without calling report_status, force a single synthetic
+    // re-invoke asking it to do so. This is NOT early-stop detection —
+    // it's verdict finalization for runs that completed naturally
+    // without the harness's required terminal tool. (codex round-21)
+    //
+    // Skip when:
+    //   - [outcomes.grader] is configured (grader path sets verdict)
+    //   - hardFailureVerdict is already set (limit / schema-fail
+    //     tripped — there's no useful verdict the agent could give;
+    //     forcing another LLM call would just burn cost). codex round-22 #3.
+    //
+    // Capped to ONE forced re-invoke per run; if the model ignores
+    // the prompt, the no-verdict failure surfaces as before.
+    if (
+      blueprint.outcomes &&
+      !blueprint.outcomes.grader &&
+      verdict === undefined &&
+      !hardFailureVerdict
+    ) {
+      const forcedPrompt: AgentMessage = {
+        role: "user",
+        content:
+          "You finished your turn without calling `report_status`. The harness REQUIRES a verdict.\n\n" +
+          "Call `report_status` now with the best assessment you can give:\n" +
+          "- outcome: success | warning | error\n" +
+          "- reason: 1 sentence explaining the result of your work\n\n" +
+          "Do this in your next message. Do not explain or apologize — just call the tool.",
+        timestamp: Date.now(),
+      };
+      append({
+        timestamp: Date.now(),
+        level: "warn",
+        message: "missing verdict after natural completion — forcing report_status prompt",
+      });
+      emitPointStep("verdict", {
+        meta: { forcedFinalizer: true, reason: "no_verdict_after_outcomes" },
+      });
+      messages = await invokeAgent([forcedPrompt], messages);
+    }
 
     // Grader iteration loop. Only fires when blueprint.outcomes.grader is set
     // AND a rubric is available (rubricLoaded for file-backed, rubricText otherwise).
@@ -1212,10 +1358,16 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
           message: `grader needs_revision; injecting feedback for iteration ${iter + 1}/${maxIter}`,
         });
         messages = await invokeAgent([revision], messages);
+        // Grader revision DOES produce a fresh artifact each iteration —
+        // the model regenerates the response under feedback. Update the
+        // artifact source so output extraction sees the latest revision.
+        // (codex round-23 R-001 — only finalizer recovery preserves the
+        // pre-recovery snapshot; grader revisions overwrite normally.)
+        artifactMessages = messages;
       }
     }
 
-    const finalAssistant = lastAssistantMessage(messages);
+    const finalAssistant = lastAssistantMessage(artifactMessages);
     const output = extractOutput(finalAssistant, effectiveBlueprint);
     const outputValidation = validateOutput(blueprint, output.structuredOutput);
     if (!outputValidation.ok) {
