@@ -7,6 +7,7 @@ import { defineCommand } from "citty";
 import type {
   Blueprint,
   BlueprintId,
+  EngineConfig,
   EnvironmentConfig,
   EnvironmentProvider,
   ResolvedRoleModel,
@@ -65,6 +66,26 @@ export default defineCommand({
     record: { type: "string", description: "Fixtures dir to write fixtures into during run" },
     report: { type: "string", default: "json", description: "json | md" },
     out: { type: "string", description: "Output dir (default: evals/.runs/<dataset>-<ts>/)" },
+    strategy: {
+      type: "string",
+      description: "Routing strategy: fixed (default) | classifier",
+    },
+    "tier-simple": {
+      type: "string",
+      description: "classifier strategy: model id for 'simple' label",
+    },
+    "tier-standard": {
+      type: "string",
+      description: "classifier strategy: model id for 'standard' label",
+    },
+    "tier-complex": {
+      type: "string",
+      description: "classifier strategy: model id for 'complex' label",
+    },
+    "classifier-model": {
+      type: "string",
+      description: "classifier strategy: model id for the classifier itself (default claude-haiku-4-5)",
+    },
   },
   async run({ args }) {
     const datasetPath = await resolveDatasetPath(args.dataset);
@@ -151,6 +172,17 @@ export default defineCommand({
     const replayDir = args.replay ? resolve(process.cwd(), args.replay) : undefined;
     if (recordDir) await mkdir(recordDir, { recursive: true });
 
+    // Routing strategy → EngineConfig.routing. Only set when --strategy is
+    // present so default behavior (no engine.routing) stays at "fixed".
+    const engineConfig = buildEngineConfigFromArgs(args);
+    if (engineConfig?.routing?.strategy === "classifier") {
+      const tiers = engineConfig.routing.tiers ?? {};
+      const ladder = ["simple", "standard", "complex"]
+        .map((k) => `${k}=${(tiers as Record<string, string>)[k] ?? "(default)"}`)
+        .join(" ");
+      process.stdout.write(`eval: routing=classifier ${ladder}\n`);
+    }
+
     const rows: RunMetricRow[] = [];
     const queue = [...selected];
     const workers: Promise<void>[] = [];
@@ -176,6 +208,7 @@ export default defineCommand({
                 runEvents,
                 recordDir,
                 replayDir,
+                ...(engineConfig ? { engine: engineConfig } : {}),
               });
             } catch (err) {
               row = failedRow(
@@ -228,6 +261,33 @@ interface RunCtx {
   runEvents: RunEventSqliteProvider;
   recordDir?: string;
   replayDir?: string;
+  engine?: EngineConfig;
+}
+
+function buildEngineConfigFromArgs(args: {
+  strategy?: string;
+  "tier-simple"?: string;
+  "tier-standard"?: string;
+  "tier-complex"?: string;
+  "classifier-model"?: string;
+}): EngineConfig | undefined {
+  const strategy = args.strategy;
+  if (!strategy) return undefined;
+  if (strategy !== "fixed" && strategy !== "classifier") {
+    throw new Error(`--strategy must be 'fixed' or 'classifier' (got '${strategy}')`);
+  }
+  if (strategy === "fixed") return { routing: { strategy: "fixed" } };
+  const tiers: { simple?: string; standard?: string; complex?: string } = {};
+  if (args["tier-simple"]) tiers.simple = args["tier-simple"];
+  if (args["tier-standard"]) tiers.standard = args["tier-standard"];
+  if (args["tier-complex"]) tiers.complex = args["tier-complex"];
+  return {
+    routing: {
+      strategy: "classifier",
+      ...(Object.keys(tiers).length > 0 ? { tiers } : {}),
+      ...(args["classifier-model"] ? { classifierModel: args["classifier-model"] } : {}),
+    },
+  };
 }
 
 async function runOneCase(c: DatasetCase, ctx: RunCtx): Promise<RunMetricRow> {
@@ -294,6 +354,7 @@ async function runOneCase(c: DatasetCase, ctx: RunCtx): Promise<RunMetricRow> {
         runEvents: ctx.runEvents,
         input: c.prompt,
         streamFn,
+        ...(ctx.engine ? { engine: ctx.engine } : {}),
       });
     } catch (err) {
       return failedRow(c.id, startedAt, `runOnce threw: ${(err as Error).message}`);

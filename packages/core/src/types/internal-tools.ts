@@ -36,6 +36,29 @@ export interface EngineConfig {
    * pass-rate regression across all 4 datasets).
    */
   compaction?: CompactionConfig;
+  /**
+   * Routing strategy (Phase 2 of agent_core_eval). Picks the model for
+   * the run before the first agent invocation. v1: `"fixed"` (default,
+   * no-op) or `"classifier"` (Haiku 1-shot classification → tier ladder).
+   * Strategies live in `packages/agent/src/routing/`.
+   */
+  routing?: RoutingFileConfig;
+}
+
+export interface RoutingFileConfig {
+  /** "fixed" | "classifier". Default "fixed". */
+  strategy?: "fixed" | "classifier";
+  /**
+   * Tier ladder for the `classifier` strategy. Maps a classifier label
+   * (`simple` | `standard` | `complex`) to a model id. Unmapped labels
+   * fall back to the blueprint default.
+   */
+  tiers?: { simple?: string; standard?: string; complex?: string };
+  /**
+   * Optional override for the classifier's own model. Defaults to
+   * "claude-haiku-4-5" — cheap + fast 1-shot classification.
+   */
+  classifierModel?: string;
 }
 
 export interface CompactionConfig {

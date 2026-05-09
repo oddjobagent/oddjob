@@ -34,6 +34,7 @@ const main = defineCommand({
     roles: () => import("./commands/roles.ts").then((m) => m.default),
     config: () => import("./commands/config.ts").then((m) => m.default),
     eval: () => import("./commands/eval.ts").then((m) => m.default),
+    "eval-compare": () => import("./commands/eval-compare.ts").then((m) => m.default),
   },
 });
 

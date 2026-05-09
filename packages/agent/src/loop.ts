@@ -25,6 +25,8 @@ import {
   withResultTruncation,
 } from "./lib/truncate-result.ts";
 import { compactHistory, persistCollapsedSegment, planCompaction } from "./compaction.ts";
+import { resolveStrategy } from "./routing/index.ts";
+import type { RoutingContext, RoutingDecision } from "./routing/index.ts";
 
 // Per-(provider, baseUrl, modelId) circuit breakers. Sharing a single
 // breaker across all runs would let a failing OpenAI route open the
@@ -225,7 +227,12 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
     const { runScriptOnce } = await import("./script-mode.ts");
     return runScriptOnce(opts);
   }
-  const { blueprint, llm, environment, log, input, limits, signal, systemPromptExtra } = opts;
+  const { blueprint, environment, log, input, limits, signal, systemPromptExtra } = opts;
+  // `llm` is mutable post-routing-decision (Phase 2). Default = blueprint
+  // default; classifier strategies may swap it to a tier-mapped model.
+  // Routing is constrained to same provider so engineHosts/egress-proxy
+  // allowlist stays valid (see selectRoutingDecision below).
+  let llm: ResolvedLLM = opts.llm;
   const runId = opts.runId ?? newId("run");
   const deploymentId = opts.deploymentId ?? `_local:${blueprint.id}`;
   const triggeredBy: Run["triggeredBy"] = opts.triggeredBy ?? "manual";
@@ -565,6 +572,93 @@ export async function runOnce(opts: RunOnceOptions): Promise<RunOnceResult> {
       content: typeof input === "string" ? input : JSON.stringify(input ?? {}),
       timestamp: Date.now(),
     };
+
+    // Routing strategy decision (Phase 2). Runs once before the first
+    // invokeAgent. The strategy may swap `llm` to a tier-mapped model on
+    // the SAME provider as the blueprint default. Different-provider
+    // swaps would invalidate engineHosts / the egress proxy allowlist —
+    // resolveModel rejects those.
+    const strategy = resolveStrategy(opts.engine?.routing, {
+      onWarn: (msg) =>
+        append({
+          timestamp: Date.now(),
+          level: "warn",
+          message: `[routing] ${msg}`,
+        }),
+    });
+    // Track classifier usage separately so the `classifier` step row can
+    // show its own tokens/cost (vs the routed execution model) — codex
+    // round-17 #2.
+    let classifierUsage: Usage | undefined;
+    // Model that DID the classification. Defaults to the main llm (when
+    // no separate classifier model is configured); overridden if the
+    // strategy passes `copts.model`.
+    let classifierModelId: string | undefined = llm.model.id;
+    let classifierActuallyRan = false;
+    const routingCtx: RoutingContext = {
+      blueprint,
+      input,
+      async resolveModel(modelId: string) {
+        return resolveModelOnSameProvider(llm, modelId);
+      },
+      async classify(prompt, copts) {
+        if (copts?.model) classifierModelId = copts.model;
+        classifierActuallyRan = true;
+        return classifyOneShot({
+          prompt,
+          mainLlm: llm,
+          modelId: copts?.model,
+          maxTokens: copts?.maxTokens ?? 8,
+          ...(signal ? { signal } : {}),
+          onUsage: (u) => {
+            classifierUsage = sumUsage(classifierUsage, u);
+            usageTotal = sumUsage(usageTotal, u);
+          },
+        });
+      },
+    };
+    const routingStartedAt = Date.now();
+    let routingDecision: RoutingDecision;
+    try {
+      routingDecision = await strategy.selectInitial(routingCtx);
+    } catch (err) {
+      // Routing itself is best-effort — never fail a run on routing.
+      append({
+        timestamp: Date.now(),
+        level: "warn",
+        message: `[routing] strategy '${strategy.name}' threw; using blueprint default: ${(err as Error).message}`,
+      });
+      routingDecision = { reason: `${strategy.name}: error → fallback (${(err as Error).message})` };
+    }
+    if (routingDecision.llm) {
+      llm = routingDecision.llm;
+    }
+    emitPointStep("classifier", {
+      startedAt: routingStartedAt,
+      endedAt: Date.now(),
+      // model = the model that DID the classification (when classifier
+      // ran); the routed execution model lives in meta.executionModel.
+      // For `fixed` strategy the classifier never ran, so the model
+      // field stays unset.
+      ...(classifierActuallyRan ? { model: classifierModelId } : {}),
+      ...(classifierUsage?.input !== undefined ? { tokensIn: classifierUsage.input } : {}),
+      ...(classifierUsage?.output !== undefined ? { tokensOut: classifierUsage.output } : {}),
+      ...(classifierUsage?.cacheRead !== undefined
+        ? { cacheRead: classifierUsage.cacheRead }
+        : {}),
+      ...(classifierUsage?.cacheWrite !== undefined
+        ? { cacheWrite: classifierUsage.cacheWrite }
+        : {}),
+      ...(classifierUsage?.cost?.total !== undefined
+        ? { costUsd: classifierUsage.cost.total }
+        : {}),
+      meta: {
+        strategy: strategy.name,
+        reason: routingDecision.reason,
+        executionModel: llm.model.id,
+        ...routingDecision.meta,
+      },
+    });
 
     const config: AgentLoopConfig = {
       model: llm.model,
@@ -1195,6 +1289,92 @@ function engineRequiredHosts(llm: ResolvedLLM, blueprint: Blueprint): readonly s
 
 function isErrorStop(stop: string | undefined): boolean {
   return stop === "error" || stop === "aborted" || stop === "abort";
+}
+
+/**
+ * Resolve a `modelId` to a `ResolvedLLM` constrained to the SAME provider as
+ * the run's current llm. Same-provider constraint is load-bearing: the
+ * egress proxy allowlist + apiKey are the run's, both scoped to one
+ * provider. Cross-provider routing would require both provider hosts
+ * pre-allowed and credential resolution per provider — out of v1 scope.
+ *
+ * Accepts either a bare model id ("claude-haiku-4-5") or a fully-qualified
+ * "provider/model" form.
+ */
+async function resolveModelOnSameProvider(
+  current: ResolvedLLM,
+  modelId: string,
+): Promise<ResolvedLLM> {
+  const { getModels } = await import("@mariozechner/pi-ai");
+  const provider = current.model.provider;
+  // codex round-17 #1: strip a leading provider prefix only when it
+  // matches the CURRENT provider. OpenRouter model ids are themselves
+  // slash-bearing (e.g. `anthropic/claude-3-5-sonnet`) so blindly
+  // splitting on `/` would break those.
+  const bareId =
+    modelId.startsWith(`${provider}/`) ? modelId.slice(provider.length + 1) : modelId;
+  // pi-ai's getModels is typed against a literal KnownProvider union; in
+  // practice the model's `.provider` field is one of those values at
+  // runtime. Cast to keep the call site agnostic to the union shape.
+  const models = getModels(provider as Parameters<typeof getModels>[0]);
+  const found = models.find((m) => m.id === bareId);
+  if (!found) {
+    throw new Error(
+      `model '${modelId}' not found on provider '${provider}'. ` +
+        `v1 routing requires same-provider tiers (egress + apiKey are scoped to the blueprint's provider).`,
+    );
+  }
+  return {
+    model: found as unknown as ResolvedLLM["model"],
+    ...(current.apiKey !== undefined ? { apiKey: current.apiKey } : {}),
+  };
+}
+
+/**
+ * One-shot LLM call used by routing strategies (classifier prompt, etc.).
+ * Bypasses retry/breaker/recording wrappers — the caller is making a
+ * single, cheap-tier call before the main agent loop starts; cost is
+ * rolled into `usageTotal` so it shows up in the run's billed usage.
+ *
+ * Failure is propagated; the strategy decides whether to fall back.
+ */
+async function classifyOneShot(args: {
+  prompt: string;
+  mainLlm: ResolvedLLM;
+  modelId?: string;
+  maxTokens?: number;
+  signal?: AbortSignal;
+  onUsage?: (u: Usage) => void;
+}): Promise<string> {
+  const { prompt, mainLlm, modelId, maxTokens, signal, onUsage } = args;
+  const target = modelId ? await resolveModelOnSameProvider(mainLlm, modelId) : mainLlm;
+  const userMsg: Message = {
+    role: "user",
+    content: prompt,
+    timestamp: Date.now(),
+  };
+  const out = await streamSimple(
+    target.model,
+    { messages: [userMsg] },
+    {
+      ...(target.apiKey !== undefined ? { apiKey: target.apiKey } : {}),
+      ...(signal ? { signal } : {}),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+    },
+  );
+  let text = "";
+  for await (const ev of out) {
+    if (ev.type === "done") {
+      for (const block of ev.message.content) {
+        if (block.type === "text") text += block.text;
+      }
+      const u = ev.message.usage;
+      if (u && onUsage) onUsage(u);
+    } else if (ev.type === "error") {
+      throw new Error(`classifier stream error: ${ev.error.errorMessage ?? "unknown"}`);
+    }
+  }
+  return text;
 }
 
 interface ClassifyArgs {

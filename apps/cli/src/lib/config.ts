@@ -74,6 +74,21 @@ export interface RoleFileConfig {
  */
 export interface EngineFileConfig {
   compaction?: CompactionFileConfig;
+  routing?: RoutingFileConfigToml;
+}
+
+/**
+ * `[engine.routing]` block (Phase 2). Picks a routing strategy + tier
+ * ladder for the classifier strategy. Mirrors `RoutingFileConfig` from
+ * `@oddjob/core` with snake_case keys.
+ */
+export interface RoutingFileConfigToml {
+  /** "fixed" | "classifier". Default "fixed". */
+  strategy?: "fixed" | "classifier";
+  /** Tier ladder: { simple, standard, complex } → model id. */
+  tiers?: { simple?: string; standard?: string; complex?: string };
+  /** Override classifier model id. Default "claude-haiku-4-5". */
+  classifier_model?: string;
 }
 
 /**
@@ -174,9 +189,30 @@ const CompactionSchema = Type.Object(
   STRICT,
 );
 
+const TierSchema = Type.Object(
+  {
+    simple: Type.Optional(Type.String({ minLength: 1 })),
+    standard: Type.Optional(Type.String({ minLength: 1 })),
+    complex: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
+
+const RoutingSchema = Type.Object(
+  {
+    strategy: Type.Optional(
+      Type.Union([Type.Literal("fixed"), Type.Literal("classifier")]),
+    ),
+    tiers: Type.Optional(TierSchema),
+    classifier_model: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  STRICT,
+);
+
 const EngineSchema = Type.Object(
   {
     compaction: Type.Optional(CompactionSchema),
+    routing: Type.Optional(RoutingSchema),
   },
   STRICT,
 );

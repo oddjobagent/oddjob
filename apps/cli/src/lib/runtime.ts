@@ -234,9 +234,10 @@ async function buildEngineConfig(
 ): Promise<EngineConfig | undefined> {
   const bt = cfg.builtin_tools;
   const compact = cfg.engine?.compaction;
+  const routing = cfg.engine?.routing;
   // Return undefined when there's NOTHING to configure — the agent loop's
   // `opts.engine?.compaction` chain handles that cleanly.
-  if (!bt && !compact) return undefined;
+  if (!bt && !compact && !routing) return undefined;
   const out: EngineConfig = {};
   if (bt) {
     out.builtinTools = {};
@@ -273,6 +274,13 @@ async function buildEngineConfig(
       ...(compact.trigger_ratio !== undefined ? { triggerRatio: compact.trigger_ratio } : {}),
       ...(compact.pin_head !== undefined ? { pinHead: compact.pin_head } : {}),
       ...(compact.pin_tail !== undefined ? { pinTail: compact.pin_tail } : {}),
+    };
+  }
+  if (routing) {
+    out.routing = {
+      ...(routing.strategy !== undefined ? { strategy: routing.strategy } : {}),
+      ...(routing.tiers !== undefined ? { tiers: routing.tiers } : {}),
+      ...(routing.classifier_model !== undefined ? { classifierModel: routing.classifier_model } : {}),
     };
   }
   return out;

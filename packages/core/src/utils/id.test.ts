@@ -72,6 +72,11 @@ describe("newId", () => {
     expect(idTimestamp("not-an-id")).toBeUndefined();
     expect(idTimestamp("run_tooShort")).toBeUndefined();
     expect(idTimestamp("5307fe10-e9f6-4fb7-b2bc-cb949e80eead")).toBeUndefined();
+    // Structural shape matches but prefix is not in the known set.
+    expect(idTimestamp("foo_00000000000000")).toBeUndefined();
+    expect(idTimestamp("xxx_3rnka8b8x9p2c2")).toBeUndefined();
+    // Body contains an excluded Crockford char (i) — rejected by ID_PATTERN.
+    expect(idTimestamp("run_iiiiiiiiiiiiii")).toBeUndefined();
   });
 
   test("no collisions across 10K generations", () => {

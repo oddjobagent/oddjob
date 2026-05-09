@@ -18,7 +18,6 @@ const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 const EPOCH_MS = Date.UTC(2026, 0, 1);
 const TIME_CHARS = 8;
 const RAND_CHARS = 6;
-const BODY_LEN = TIME_CHARS + RAND_CHARS; // 14
 
 // Environments are user-chosen names ("default", "prod"), not generated; they
 // don't appear here. Add new prefixes only when a new entity needs minted ids.
@@ -78,14 +77,15 @@ export function isId(prefix: IdPrefix, value: unknown): value is string {
 
 /**
  * Decode the timestamp portion back to epoch ms. Returns undefined for ids that
- * don't match any known prefix (UUIDs, blueprint refs, etc).
+ * don't match any known prefix (UUIDs, blueprint refs, foo_<14>, etc).
  */
 export function idTimestamp(id: string): number | undefined {
   const u = id.indexOf("_");
   if (u < 0) return undefined;
-  const body = id.slice(u + 1);
-  if (body.length !== BODY_LEN) return undefined;
-  const time = body.slice(0, TIME_CHARS);
+  const prefix = id.slice(0, u);
+  if (!(prefix in ID_PATTERN)) return undefined;
+  if (!ID_PATTERN[prefix as IdPrefix].test(id)) return undefined;
+  const time = id.slice(u + 1, u + 1 + TIME_CHARS);
   const v = decodeBase32(time);
   if (v < 0n) return undefined;
   return Number(v) + EPOCH_MS;
